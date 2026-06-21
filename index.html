@@ -823,9 +823,54 @@
       text-transform: uppercase; padding: 5px 12px;
       border-radius: 100px; white-space: nowrap;
     }
-    .badge-open { background: rgba(255,184,0,0.12); color: #7a5200; border: 1px solid rgba(255,184,0,0.25); }
-    .badge-soon { background: rgba(26,39,100,0.08); color: var(--primary); border: 1px solid rgba(26,39,100,0.12); }
+    .badge-open { background: rgba(200,240,58,0.12); color: var(--accent); border: 1px solid rgba(200,240,58,0.25); }
+    .badge-soon { background: rgba(255,255,255,0.04); color: var(--muted); border: 1px solid var(--border); }
     .badge-full { background: var(--surface2); color: var(--muted); }
+    .event-actions { display: flex; gap: 8px; align-items: center; }
+    .btn-reg {
+      padding: 8px 18px; border-radius: 6px; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.04em; cursor: pointer; border: none; transition: all 0.2s;
+      background: var(--accent); color: #000; white-space: nowrap;
+    }
+    .btn-reg:hover { background: #b8e030; }
+    .btn-reg:disabled { background: var(--surface2); color: var(--muted); cursor: default; }
+
+    .reg-modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000;
+      display: none; align-items: center; justify-content: center; padding: 16px;
+    }
+    .reg-modal-overlay.open { display: flex; }
+    .reg-modal {
+      background: #111; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px;
+      width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto;
+    }
+    .reg-modal-header {
+      padding: 24px 28px 16px; display: flex; justify-content: space-between; align-items: flex-start;
+    }
+    .reg-modal-header h3 { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+    .reg-modal-header p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .reg-modal-close { background: none; border: none; color: var(--muted); font-size: 24px; cursor: pointer; padding: 0; line-height: 1; }
+    .reg-modal-close:hover { color: var(--text); }
+    .reg-modal-body { padding: 0 28px 28px; }
+    .reg-field { margin-bottom: 16px; }
+    .reg-label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .reg-input, .reg-select {
+      width: 100%; background: #0a0a0a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+      color: var(--text); padding: 12px 14px; font-size: 14px; font-family: inherit; outline: none;
+    }
+    .reg-input:focus, .reg-select:focus { border-color: var(--accent); }
+    .reg-input::placeholder { color: #444; }
+    .reg-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .reg-submit { width: 100%; padding: 14px; margin-top: 8px; }
+    .reg-success {
+      text-align: center; padding: 40px 20px;
+    }
+    .reg-success-icon {
+      width: 56px; height: 56px; border-radius: 50%; background: rgba(200,240,58,0.12);
+      display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;
+    }
+    .reg-success h4 { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
+    .reg-success p { font-size: 14px; color: var(--muted); line-height: 1.6; }
 
     /* ─── CTA BANNER ─── */
     .cta-banner {
@@ -904,6 +949,7 @@
       .footer-bottom { flex-direction: column; align-items: flex-start; }
       .hero h1 { font-size: clamp(44px, 12vw, 80px); }
       .event-item { grid-template-columns: 56px 1fr; }
+      .event-actions { flex-direction: column; gap: 4px; }
       .event-badge { display: none; }
       .courts-intro { grid-template-columns: 1fr; }
     }
@@ -1704,7 +1750,7 @@
         </div>
 
         <div class="events-list">
-          <div class="event-item reveal">
+          <div class="event-item reveal" data-event-name="AMZ Open Tournament — Vòng Tháng 7" data-event-type="Nội bộ" data-event-date="2026-07-05">
             <div class="event-date">
               <strong>05</strong>
               <span>Th7</span>
@@ -1714,10 +1760,13 @@
               <p>Giải đấu nội bộ hàng tháng · Đôi nam + Đôi nữ + Đôi hỗn hợp</p>
               <div class="event-countdown" data-date="2026-07-05T08:00:00+07:00"></div>
             </div>
-            <span class="event-badge badge-open">Đang mở đăng ký</span>
+            <div class="event-actions">
+              <span class="event-badge badge-open">Mở đăng ký</span>
+              <button class="btn-reg" onclick="openRegModal(this)">Đăng ký</button>
+            </div>
           </div>
 
-          <div class="event-item reveal reveal-delay-1">
+          <div class="event-item reveal reveal-delay-1" data-event-name="Buổi Tập Thử Miễn Phí — Người Mới" data-event-type="Nội bộ" data-event-date="2026-07-12">
             <div class="event-date">
               <strong>12</strong>
               <span>Th7</span>
@@ -1727,10 +1776,13 @@
               <p>Trải nghiệm Pickleball lần đầu · Được hướng dẫn bởi HLV chuyên nghiệp</p>
               <div class="event-countdown" data-date="2026-07-12T08:00:00+07:00"></div>
             </div>
-            <span class="event-badge badge-open">Còn chỗ</span>
+            <div class="event-actions">
+              <span class="event-badge badge-open">Còn chỗ</span>
+              <button class="btn-reg" onclick="openRegModal(this)">Đăng ký</button>
+            </div>
           </div>
 
-          <div class="event-item reveal reveal-delay-2">
+          <div class="event-item reveal reveal-delay-2" data-event-name="AMZ vs Các CLB TP.HCM — Giao Hữu" data-event-type="Liên CLB" data-event-date="2026-07-19">
             <div class="event-date">
               <strong>19</strong>
               <span>Th7</span>
@@ -1740,10 +1792,13 @@
               <p>Trận giao hữu liên câu lạc bộ · Dành cho thành viên đã đăng ký</p>
               <div class="event-countdown" data-date="2026-07-19T08:00:00+07:00"></div>
             </div>
-            <span class="event-badge badge-soon">Sắp mở</span>
+            <div class="event-actions">
+              <span class="event-badge badge-soon">Sắp mở</span>
+              <button class="btn-reg" disabled>Chưa mở</button>
+            </div>
           </div>
 
-          <div class="event-item reveal reveal-delay-3">
+          <div class="event-item reveal reveal-delay-3" data-event-name="Dink &amp; Drink Friday — Cuối Tháng 6" data-event-type="Nội bộ" data-event-date="2026-06-27">
             <div class="event-date">
               <strong>27</strong>
               <span>Th6</span>
@@ -1753,7 +1808,10 @@
               <p>Mini-tournament tối thứ 6 · Giao lưu cộng đồng · Mọi trình độ tham gia được</p>
               <div class="event-countdown" data-date="2026-06-27T18:00:00+07:00"></div>
             </div>
-            <span class="event-badge badge-open">Đang mở đăng ký</span>
+            <div class="event-actions">
+              <span class="event-badge badge-open">Mở đăng ký</span>
+              <button class="btn-reg" onclick="openRegModal(this)">Đăng ký</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1971,6 +2029,76 @@
     </section>
 
   </main>
+
+  <!-- ─── REGISTRATION MODAL ─── -->
+  <div class="reg-modal-overlay" id="regOverlay">
+    <div class="reg-modal">
+      <div id="regFormWrap">
+        <div class="reg-modal-header">
+          <div>
+            <h3 id="regTitle">Đăng ký giải đấu</h3>
+            <p id="regSubtitle"></p>
+          </div>
+          <button class="reg-modal-close" onclick="closeRegModal()">&times;</button>
+        </div>
+        <div class="reg-modal-body">
+          <form id="regForm">
+            <input type="hidden" id="reg-event-name" name="event_name">
+            <input type="hidden" name="_subject" value="Đăng ký giải đấu mới">
+            <div class="reg-field">
+              <label class="reg-label">Họ tên *</label>
+              <input class="reg-input" id="reg-name" name="name" placeholder="Nguyễn Văn A" required>
+            </div>
+            <div class="reg-row">
+              <div class="reg-field">
+                <label class="reg-label">Số điện thoại *</label>
+                <input class="reg-input" id="reg-phone" name="phone" type="tel" placeholder="0912 345 678" required>
+              </div>
+              <div class="reg-field">
+                <label class="reg-label">Email</label>
+                <input class="reg-input" id="reg-email" name="email" type="email" placeholder="email@example.com">
+              </div>
+            </div>
+            <div class="reg-row">
+              <div class="reg-field">
+                <label class="reg-label">Trình độ *</label>
+                <select class="reg-select" id="reg-level" name="level" required>
+                  <option value="">— Chọn —</option>
+                  <option value="2.0-2.5">2.0 – 2.5 (Mới)</option>
+                  <option value="3.0-3.5">3.0 – 3.5 (TB)</option>
+                  <option value="4.0-4.5">4.0 – 4.5 (Khá)</option>
+                  <option value="5.0+">5.0+ (Nâng cao)</option>
+                </select>
+              </div>
+              <div class="reg-field">
+                <label class="reg-label">Hạng thi đấu *</label>
+                <select class="reg-select" id="reg-category" name="category" required>
+                  <option value="Đơn nam">Đơn nam</option>
+                  <option value="Đơn nữ">Đơn nữ</option>
+                  <option value="Đôi nam">Đôi nam</option>
+                  <option value="Đôi nữ">Đôi nữ</option>
+                  <option value="Đôi nam nữ">Đôi nam nữ</option>
+                </select>
+              </div>
+            </div>
+            <div class="reg-field" id="regPartnerWrap" style="display:none;">
+              <label class="reg-label">Tên đồng đội</label>
+              <input class="reg-input" id="reg-partner" name="partner_name" placeholder="Họ tên đồng đội">
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg reg-submit" id="regSubmitBtn">Gửi Đăng Ký</button>
+          </form>
+        </div>
+      </div>
+      <div id="regSuccessWrap" class="reg-success" style="display:none;">
+        <div class="reg-success-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h4>Đăng ký thành công!</h4>
+        <p>Chúng tôi đã nhận được đăng ký của bạn.<br>AMZ sẽ liên hệ xác nhận trong vòng 24 giờ.</p>
+        <button class="btn btn-outline" style="margin-top:20px;" onclick="closeRegModal()">Đóng</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ─── FOOTER ─── -->
   <footer>
@@ -2279,6 +2407,103 @@
       });
     });
 
+
+    // ─── EVENT REGISTRATION ───
+    (function() {
+      var overlay = document.getElementById('regOverlay');
+      var form = document.getElementById('regForm');
+      var formWrap = document.getElementById('regFormWrap');
+      var successWrap = document.getElementById('regSuccessWrap');
+      var catSelect = document.getElementById('reg-category');
+      var partnerWrap = document.getElementById('regPartnerWrap');
+      if (!overlay || !form) return;
+
+      catSelect.addEventListener('change', function() {
+        partnerWrap.style.display = this.value.startsWith('Đôi') ? 'block' : 'none';
+      });
+
+      window.openRegModal = function(btn) {
+        var item = btn.closest('.event-item');
+        var name = item.dataset.eventName;
+        document.getElementById('regTitle').textContent = 'Đăng ký giải';
+        document.getElementById('regSubtitle').textContent = name;
+        document.getElementById('reg-event-name').value = name;
+        formWrap.style.display = 'block';
+        successWrap.style.display = 'none';
+        form.reset();
+        partnerWrap.style.display = 'none';
+        overlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      };
+
+      window.closeRegModal = function() {
+        overlay.classList.remove('open');
+        document.body.style.overflow = '';
+      };
+
+      overlay.addEventListener('click', function(e) { if (e.target === overlay) closeRegModal(); });
+      document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && overlay.classList.contains('open')) closeRegModal(); });
+
+      function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+      function levelToNum(v) { if (v === '5.0+') return 5.0; var parts = v.split('-'); return parseFloat(parts[0]) || 3.0; }
+
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var name = document.getElementById('reg-name').value.trim();
+        var phone = document.getElementById('reg-phone').value.trim();
+        var email = document.getElementById('reg-email').value.trim();
+        var level = document.getElementById('reg-level').value;
+        var category = document.getElementById('reg-category').value;
+        var partner = document.getElementById('reg-partner').value.trim();
+        var eventName = document.getElementById('reg-event-name').value;
+
+        if (!name || !phone || !level) return;
+
+        var submitBtn = document.getElementById('regSubmitBtn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Đang gửi...';
+
+        try {
+          await fetch('https://formspree.io/f/xeebjkrz', {
+            method: 'POST', body: new FormData(form),
+            headers: { Accept: 'application/json' }
+          });
+        } catch(err) {}
+
+        try {
+          var db = JSON.parse(localStorage.getItem('amz_admin')) || { players: [], tournaments: [], registrations: [], history: [] };
+
+          var player = db.players.find(function(p) { return p.phone.replace(/\s/g,'') === phone.replace(/\s/g,''); });
+          if (!player) {
+            player = { id: genId(), name: name, phone: phone, email: email, level: levelToNum(level), tier: level, note: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+            db.players.push(player);
+          }
+
+          var tournament = db.tournaments.find(function(t) { return t.name === eventName; });
+          if (!tournament) {
+            var item = document.querySelector('[data-event-name="' + eventName.replace(/"/g, '\\"') + '"]');
+            tournament = { id: genId(), name: eventName, date: item ? item.dataset.eventDate : '', type: item ? item.dataset.eventType : 'Nội bộ', levels: level, status: 'Mở đăng ký', maxTeams: 0, prize: '', note: '' };
+            db.tournaments.push(tournament);
+          }
+
+          var reg = {
+            id: genId(), playerId: player.id, tournamentId: tournament.id,
+            level: levelToNum(level), category: category,
+            partnerId: null, partnerName: partner || null,
+            status: 'Chờ duyệt', result: null, newLevel: null,
+            date: new Date().toISOString()
+          };
+          db.registrations.push(reg);
+
+          localStorage.setItem('amz_admin', JSON.stringify(db));
+        } catch(err) {}
+
+        formWrap.style.display = 'none';
+        successWrap.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Gửi Đăng Ký';
+      });
+    })();
 
     // Page loader
     window.addEventListener('load', () => {
