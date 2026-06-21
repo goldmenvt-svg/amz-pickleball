@@ -647,21 +647,28 @@
       display: grid; grid-template-columns: 1fr auto; align-items: end;
       gap: 40px; margin-bottom: 48px;
     }
-    .courts-grid {
+    .courts-gallery {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      grid-template-rows: auto auto;
+      grid-template-columns: repeat(12, 1fr);
+      grid-template-rows: 240px 240px 280px 320px;
       gap: 12px;
+      margin-top: 60px;
     }
     .court-card {
-      border-radius: var(--r); overflow: hidden;
+      border-radius: calc(var(--r) + 2px); overflow: hidden;
       background: var(--surface); border: 1px solid var(--border);
-      position: relative; aspect-ratio: 4/3;
+      position: relative;
       display: flex; align-items: flex-end;
+      cursor: pointer;
     }
-    .court-card:first-child {
-      grid-column: span 2; aspect-ratio: 16/7;
-    }
+    .court-card:nth-child(1) { grid-column: 1 / 8;  grid-row: 1 / 3; }
+    .court-card:nth-child(2) { grid-column: 8 / 13; grid-row: 1 / 2; }
+    .court-card:nth-child(3) { grid-column: 8 / 13; grid-row: 2 / 3; }
+    .court-card:nth-child(4) { grid-column: 1 / 5;  grid-row: 3 / 4; }
+    .court-card:nth-child(5) { grid-column: 5 / 9;  grid-row: 3 / 4; }
+    .court-card:nth-child(6) { grid-column: 9 / 13; grid-row: 3 / 4; }
+    .court-card:nth-child(7) { grid-column: 1 / 13; grid-row: 4 / 5; }
+
     .court-visual {
       position: absolute; inset: 0;
       overflow: hidden;
@@ -669,35 +676,29 @@
     .court-visual img {
       width: 100%; height: 100%;
       object-fit: cover; display: block;
-      transition: transform 0.5s ease;
+      transition: transform 0.6s ease;
     }
-    .court-card:hover .court-visual img, .court-card:active .court-visual img { transform: scale(1.04); }
-    .court-photo-strip {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      margin-top: 8px;
-    }
-    .court-photo-strip img {
-      width: 100%; aspect-ratio: 4/3;
-      object-fit: cover; border-radius: 6px;
-      display: block;
-      transition: opacity 0.3s ease;
-    }
-    .court-photo-strip img:hover, .court-photo-strip img:active { opacity: 0.8; }
+    .court-card:hover .court-visual img { transform: scale(1.05); }
     .court-card-overlay {
-      position: relative; z-index: 1; padding: 20px;
-      background: linear-gradient(transparent, rgba(10,22,40,0.92));
+      position: relative; z-index: 1; padding: 24px;
+      background: linear-gradient(transparent 0%, rgba(10,22,40,0.85) 60%, rgba(10,22,40,0.95) 100%);
       width: 100%;
     }
     .court-tag {
       display: inline-block; background: rgba(255,255,255,0.12); color: white;
       font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
       text-transform: uppercase; padding: 3px 10px; border-radius: 100px;
-      margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.15);
+      margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.15);
     }
-    .court-card h4 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: white; }
-    .court-card p { font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 2px; }
+    .court-card h4 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: white; margin-bottom: 4px; }
+    .court-story { font-size: 13px; color: rgba(255,255,255,0.6); line-height: 1.6; max-width: 400px; }
+    .court-card:nth-child(7) .court-card-overlay {
+      background: linear-gradient(90deg, rgba(10,22,40,0.92) 0%, rgba(10,22,40,0.6) 50%, transparent 100%);
+      display: flex; flex-direction: column; justify-content: center; height: 100%;
+      max-width: 50%; padding: 32px;
+    }
+    .court-card:nth-child(7) h4 { font-size: 22px; margin-bottom: 8px; }
+    .court-card:nth-child(7) .court-story { max-width: 360px; }
 
     /* ─── TRAINING ─── */
     #training { background: var(--surface); }
@@ -741,6 +742,7 @@
     /* ─── TESTIMONIALS ─── */
     .pricing { border-top: 1px solid var(--border); }
     .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 60px; }
+    .pricing-grid-4 { grid-template-columns: repeat(4, 1fr); gap: 20px; }
     .pricing-card {
       background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
       padding: 40px 32px; display: flex; flex-direction: column; transition: border-color 0.3s ease;
@@ -928,11 +930,14 @@
     .footer-bottom a:hover { color: rgba(255,255,255,0.7); }
 
     /* ─── RESPONSIVE ─── */
+    @media (max-width: 1280px) {
+      .pricing-grid-4 { grid-template-columns: repeat(2, 1fr); max-width: 700px; margin-left: auto; margin-right: auto; }
+    }
     @media (max-width: 1024px) {
       .about-grid { grid-template-columns: 1fr; gap: 48px; }
       .training-grid { grid-template-columns: 1fr; }
       .training-cta-box { position: static; }
-      .pricing-grid { grid-template-columns: 1fr; max-width: 400px; margin-left: auto; margin-right: auto; }
+      .pricing-grid, .pricing-grid-4 { grid-template-columns: 1fr; max-width: 400px; margin-left: auto; margin-right: auto; }
       .pricing-card.featured { order: -1; }
       .footer-grid { grid-template-columns: 1fr 1fr; gap: 40px; }
       .footer-brand { grid-column: span 2; }
@@ -945,8 +950,18 @@
       .hamburger { display: flex; }
       .service-row { grid-template-columns: 32px 1fr; gap: 16px; }
       .service-row p, .service-row-arrow { display: none; }
-      .courts-grid { grid-template-columns: 1fr 1fr; }
-      .court-card:first-child { grid-column: span 2; }
+      .courts-gallery {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 260px 260px 260px 280px;
+      }
+      .court-card:nth-child(1) { grid-column: 1 / -1; grid-row: 1 / 2; }
+      .court-card:nth-child(2) { grid-column: 1 / 2;  grid-row: 2 / 3; }
+      .court-card:nth-child(3) { grid-column: 2 / 3;  grid-row: 2 / 3; }
+      .court-card:nth-child(4) { grid-column: 1 / 2;  grid-row: 3 / 4; }
+      .court-card:nth-child(5) { grid-column: 2 / 3;  grid-row: 3 / 4; }
+      .court-card:nth-child(6) { grid-column: 1 / -1;  grid-row: auto; }
+      .court-card:nth-child(7) { grid-column: 1 / -1; grid-row: auto; }
+      .court-card:nth-child(7) .court-card-overlay { max-width: 60%; }
       .testimonials-grid { grid-template-columns: 1fr; }
       .footer-grid { grid-template-columns: 1fr; }
       .footer-brand { grid-column: span 1; }
@@ -966,8 +981,22 @@
       .about-number { font-size: 80px; }
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
       .stat-item { padding: 32px 20px; }
-      .courts-grid { grid-template-columns: 1fr; }
-      .court-card:first-child { grid-column: span 1; }
+      .courts-gallery {
+        grid-template-columns: 1fr;
+        grid-template-rows: repeat(7, 240px);
+      }
+      .court-card:nth-child(1),
+      .court-card:nth-child(2),
+      .court-card:nth-child(3),
+      .court-card:nth-child(4),
+      .court-card:nth-child(5),
+      .court-card:nth-child(6),
+      .court-card:nth-child(7) { grid-column: 1; grid-row: auto; }
+      .court-card:nth-child(7) .court-card-overlay { max-width: 100%; }
+      .court-card:nth-child(7) h4 { font-size: 17px; }
+      .court-card:nth-child(7) .court-card-overlay {
+        background: linear-gradient(transparent 0%, rgba(10,22,40,0.92) 60%);
+      }
     }
 
     /* ─── CONTACT FORM ─── */
@@ -1203,6 +1232,68 @@
       margin-right: 2px;
     }
 
+    /* ─── FAQ ─── */
+    .faq { border-top: 1px solid var(--border); }
+    .faq-list { max-width: 800px; margin: 60px auto 0; }
+    .faq-item {
+      border-bottom: 1px solid var(--border);
+    }
+    .faq-question {
+      width: 100%; background: none; border: none; color: var(--text);
+      font-family: var(--font); font-size: 16px; font-weight: 600;
+      text-align: left; padding: 24px 0; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      transition: color 0.2s; line-height: 1.5;
+    }
+    .faq-question:hover { color: var(--accent); }
+    .faq-icon {
+      width: 24px; height: 24px; flex-shrink: 0;
+      transition: transform 0.3s ease;
+    }
+    .faq-item.active .faq-icon { transform: rotate(45deg); }
+    .faq-answer {
+      max-height: 0; overflow: hidden;
+      transition: max-height 0.35s ease, padding 0.35s ease;
+    }
+    .faq-item.active .faq-answer { max-height: 300px; }
+    .faq-answer-inner {
+      padding: 0 0 24px; font-size: 15px; color: var(--muted);
+      line-height: 1.75;
+    }
+
+    /* ─── FLOATING CHAT ─── */
+    .floating-chat {
+      position: fixed; bottom: 24px; left: 24px; z-index: 91;
+      display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+    }
+    .chat-btn {
+      width: 52px; height: 52px; border-radius: 50%; border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-decoration: none;
+    }
+    .chat-btn:hover { transform: scale(1.1); box-shadow: 0 6px 28px rgba(0,0,0,0.4); }
+    .chat-btn svg { width: 24px; height: 24px; }
+    .chat-btn-zalo { background: #0068FF; }
+    .chat-btn-messenger { background: linear-gradient(135deg, #0695FF, #A334FA, #FF6968); }
+    .chat-btn-phone { background: var(--accent); }
+    .chat-btn-phone svg { stroke: #000; fill: none; }
+    .chat-tooltip {
+      position: absolute; left: 62px; top: 50%; transform: translateY(-50%);
+      background: var(--primary); color: white; font-size: 12px; font-weight: 600;
+      padding: 6px 14px; border-radius: 8px; white-space: nowrap;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    }
+    .chat-btn:hover .chat-tooltip { opacity: 1; }
+    @media (max-width: 768px) {
+      .floating-chat { bottom: 16px; left: 12px; }
+      .chat-btn { width: 42px; height: 42px; }
+      .chat-btn svg { width: 20px; height: 20px; }
+      .chat-tooltip { display: none; }
+    }
+
     @media (max-width: 480px) {
       .contact-success { padding: 40px 24px; }
       .contact-row-2col { grid-template-columns: 1fr; }
@@ -1229,6 +1320,8 @@
         <li><a href="#training">Huấn Luyện</a></li>
         <li><a href="#bang-gia">Bảng Giá</a></li>
         <li><a href="#events">Sự Kiện</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="blog/">Blog</a></li>
         <li><a href="#lien-he">Liên Hệ</a></li>
       </ul>
       <div class="nav-cta" style="display:flex;gap:8px;align-items:center;">
@@ -1248,6 +1341,8 @@
     <a href="#training" class="mobile-link">Huấn Luyện</a>
     <a href="#bang-gia" class="mobile-link">Bảng Giá</a>
     <a href="#events" class="mobile-link">Sự Kiện</a>
+    <a href="blog/" class="mobile-link">Blog</a>
+    <a href="#faq" class="mobile-link">FAQ</a>
     <a href="#lien-he" class="mobile-link">Liên Hệ</a>
     <a href="#lien-he" class="btn btn-primary btn-lg">Đặt Sân Ngay</a>
     <a href="admin.html" class="mobile-link" style="margin-top:8px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);font-size:12px;color:var(--muted);">Admin</a>
@@ -1469,46 +1564,85 @@
           <a href="#lien-he" class="btn btn-outline reveal reveal-delay-2">Đặt sân ngay →</a>
         </div>
 
-        <div class="courts-grid">
+        <div class="courts-gallery">
+
           <div class="court-card reveal">
             <div class="court-visual">
-              <picture><source srcset="images/san/san-toan-canh.webp" type="image/webp"><img src="images/san/san-toan-canh.jpg" alt="Khu sân thi đấu chính AMZ Pickleball" loading="lazy" width="1200" height="1600" decoding="async"></picture>
+              <picture><source srcset="images/san/san-toan-canh.webp" type="image/webp"><img src="images/san/san-toan-canh.jpg" alt="Toàn cảnh 8 sân AMZ Pickleball" loading="lazy" width="1200" height="1600" decoding="async"></picture>
             </div>
             <div class="court-card-overlay">
-              <div class="court-tag">Sân chính</div>
-              <h4>Khu Thi Đấu Chính</h4>
-              <p>8 sân · Mái che · Mặt sân tiêu chuẩn thi đấu</p>
+              <div class="court-tag">Toàn cảnh</div>
+              <h4>8 Sân — Quy Mô Lớn Nhất Vũng Tàu</h4>
+              <p class="court-story">Từ sân tập cho người mới đến sân thi đấu chính thức — tất cả nằm trong một tổ hợp thể thao hiện đại giữa lòng thành phố.</p>
             </div>
           </div>
 
           <div class="court-card reveal reveal-delay-1">
             <div class="court-visual">
-              <picture><source srcset="images/san/san-amz-club.webp" type="image/webp"><img src="images/san/san-amz-club.jpg" alt="Sân AMZ Pickleball Club" loading="lazy" width="1200" height="1600" decoding="async"></picture>
+              <picture><source srcset="images/hanh-dong/doi-khang-net.webp" type="image/webp"><img src="images/hanh-dong/doi-khang-net.jpg" alt="Trận đối kháng tại AMZ" loading="lazy" width="1200" height="800" decoding="async"></picture>
             </div>
             <div class="court-card-overlay">
-              <div class="court-tag">AMZ Club</div>
-              <h4>Sân AMZ Có Mái Che</h4>
-              <p>Đèn LED · Thoáng mát · Phù hợp mọi thời tiết</p>
+              <div class="court-tag">Thi đấu</div>
+              <h4>Những Trận Đấu Kịch Tính</h4>
+              <p class="court-story">Mỗi cuối tuần, sân AMZ rộn ràng tiếng vỗ tay và cổ vũ từ các giải đấu nội bộ.</p>
             </div>
           </div>
 
           <div class="court-card reveal reveal-delay-2">
             <div class="court-visual">
-              <picture><source srcset="images/san/san-mai-che-led.webp" type="image/webp"><img src="images/san/san-mai-che-led.jpg" alt="Sân Pickleball AMZ có mái che" loading="lazy" width="1200" height="1600" decoding="async"></picture>
+              <picture><source srcset="images/san/san-amz-club.webp" type="image/webp"><img src="images/san/san-amz-club.jpg" alt="Sân AMZ Pickleball có mái che" loading="lazy" width="1200" height="1600" decoding="async"></picture>
+            </div>
+            <div class="court-card-overlay">
+              <div class="court-tag">Mái che</div>
+              <h4>Chơi Mọi Thời Tiết</h4>
+              <p class="court-story">Mái che toàn sân + đèn LED — nắng mưa gì cũng thoải mái.</p>
+            </div>
+          </div>
+
+          <div class="court-card reveal">
+            <div class="court-visual">
+              <picture><source srcset="images/hanh-dong/tap-luyen-1.webp" type="image/webp"><img src="images/hanh-dong/tap-luyen-1.jpg" alt="Buổi tập luyện tại AMZ Pickleball" loading="lazy" width="1200" height="800" decoding="async"></picture>
             </div>
             <div class="court-card-overlay">
               <div class="court-tag">Tập luyện</div>
-              <h4>Khu Luyện Tập</h4>
-              <p>HLV hướng dẫn · Mọi trình độ · Linh hoạt lịch học</p>
+              <h4>Buổi Tập Đầu Tiên</h4>
+              <p class="court-story">Ai cũng từng bỡ ngỡ cầm vợt lần đầu. Nhưng với HLV kiên nhẫn, chỉ sau 30 phút là đã rally được.</p>
             </div>
           </div>
-        </div>
 
-        <div class="court-photo-strip reveal">
-          <picture><source srcset="images/hanh-dong/doi-khang-net.webp" type="image/webp"><img src="images/hanh-dong/doi-khang-net.jpg" alt="Thi đấu đối kháng tại AMZ Pickleball" loading="lazy" width="1200" height="800" decoding="async"></picture>
-          <picture><source srcset="images/hanh-dong/tap-luyen-1.webp" type="image/webp"><img src="images/hanh-dong/tap-luyen-1.jpg" alt="Tập luyện Pickleball tại AMZ" loading="lazy" width="1200" height="800" decoding="async"></picture>
-          <picture><source srcset="images/san/san-tap-luyen.webp" type="image/webp"><img src="images/san/san-tap-luyen.jpg" alt="Sân tập luyện AMZ Club" loading="lazy" width="1200" height="1600" decoding="async"></picture>
-          <picture><source srcset="images/hanh-dong/hanh-dong-dep.webp" type="image/webp"><img src="images/hanh-dong/hanh-dong-dep.jpg" alt="Khoảnh khắc thi đấu Pickleball" loading="lazy" width="1200" height="800" decoding="async"></picture>
+          <div class="court-card reveal reveal-delay-1">
+            <div class="court-visual">
+              <picture><source srcset="images/hanh-dong/nu-hoc-vien.webp" type="image/webp"><img src="images/hanh-dong/nu-hoc-vien.jpg" alt="Nữ học viên tập Pickleball" loading="lazy" width="1200" height="800" decoding="async"></picture>
+            </div>
+            <div class="court-card-overlay">
+              <div class="court-tag">Cộng đồng</div>
+              <h4>Sân Chơi Của Mọi Người</h4>
+              <p class="court-story">Từ bạn trẻ 18 tuổi đến anh chị U60 — Pickleball không phân biệt tuổi tác hay giới tính.</p>
+            </div>
+          </div>
+
+          <div class="court-card reveal reveal-delay-2">
+            <div class="court-visual">
+              <picture><source srcset="images/khong-gian/khu-thu-gian.webp" type="image/webp"><img src="images/khong-gian/khu-thu-gian.jpg" alt="Khu thư giãn và cà phê AMZ" loading="lazy" width="1200" height="800" decoding="async"></picture>
+            </div>
+            <div class="court-card-overlay">
+              <div class="court-tag">Cà phê</div>
+              <h4>Nghỉ Giữa Hiệp, Nhâm Nhi Cà Phê</h4>
+              <p class="court-story">Khu lounge ngay cạnh sân — gọi cà phê, xem bạn bè thi đấu, tận hưởng không khí thể thao.</p>
+            </div>
+          </div>
+
+          <div class="court-card reveal">
+            <div class="court-visual">
+              <picture><source srcset="images/su-kien/giai-amz-cup-lan-1.webp" type="image/webp"><img src="images/su-kien/giai-amz-cup-lan-1.jpg" alt="Giải AMZ Cup lần 1" loading="lazy" width="1200" height="800" decoding="async"></picture>
+            </div>
+            <div class="court-card-overlay">
+              <div class="court-tag">Sự kiện</div>
+              <h4>AMZ Cup — Nơi Những Câu Chuyện Bắt Đầu</h4>
+              <p class="court-story">Giải đấu AMZ Cup lần 1 quy tụ hơn 50 VĐV — từ người mới chơi 3 tháng đến những tay vợt kỳ cựu. Mỗi trận đấu đều là một câu chuyện.</p>
+            </div>
+          </div>
+
         </div>
 
         <div style="margin-top: 32px; display:flex; gap:24px; flex-wrap:wrap;" class="reveal">
@@ -1634,16 +1768,17 @@
           <h2 class="reveal reveal-delay-1">Gói dịch vụ<br><span class="dim">phù hợp mọi nhu cầu</span></h2>
         </div>
 
-        <div class="pricing-grid">
+        <div class="pricing-grid pricing-grid-4">
           <div class="pricing-card reveal">
             <div class="pricing-name">Thuê sân lẻ</div>
             <div class="pricing-price"><strong>120K</strong><span>/ giờ / sân</span></div>
-            <p class="pricing-desc">Thuê sân linh hoạt theo giờ, phù hợp chơi cùng bạn bè hoặc tập luyện tự do.</p>
+            <p class="pricing-desc">Linh hoạt theo giờ — rủ bạn bè ra sân bất cứ lúc nào, không cần cam kết dài hạn.</p>
             <ul class="pricing-features">
-              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Sân tiêu chuẩn thi đấu</li>
-              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Đèn chiếu sáng đầy đủ</li>
-              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Phòng thay đồ & nước uống</li>
-              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Đặt sân qua điện thoại / Facebook</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> 8 sân tiêu chuẩn thi đấu</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Đèn LED chiếu sáng toàn sân</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Phòng thay đồ + nước uống</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Đặt sân qua Facebook / Zalo</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Giảm 15% khung 9h–15h (T2–T6)</li>
             </ul>
             <div class="pricing-cta">
               <a href="#lien-he" class="btn btn-outline">Đặt Sân Ngay</a>
@@ -1652,15 +1787,16 @@
 
           <div class="pricing-card featured reveal reveal-delay-1">
             <div class="pricing-badge">Phổ biến nhất</div>
-            <div class="pricing-name">Gói Membership</div>
+            <div class="pricing-name">Membership</div>
             <div class="pricing-price"><strong>800K</strong><span>/ tháng</span></div>
-            <p class="pricing-desc">Gói thành viên toàn diện — chơi không giới hạn, ưu tiên sân giờ đẹp, tham gia cộng đồng AMZ.</p>
+            <p class="pricing-desc">Chơi thả ga cả tháng — ưu tiên giờ vàng, giảm giá huấn luyện, tham gia giải đấu miễn phí.</p>
             <ul class="pricing-features">
               <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Chơi không giới hạn giờ</li>
-              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Ưu tiên đặt sân giờ vàng</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Ưu tiên đặt sân 17h–21h</li>
               <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Giảm 20% khóa huấn luyện</li>
               <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Tham gia giải nội bộ miễn phí</li>
-              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Cộng đồng thành viên AMZ</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Giảm 10% đồ uống tại quán</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Cộng đồng AMZ Members</li>
             </ul>
             <div class="pricing-cta">
               <a href="#lien-he" class="btn btn-primary">Đăng Ký Membership</a>
@@ -1670,20 +1806,37 @@
           <div class="pricing-card reveal reveal-delay-2">
             <div class="pricing-name">Khóa huấn luyện</div>
             <div class="pricing-price"><strong>2.5TR</strong><span>/ 8 buổi</span></div>
-            <p class="pricing-desc">Huấn luyện bài bản với HLV kinh nghiệm, lộ trình cá nhân hóa theo trình độ.</p>
+            <p class="pricing-desc">Nâng trình nhanh chóng với HLV kinh nghiệm — lộ trình cá nhân hóa, nhóm nhỏ tối đa 6 người.</p>
             <ul class="pricing-features">
-              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> 8 buổi / khóa (90 phút / buổi)</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> 8 buổi x 90 phút / khóa</li>
               <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Nhóm nhỏ 4–6 người</li>
-              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Video phân tích kỹ thuật</li>
-              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Chứng nhận hoàn thành</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Video phân tích kỹ thuật cá nhân</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Chứng nhận hoàn thành khóa</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Tặng 1 buổi chơi sân miễn phí</li>
             </ul>
             <div class="pricing-cta">
               <a href="#lien-he" class="btn btn-outline">Đăng Ký Học</a>
             </div>
           </div>
+
+          <div class="pricing-card reveal reveal-delay-3">
+            <div class="pricing-name">Gói gia đình</div>
+            <div class="pricing-price"><strong>1.8TR</strong><span>/ tháng</span></div>
+            <p class="pricing-desc">Cả nhà cùng chơi — 4 thành viên dùng chung 1 gói, tiết kiệm hơn 40% so với mua lẻ.</p>
+            <ul class="pricing-features">
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> 4 thành viên / gói</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> 20 giờ chơi sân / tháng</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Giảm 15% đồ uống</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> 1 buổi học thử miễn phí</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Ưu tiên sân cuối tuần</li>
+            </ul>
+            <div class="pricing-cta">
+              <a href="#lien-he" class="btn btn-outline">Đăng Ký Gia Đình</a>
+            </div>
+          </div>
         </div>
 
-        <p class="pricing-note reveal">Giá có thể thay đổi theo chương trình khuyến mãi. Liên hệ <a href="tel:0914859927" style="color:var(--text);">0914 859 927</a> để được tư vấn chi tiết.</p>
+        <p class="pricing-note reveal">Giá có thể thay đổi theo chương trình khuyến mãi. Liên hệ <a href="tel:0914859927" style="color:var(--text);">0914 859 927</a> để được tư vấn chi tiết. Thanh toán chuyển khoản hoặc tiền mặt tại sân.</p>
       </div>
     </section>
 
@@ -1774,6 +1927,78 @@
             <span class="btn-cta-text">Đăng Ký Online</span>
             <span class="btn-cta-arrow" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
           </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── FAQ ─── -->
+    <section class="faq" id="faq">
+      <div class="container">
+        <div class="section-header">
+          <span class="label reveal">Câu Hỏi Thường Gặp</span>
+          <h2 class="reveal reveal-delay-1">Giải đáp<br><span class="dim">thắc mắc của bạn</span></h2>
+        </div>
+
+        <div class="faq-list">
+          <div class="faq-item reveal">
+            <button class="faq-question" aria-expanded="false">
+              Pickleball là gì? Người mới bắt đầu có chơi được không?
+              <svg class="faq-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <div class="faq-answer"><div class="faq-answer-inner">
+              Pickleball là môn thể thao kết hợp giữa tennis, cầu lông và bóng bàn. Luật chơi đơn giản, sân nhỏ hơn tennis, vợt nhẹ và bóng nhựa — rất dễ tiếp cận cho người mới. Tại AMZ, chúng tôi có HLV hướng dẫn từ cơ bản, bạn chỉ cần mang giày thể thao là đủ.
+            </div></div>
+          </div>
+
+          <div class="faq-item reveal reveal-delay-1">
+            <button class="faq-question" aria-expanded="false">
+              Chi phí thuê sân và cách đặt sân như thế nào?
+              <svg class="faq-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <div class="faq-answer"><div class="faq-answer-inner">
+              Giá thuê sân từ 120.000đ/giờ. Khung giờ 9h–15h (T2–T6) được giảm 15%. Đặt sân qua Facebook, Zalo hoặc gọi trực tiếp 0914 859 927. Nên đặt trước 1–2 ngày cho khung giờ chiều tối (17h–21h) vì thường kín sân.
+            </div></div>
+          </div>
+
+          <div class="faq-item reveal reveal-delay-2">
+            <button class="faq-question" aria-expanded="false">
+              Gói Membership có gì khác so với thuê sân lẻ?
+              <svg class="faq-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <div class="faq-answer"><div class="faq-answer-inner">
+              Membership 800K/tháng cho phép chơi không giới hạn giờ, được ưu tiên đặt sân khung giờ vàng, giảm 20% học phí huấn luyện, tham gia giải nội bộ miễn phí, và giảm 10% đồ uống. Nếu bạn chơi từ 2 lần/tuần trở lên, membership tiết kiệm hơn nhiều so với thuê lẻ.
+            </div></div>
+          </div>
+
+          <div class="faq-item reveal reveal-delay-3">
+            <button class="faq-question" aria-expanded="false">
+              Sân mở cửa từ mấy giờ? Có chơi ban đêm được không?
+              <svg class="faq-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <div class="faq-answer"><div class="faq-answer-inner">
+              Sân mở cửa từ 05:00 sáng — lý tưởng cho người chơi sớm trước giờ làm. Thứ 2–Thứ 6 đóng cửa 22:00, cuối tuần 23:00. Tất cả 8 sân đều có hệ thống đèn LED chiếu sáng đầy đủ nên chơi tối hoàn toàn thoải mái.
+            </div></div>
+          </div>
+
+          <div class="faq-item reveal reveal-delay-4">
+            <button class="faq-question" aria-expanded="false">
+              Có cần mang vợt và bóng không? Sân có cho thuê thiết bị không?
+              <svg class="faq-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <div class="faq-answer"><div class="faq-answer-inner">
+              Sân có dịch vụ cho thuê vợt và bóng cho người chơi lần đầu hoặc chưa có thiết bị. Ngoài ra tại quầy có bán vợt, bóng và phụ kiện chính hãng với giá tốt. Bạn chỉ cần mang giày thể thao (đế bằng, không gai) là đủ.
+            </div></div>
+          </div>
+
+          <div class="faq-item reveal reveal-delay-5">
+            <button class="faq-question" aria-expanded="false">
+              Tôi muốn tổ chức giải đấu / teambuilding tại sân được không?
+              <svg class="faq-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <div class="faq-answer"><div class="faq-answer-inner">
+              Hoàn toàn được! AMZ hỗ trợ tổ chức giải đấu và sự kiện teambuilding cho công ty, nhóm bạn bè hoặc câu lạc bộ. Chúng tôi cung cấp trọn gói: sân, trọng tài, MC, bracket thi đấu, và dịch vụ F&B. Liên hệ để nhận báo giá chi tiết.
+            </div></div>
+          </div>
         </div>
       </div>
     </section>
@@ -2080,7 +2305,8 @@
             <li><a href="#courts">Cơ Sở Vật Chất</a></li>
             <li><a href="#bang-gia">Bảng Giá</a></li>
             <li><a href="#events">Lịch Sự Kiện</a></li>
-            <li><a href="#testimonials">Thành Viên</a></li>
+            <li><a href="blog/">Blog</a></li>
+            <li><a href="#faq">Câu Hỏi Thường Gặp</a></li>
             <li><a href="#lien-he">Liên Hệ</a></li>
           </ul>
         </div>
@@ -2543,7 +2769,18 @@
         tournaments.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
 
         if (!tournaments.length) {
-          list.innerHTML = '<div style="text-align:center;padding:60px 0;color:var(--muted);">Chưa có giải đấu nào sắp tới</div>';
+          list.innerHTML = '<div style="text-align:center;padding:60px 0;">' +
+            '<p style="color:var(--text);font-size:18px;font-weight:600;margin-bottom:12px;">Giải đấu đang được chuẩn bị</p>' +
+            '<p style="color:var(--muted);font-size:15px;line-height:1.7;max-width:480px;margin:0 auto 24px;">Đăng ký nhận thông báo để không bỏ lỡ giải đấu tiếp theo tại AMZ Pickleball. Chúng tôi tổ chức giải đấu hàng tháng cho mọi trình độ.</p>' +
+            '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">' +
+            '<a href="#lien-he" class="btn btn-primary" style="font-size:13px;">Đăng ký nhận thông báo</a>' +
+            '<a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="font-size:13px;">Theo dõi Facebook</a>' +
+            '</div>' +
+            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:500px;margin:40px auto 0;padding-top:32px;border-top:1px solid var(--border);">' +
+            '<div style="text-align:center;"><strong style="font-size:20px;color:var(--text);display:block;">Hàng tháng</strong><span style="font-size:12px;color:var(--muted);">Giải nội bộ</span></div>' +
+            '<div style="text-align:center;"><strong style="font-size:20px;color:var(--text);display:block;">Mọi level</strong><span style="font-size:12px;color:var(--muted);">2.0 đến 5.0+</span></div>' +
+            '<div style="text-align:center;"><strong style="font-size:20px;color:var(--text);display:block;">Giải thưởng</strong><span style="font-size:12px;color:var(--muted);">Tiền mặt & quà</span></div>' +
+            '</div></div>';
           return;
         }
 
@@ -2655,7 +2892,7 @@
       const lbImg = document.getElementById('lightboxImg');
       const lbCurrent = document.getElementById('lightboxCurrent');
       const lbTotal = document.getElementById('lightboxTotal');
-      const galleryImgs = Array.from(document.querySelectorAll('.court-visual img, .court-photo-strip img'));
+      const galleryImgs = Array.from(document.querySelectorAll('.court-visual img'));
       let currentIdx = 0;
       lbTotal.textContent = galleryImgs.length;
 
@@ -2763,6 +3000,24 @@
       });
     })();
 
+    // FAQ accordion
+    (function() {
+      document.querySelectorAll('.faq-question').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var item = btn.closest('.faq-item');
+          var isActive = item.classList.contains('active');
+          item.closest('.faq-list').querySelectorAll('.faq-item.active').forEach(function(el) {
+            el.classList.remove('active');
+            el.querySelector('.faq-question').setAttribute('aria-expanded', 'false');
+          });
+          if (!isActive) {
+            item.classList.add('active');
+            btn.setAttribute('aria-expanded', 'true');
+          }
+        });
+      });
+    })();
+
     // Parallax hero (merged into existing scroll handler)
     const heroBg = document.getElementById('heroBg');
     if (heroBg && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -2788,6 +3043,22 @@
   <button class="back-to-top" id="backToTop" aria-label="Về đầu trang">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
   </button>
+
+  <!-- Floating Chat Buttons -->
+  <div class="floating-chat">
+    <a href="tel:0914859927" class="chat-btn chat-btn-phone" aria-label="Gọi điện">
+      <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.84 8.81a19.79 19.79 0 01-3.07-8.63A2 2 0 012.95 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L7 9.91a16 16 0 006.06 6.06l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+      <span class="chat-tooltip">Gọi 0914 859 927</span>
+    </a>
+    <a href="https://zalo.me/0914859927" target="_blank" rel="noopener noreferrer" class="chat-btn chat-btn-zalo" aria-label="Chat Zalo">
+      <svg viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H8l4-6v4h3l-4 6z"/></svg>
+      <span class="chat-tooltip">Chat Zalo</span>
+    </a>
+    <a href="https://m.me/AMZPickleBallClub" target="_blank" rel="noopener noreferrer" class="chat-btn chat-btn-messenger" aria-label="Chat Messenger">
+      <svg viewBox="0 0 24 24" fill="white"><path d="M12 2C6.36 2 2 6.13 2 11.7c0 2.91 1.2 5.42 3.15 7.24V22l2.96-1.63c.84.23 1.72.36 2.64.36h.25c5.64 0 10-4.13 10-9.7S17.64 2 12 2zm1.07 13.07L10.6 12.5 6 15.07l5.07-5.4L13.5 12l4.57-2.57-5 5.64z"/></svg>
+      <span class="chat-tooltip">Chat Messenger</span>
+    </a>
+  </div>
 
 </body>
 </html>

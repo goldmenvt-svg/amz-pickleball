@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#000000">
+<title>Blog — AMZ Pickleball | Tips, Tin tức, Cộng đồng</title>
+<meta name="description" content="Blog AMZ Pickleball — Tips kỹ thuật, tin tức giải đấu, câu chuyện cộng đồng, và xu hướng Pickleball Việt Nam.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://amzpickleball.vn/blog/">
+<meta property="og:title" content="Blog — AMZ Pickleball">
+<meta property="og:image" content="https://amzpickleball.vn/logo.jpg">
+<link rel="canonical" href="https://amzpickleball.vn/blog/">
+<link rel="icon" href="../logo.jpg" type="image/jpeg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #000; --surface: #0d0d0d; --border: rgba(255,255,255,0.06);
+    --text: #f0f0f0; --muted: #606060; --accent: #c8f03a;
+  }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  a { color: inherit; text-decoration: none; }
+
+  .blog-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border); padding: 16px 24px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .blog-nav-logo { font-size: 15px; font-weight: 800; color: var(--text); }
+  .blog-nav-logo span { color: var(--accent); }
+  .blog-nav-links { display: flex; gap: 20px; font-size: 13px; }
+  .blog-nav-links a { color: var(--muted); font-weight: 500; }
+  .blog-nav-links a:hover { color: var(--text); }
+
+  .blog-header {
+    padding: 120px 24px 60px; max-width: 960px; margin: 0 auto; text-align: center;
+  }
+  .blog-header-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 16px;
+  }
+  .blog-header h1 {
+    font-size: clamp(32px, 6vw, 52px); font-weight: 900;
+    letter-spacing: -0.04em; line-height: 1.1; margin-bottom: 16px;
+  }
+  .blog-header p { font-size: 16px; color: var(--muted); max-width: 520px; margin: 0 auto; }
+
+  .blog-grid {
+    max-width: 960px; margin: 0 auto; padding: 0 24px 80px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px;
+  }
+
+  .blog-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden; transition: border-color 0.2s, transform 0.2s;
+  }
+  .blog-card:hover { border-color: rgba(255,255,255,0.12); transform: translateY(-2px); }
+  .blog-card-img {
+    width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #111;
+    display: block;
+  }
+  .blog-card-body { padding: 20px; }
+  .blog-card-tag {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 8px; display: block;
+  }
+  .blog-card-title {
+    font-size: 17px; font-weight: 800; letter-spacing: -0.02em;
+    line-height: 1.3; margin-bottom: 8px;
+  }
+  .blog-card-excerpt {
+    font-size: 13px; color: var(--muted); line-height: 1.6;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .blog-card-date { font-size: 11px; color: var(--muted); }
+
+  .blog-footer {
+    border-top: 1px solid var(--border); padding: 24px;
+    text-align: center; font-size: 12px; color: var(--muted);
+  }
+  .blog-footer a { color: var(--muted); }
+
+  @media (max-width: 480px) {
+    .blog-nav-links { display: none; }
+    .blog-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="blog-nav">
+  <a href="../" class="blog-nav-logo">AMZ<span>.</span> Pickleball</a>
+  <div class="blog-nav-links">
+    <a href="../">Trang chủ</a>
+    <a href="./" style="color:var(--text);">Blog</a>
+    <a href="../#lien-he">Liên hệ</a>
+  </div>
+</nav>
+
+<header class="blog-header">
+  <p class="blog-header-label">AMZ Pickleball Blog</p>
+  <h1>Tips, tin tức &<br>cộng đồng Pickleball</h1>
+  <p>Kiến thức, kỹ thuật, và câu chuyện từ cộng đồng AMZ Pickleball.</p>
+</header>
+
+<!-- BLOG-POSTS-START -->
+<div class="blog-grid">
+
+  <a href="posts/pickleball-la-gi.html" class="blog-card">
+    <div class="blog-card-img" style="background:linear-gradient(135deg,#0a1628,#1a2a4a);display:flex;align-items:center;justify-content:center;">
+      <span style="font-size:48px;">🏓</span>
+    </div>
+    <div class="blog-card-body">
+      <span class="blog-card-tag">Tips & Kỹ thuật</span>
+      <h2 class="blog-card-title">Pickleball là gì? Hướng dẫn cho người mới</h2>
+      <p class="blog-card-excerpt">Tất cả những gì bạn cần biết về môn thể thao phát triển nhanh nhất Việt Nam — từ luật chơi, thiết bị, đến cách tìm sân gần bạn.</p>
+      <span class="blog-card-date">21 Tháng 6, 2026</span>
+    </div>
+  </a>
+
+</div>
+<!-- BLOG-POSTS-END -->
+
+<footer class="blog-footer">
+  <p>&copy; 2026 AMZ Pickle Ball Club · <a href="../">Trang chủ</a> · <a href="./">Blog</a> · <a href="../#lien-he">Liên hệ</a></p>
+</footer>
+
+</body>
+</html>
