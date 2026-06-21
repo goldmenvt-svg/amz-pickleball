@@ -634,8 +634,9 @@ function renderPlayers(filter) {
   } else {
     list.forEach(function(p) {
       var pct = Math.min(((p.level - 2) / 3.5) * 100, 100);
+      var avatar = p.photo ? '<img src="' + p.photo + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;">' : '<span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:var(--surface2);text-align:center;line-height:28px;font-size:11px;font-weight:700;color:var(--muted);margin-right:8px;vertical-align:middle;">' + esc(p.name.charAt(0)) + '</span>';
       html += '<tr>' +
-        '<td><strong>' + esc(p.name) + '</strong></td>' +
+        '<td style="white-space:nowrap">' + avatar + '<strong>' + esc(p.name) + '</strong></td>' +
         '<td>' + esc(p.phone) + '</td>' +
         '<td style="color:var(--muted)">' + esc(p.email || '—') + '</td>' +
         '<td><div class="level-bar"><span class="level-text">' + p.level + '</span><div class="level-track"><div class="level-fill" style="width:' + pct + '%"></div></div></div></td>' +
@@ -856,7 +857,8 @@ function renderDashboard() {
   var recent = db.players.slice().sort(function(a, b) { return (b.createdAt || '').localeCompare(a.createdAt || ''); }).slice(0, 5);
   var html = '';
   recent.forEach(function(p) {
-    html += '<tr><td><strong>' + esc(p.name) + '</strong></td><td>' + esc(p.phone) + '</td><td>' + p.level + '</td><td style="color:var(--muted);font-size:12px">' + fmt(p.createdAt) + '</td></tr>';
+    var av = p.photo ? '<img src="' + p.photo + '" style="width:24px;height:24px;border-radius:50%;object-fit:cover;margin-right:6px;vertical-align:middle;">' : '';
+    html += '<tr><td>' + av + '<strong>' + esc(p.name) + '</strong></td><td>' + esc(p.phone) + '</td><td>' + p.level + '</td><td style="color:var(--muted);font-size:12px">' + fmt(p.createdAt) + '</td></tr>';
   });
   if (!html) html = '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--muted)">Chưa có VĐV</td></tr>';
   document.getElementById('recent-players').innerHTML = html;

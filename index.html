@@ -2038,6 +2038,21 @@
               <label class="reg-label">Tên đồng đội</label>
               <input class="reg-input" id="reg-partner" name="partner_name" placeholder="Họ tên đồng đội">
             </div>
+            <div class="reg-field">
+              <label class="reg-label">Ảnh chân dung *</label>
+              <div id="photoUploadArea" style="border:2px dashed rgba(255,255,255,0.12);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s;">
+                <input type="file" id="reg-photo" name="photo" accept="image/*" capture="user" style="display:none;">
+                <div id="photoPreview" style="display:none;margin-bottom:12px;">
+                  <img id="photoPreviewImg" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--accent);" alt="Ảnh chân dung">
+                </div>
+                <div id="photoPlaceholder">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" style="margin-bottom:8px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                  <p style="font-size:13px;color:var(--muted);margin:0;">Chạm để chụp hoặc chọn ảnh</p>
+                  <p style="font-size:11px;color:var(--muted);opacity:0.6;margin-top:4px;">Ảnh mặt rõ, dùng làm hồ sơ VĐV</p>
+                </div>
+              </div>
+              <p id="photoError" style="font-size:12px;color:#ef4444;margin-top:6px;display:none;">Vui lòng chọn ảnh chân dung</p>
+            </div>
             <button type="submit" class="btn btn-primary btn-lg reg-submit" id="regSubmitBtn">Gửi Đăng Ký</button>
           </form>
         </div>
@@ -2376,6 +2391,11 @@
         successWrap.style.display = 'none';
         form.reset();
         partnerWrap.style.display = 'none';
+        document.getElementById('photoPreview').style.display = 'none';
+        document.getElementById('photoPlaceholder').style.display = 'block';
+        document.getElementById('photoError').style.display = 'none';
+        document.getElementById('reg-photo').value = '';
+        playerPhoto = null;
         overlay.classList.add('open');
         document.body.style.overflow = 'hidden';
       };
@@ -2387,6 +2407,44 @@
 
       overlay.addEventListener('click', function(e) { if (e.target === overlay) closeRegModal(); });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && overlay.classList.contains('open')) closeRegModal(); });
+
+      var playerPhoto = null;
+      var photoInput = document.getElementById('reg-photo');
+      var photoArea = document.getElementById('photoUploadArea');
+      var photoPreview = document.getElementById('photoPreview');
+      var photoPlaceholder = document.getElementById('photoPlaceholder');
+      var photoPreviewImg = document.getElementById('photoPreviewImg');
+
+      photoArea.addEventListener('click', function() { photoInput.click(); });
+      photoArea.addEventListener('dragover', function(e) { e.preventDefault(); photoArea.style.borderColor = 'var(--accent)'; });
+      photoArea.addEventListener('dragleave', function() { photoArea.style.borderColor = 'rgba(255,255,255,0.12)'; });
+      photoArea.addEventListener('drop', function(e) { e.preventDefault(); photoArea.style.borderColor = 'rgba(255,255,255,0.12)'; if (e.dataTransfer.files[0]) processPhoto(e.dataTransfer.files[0]); });
+
+      photoInput.addEventListener('change', function() { if (this.files[0]) processPhoto(this.files[0]); });
+
+      function processPhoto(file) {
+        if (!file.type.startsWith('image/')) return;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          var img = new Image();
+          img.onload = function() {
+            var canvas = document.createElement('canvas');
+            var size = 200;
+            canvas.width = size; canvas.height = size;
+            var ctx = canvas.getContext('2d');
+            var min = Math.min(img.width, img.height);
+            var sx = (img.width - min) / 2, sy = (img.height - min) / 2;
+            ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+            playerPhoto = canvas.toDataURL('image/jpeg', 0.7);
+            photoPreviewImg.src = playerPhoto;
+            photoPreview.style.display = 'block';
+            photoPlaceholder.style.display = 'none';
+            document.getElementById('photoError').style.display = 'none';
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
 
       function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
       function levelToNum(v) { if (v === '5.0+') return 5.0; var parts = v.split('-'); return parseFloat(parts[0]) || 3.0; }
@@ -2402,6 +2460,7 @@
         var eventName = document.getElementById('reg-event-name').value;
 
         if (!name || !phone || !level) return;
+        if (!playerPhoto) { document.getElementById('photoError').style.display = 'block'; return; }
 
         var submitBtn = document.getElementById('regSubmitBtn');
         submitBtn.disabled = true;
@@ -2419,8 +2478,10 @@
 
           var player = db.players.find(function(p) { return p.phone.replace(/\s/g,'') === phone.replace(/\s/g,''); });
           if (!player) {
-            player = { id: genId(), name: name, phone: phone, email: email, level: levelToNum(level), tier: level, note: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+            player = { id: genId(), name: name, phone: phone, email: email, level: levelToNum(level), tier: level, note: '', photo: playerPhoto, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
             db.players.push(player);
+          } else if (playerPhoto) {
+            player.photo = playerPhoto;
           }
 
           var tournament = db.tournaments.find(function(t) { return t.name === eventName; });
