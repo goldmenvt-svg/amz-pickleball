@@ -813,6 +813,10 @@ function renderRegs(tournamentFilter) {
         '<td><span class="badge ' + statusClass + '">' + esc(r.status) + '</span></td>' +
         '<td>' + (r.result ? esc(r.result) : '—') + '</td>' +
         '<td class="actions-cell">' +
+          (r.status === 'Chờ duyệt' ?
+            '<button class="btn btn-sm" style="background:var(--green);color:#fff;margin-right:4px;" onclick="approveReg(\'' + r.id + '\')" title="Duyệt">✓ Duyệt</button>' +
+            '<button class="btn btn-sm" style="background:var(--red);color:#fff;margin-right:4px;" onclick="rejectReg(\'' + r.id + '\')" title="Từ chối">✗ Từ chối</button>'
+          : '') +
           '<button class="icon-btn" onclick="openRegModal(\'' + r.id + '\')" title="Sửa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
           '<button class="icon-btn delete" onclick="deleteReg(\'' + r.id + '\')" title="Xóa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
         '</td></tr>';
@@ -885,6 +889,17 @@ function exportAll() {
   var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = 'amz-vdv-' + new Date().toISOString().slice(0,10) + '.csv';
   a.click(); toast('Đã xuất file CSV');
+}
+
+function approveReg(id) {
+  var idx = db.registrations.findIndex(function(r) { return r.id === id; });
+  if (idx >= 0) { db.registrations[idx].status = 'Đã duyệt'; saveDB(db); renderRegs(); updateCounts(); toast('Đã duyệt đăng ký'); }
+}
+
+function rejectReg(id) {
+  if (!confirm('Từ chối đăng ký này?')) return;
+  var idx = db.registrations.findIndex(function(r) { return r.id === id; });
+  if (idx >= 0) { db.registrations[idx].status = 'Từ chối'; saveDB(db); renderRegs(); updateCounts(); toast('Đã từ chối đăng ký'); }
 }
 
 function logout() { sessionStorage.removeItem(AUTH_KEY); location.reload(); }

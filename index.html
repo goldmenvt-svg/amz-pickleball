@@ -1754,71 +1754,7 @@
           <a href="#lien-he" class="btn btn-outline reveal reveal-delay-2">Xem tất cả →</a>
         </div>
 
-        <div class="events-list">
-          <div class="event-item reveal" data-event-name="AMZ Open Tournament — Vòng Tháng 7" data-event-type="Nội bộ" data-event-date="2026-07-05" data-max-slots="16">
-            <div class="event-date">
-              <strong>05</strong>
-              <span>Th7</span>
-            </div>
-            <div class="event-info">
-              <h4>AMZ Open Tournament — Vòng Tháng 7</h4>
-              <p>Giải đấu nội bộ hàng tháng · Đôi nam + Đôi nữ + Đôi hỗn hợp</p>
-              <div class="event-countdown" data-date="2026-07-05T08:00:00+07:00"></div>
-            </div>
-            <div class="event-actions">
-              <span class="event-badge badge-open">Mở đăng ký</span>
-              <button class="btn-reg" onclick="openRegModal(this)">Đăng ký</button>
-            </div>
-          </div>
-
-          <div class="event-item reveal reveal-delay-1" data-event-name="Buổi Tập Thử Miễn Phí — Người Mới" data-event-type="Nội bộ" data-event-date="2026-07-12" data-max-slots="20">
-            <div class="event-date">
-              <strong>12</strong>
-              <span>Th7</span>
-            </div>
-            <div class="event-info">
-              <h4>Buổi Tập Thử Miễn Phí — Người Mới</h4>
-              <p>Trải nghiệm Pickleball lần đầu · Được hướng dẫn bởi HLV chuyên nghiệp</p>
-              <div class="event-countdown" data-date="2026-07-12T08:00:00+07:00"></div>
-            </div>
-            <div class="event-actions">
-              <span class="event-badge badge-open">Còn chỗ</span>
-              <button class="btn-reg" onclick="openRegModal(this)">Đăng ký</button>
-            </div>
-          </div>
-
-          <div class="event-item reveal reveal-delay-2" data-event-name="AMZ vs Các CLB TP.HCM — Giao Hữu" data-event-type="Liên CLB" data-event-date="2026-07-19" data-max-slots="12">
-            <div class="event-date">
-              <strong>19</strong>
-              <span>Th7</span>
-            </div>
-            <div class="event-info">
-              <h4>AMZ vs Các CLB TP.HCM — Giao Hữu</h4>
-              <p>Trận giao hữu liên câu lạc bộ · Dành cho thành viên đã đăng ký</p>
-              <div class="event-countdown" data-date="2026-07-19T08:00:00+07:00"></div>
-            </div>
-            <div class="event-actions">
-              <span class="event-badge badge-soon">Sắp mở</span>
-              <button class="btn-reg" disabled>Chưa mở</button>
-            </div>
-          </div>
-
-          <div class="event-item reveal reveal-delay-3" data-event-name="Dink &amp; Drink Friday — Cuối Tháng 6" data-event-type="Nội bộ" data-event-date="2026-06-27" data-max-slots="24">
-            <div class="event-date">
-              <strong>27</strong>
-              <span>Th6</span>
-            </div>
-            <div class="event-info">
-              <h4>Dink &amp; Drink Friday — Cuối Tháng 6</h4>
-              <p>Mini-tournament tối thứ 6 · Giao lưu cộng đồng · Mọi trình độ tham gia được</p>
-              <div class="event-countdown" data-date="2026-06-27T18:00:00+07:00"></div>
-            </div>
-            <div class="event-actions">
-              <span class="event-badge badge-open">Mở đăng ký</span>
-              <button class="btn-reg" onclick="openRegModal(this)">Đăng ký</button>
-            </div>
-          </div>
-        </div>
+        <div class="events-list" id="eventsList"></div>
       </div>
     </section>
 
@@ -2035,8 +1971,22 @@
               </div>
             </div>
             <div class="reg-field" id="regPartnerWrap" style="display:none;">
-              <label class="reg-label">Tên đồng đội</label>
+              <label class="reg-label">Tên đồng đội *</label>
               <input class="reg-input" id="reg-partner" name="partner_name" placeholder="Họ tên đồng đội">
+              <div style="margin-top:12px;">
+                <label class="reg-label">Ảnh đồng đội *</label>
+                <div id="partnerPhotoArea" style="border:2px dashed rgba(255,255,255,0.12);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.2s;">
+                  <input type="file" id="reg-partner-photo" accept="image/*" capture="user" style="display:none;">
+                  <div id="partnerPhotoPreview" style="display:none;margin-bottom:8px;">
+                    <img id="partnerPhotoImg" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid var(--accent);" alt="Ảnh đồng đội">
+                  </div>
+                  <div id="partnerPhotoPlaceholder">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                    <p style="font-size:12px;color:var(--muted);margin:4px 0 0;">Ảnh chân dung đồng đội</p>
+                  </div>
+                </div>
+                <p id="partnerPhotoError" style="font-size:12px;color:#ef4444;margin-top:6px;display:none;">Vui lòng chọn ảnh đồng đội</p>
+              </div>
             </div>
             <div class="reg-field">
               <label class="reg-label">Ảnh chân dung *</label>
@@ -2395,7 +2345,12 @@
         document.getElementById('photoPlaceholder').style.display = 'block';
         document.getElementById('photoError').style.display = 'none';
         document.getElementById('reg-photo').value = '';
+        document.getElementById('partnerPhotoPreview').style.display = 'none';
+        document.getElementById('partnerPhotoPlaceholder').style.display = 'block';
+        document.getElementById('partnerPhotoError').style.display = 'none';
+        document.getElementById('reg-partner-photo').value = '';
         playerPhoto = null;
+        partnerPhoto = null;
         overlay.classList.add('open');
         document.body.style.overflow = 'hidden';
       };
@@ -2446,6 +2401,40 @@
         reader.readAsDataURL(file);
       }
 
+      var partnerPhoto = null;
+      var partnerPhotoInput = document.getElementById('reg-partner-photo');
+      var partnerPhotoArea = document.getElementById('partnerPhotoArea');
+      partnerPhotoArea.addEventListener('click', function() { partnerPhotoInput.click(); });
+      partnerPhotoInput.addEventListener('change', function() {
+        if (this.files[0]) {
+          processPhotoGeneric(this.files[0], function(data) {
+            partnerPhoto = data;
+            document.getElementById('partnerPhotoImg').src = data;
+            document.getElementById('partnerPhotoPreview').style.display = 'block';
+            document.getElementById('partnerPhotoPlaceholder').style.display = 'none';
+            document.getElementById('partnerPhotoError').style.display = 'none';
+          });
+        }
+      });
+
+      function processPhotoGeneric(file, cb) {
+        if (!file.type.startsWith('image/')) return;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          var img = new Image();
+          img.onload = function() {
+            var canvas = document.createElement('canvas');
+            canvas.width = 200; canvas.height = 200;
+            var ctx = canvas.getContext('2d');
+            var min = Math.min(img.width, img.height);
+            ctx.drawImage(img, (img.width - min) / 2, (img.height - min) / 2, min, min, 0, 0, 200, 200);
+            cb(canvas.toDataURL('image/jpeg', 0.7));
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
       function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
       function levelToNum(v) { if (v === '5.0+') return 5.0; var parts = v.split('-'); return parseFloat(parts[0]) || 3.0; }
 
@@ -2461,6 +2450,9 @@
 
         if (!name || !phone || !level) return;
         if (!playerPhoto) { document.getElementById('photoError').style.display = 'block'; return; }
+        var isDoubles = category.startsWith('Đôi');
+        if (isDoubles && !partner) { document.getElementById('reg-partner').focus(); return; }
+        if (isDoubles && !partnerPhoto) { document.getElementById('partnerPhotoError').style.display = 'block'; return; }
 
         var submitBtn = document.getElementById('regSubmitBtn');
         submitBtn.disabled = true;
@@ -2495,7 +2487,7 @@
           var reg = {
             id: genId(), code: code, playerId: player.id, tournamentId: tournament.id,
             level: levelToNum(level), category: category,
-            partnerId: null, partnerName: partner || null,
+            partnerId: null, partnerName: partner || null, partnerPhoto: partnerPhoto || null,
             status: 'Chờ duyệt', result: null, newLevel: null,
             date: new Date().toISOString()
           };
@@ -2519,6 +2511,91 @@
         submitBtn.disabled = false;
         submitBtn.textContent = 'Gửi Đăng Ký';
       });
+    })();
+
+    // ─── DYNAMIC EVENTS FROM LOCALSTORAGE ───
+    (function() {
+      var DEFAULT_TOURNAMENTS = [
+        { id: 'default1', name: 'AMZ Open Tournament — Vòng Tháng 7', date: '2026-07-05', type: 'Nội bộ', status: 'Mở đăng ký', maxTeams: 16, levels: '3.0-4.5', prize: '', note: 'Đôi nam + Đôi nữ + Đôi hỗn hợp' },
+        { id: 'default2', name: 'Buổi Tập Thử Miễn Phí — Người Mới', date: '2026-07-12', type: 'Nội bộ', status: 'Mở đăng ký', maxTeams: 20, levels: '2.0-3.0', prize: '', note: 'Trải nghiệm Pickleball lần đầu · HLV hướng dẫn' },
+        { id: 'default3', name: 'AMZ vs Các CLB TP.HCM — Giao Hữu', date: '2026-07-19', type: 'Liên CLB', status: 'Đã đóng', maxTeams: 12, levels: '3.5-5.0', prize: '', note: 'Giao hữu liên câu lạc bộ · Dành cho thành viên' },
+        { id: 'default4', name: 'Dink & Drink Friday — Cuối Tháng 6', date: '2026-06-27', type: 'Nội bộ', status: 'Mở đăng ký', maxTeams: 24, levels: 'Mọi trình độ', prize: '', note: 'Mini-tournament tối thứ 6 · Giao lưu cộng đồng' }
+      ];
+
+      var db = JSON.parse(localStorage.getItem('amz_admin')) || { players: [], tournaments: [], registrations: [], history: [] };
+      if (!db.tournaments.length) {
+        db.tournaments = DEFAULT_TOURNAMENTS;
+        localStorage.setItem('amz_admin', JSON.stringify(db));
+      }
+
+      var months = ['Th1','Th2','Th3','Th4','Th5','Th6','Th7','Th8','Th9','Th10','Th11','Th12'];
+      var list = document.getElementById('eventsList');
+
+      function renderEvents() {
+        var db = JSON.parse(localStorage.getItem('amz_admin')) || { tournaments: [], registrations: [] };
+        var tournaments = db.tournaments.filter(function(t) { return t.status !== 'Đã kết thúc'; });
+        tournaments.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
+
+        if (!tournaments.length) {
+          list.innerHTML = '<div style="text-align:center;padding:60px 0;color:var(--muted);">Chưa có giải đấu nào sắp tới</div>';
+          return;
+        }
+
+        var html = '';
+        tournaments.forEach(function(t, i) {
+          var d = t.date ? new Date(t.date + 'T00:00:00') : null;
+          var day = d ? String(d.getDate()).padStart(2, '0') : '—';
+          var mon = d ? months[d.getMonth()] : '';
+          var isOpen = t.status === 'Mở đăng ký';
+          var regCount = db.registrations.filter(function(r) { return r.tournamentId === t.id; }).length;
+          var slotsLeft = t.maxTeams ? t.maxTeams - regCount : 999;
+          var isFull = t.maxTeams && slotsLeft <= 0;
+          var badgeClass = isOpen ? 'badge-open' : 'badge-soon';
+          var badgeText = isOpen ? 'Mở đăng ký' : t.status;
+          var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
+
+          html += '<div class="event-item reveal' + delay + '" data-event-name="' + t.name.replace(/"/g, '&quot;') + '" data-event-type="' + t.type + '" data-event-date="' + (t.date || '') + '" data-max-slots="' + (t.maxTeams || 0) + '">' +
+            '<div class="event-date"><strong>' + day + '</strong><span>' + mon + '</span></div>' +
+            '<div class="event-info"><h4>' + t.name + '</h4><p>' + (t.note || t.type) + '</p>' +
+            (d ? '<div class="event-countdown" data-date="' + t.date + 'T08:00:00+07:00"></div>' : '') +
+            '</div>' +
+            '<div class="event-actions">' +
+            '<span class="event-badge ' + badgeClass + '">' + badgeText + '</span>' +
+            (isOpen && !isFull ? '<button class="btn-reg" onclick="openRegModal(this)">Đăng ký</button>' :
+             isFull ? '<button class="btn-reg" disabled>Hết chỗ</button>' :
+             '<button class="btn-reg" disabled>Chưa mở</button>') +
+            '</div></div>';
+        });
+        list.innerHTML = html;
+
+        initScrollReveal();
+        initCountdowns();
+        updateRegCounts();
+      }
+
+      function initScrollReveal() {
+        var obs = new IntersectionObserver(function(entries) {
+          entries.forEach(function(e) { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+        }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+        list.querySelectorAll('.reveal:not(.visible)').forEach(function(el) { obs.observe(el); });
+      }
+
+      function initCountdowns() {
+        list.querySelectorAll('.event-countdown[data-date]').forEach(function(el) {
+          var target = new Date(el.dataset.date).getTime();
+          function update() {
+            var diff = target - Date.now();
+            if (diff <= 0) { el.innerHTML = '<span style="color:var(--accent);font-size:12px;font-weight:600;">Đang diễn ra</span>'; return; }
+            var d = Math.floor(diff / 86400000), h = Math.floor((diff % 86400000) / 3600000), m = Math.floor((diff % 3600000) / 60000);
+            el.innerHTML = '<span style="font-size:12px;color:var(--muted);">Còn <strong style="color:var(--text)">' + d + '</strong> ngày <strong style="color:var(--text)">' + h + '</strong> giờ <strong style="color:var(--text)">' + m + '</strong> phút</span>';
+          }
+          update();
+          setInterval(update, 60000);
+        });
+      }
+
+      window.renderEvents = renderEvents;
+      renderEvents();
     })();
 
     // ─── REGISTRATION COUNTS & SLOTS ───
