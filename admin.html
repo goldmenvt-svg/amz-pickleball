@@ -498,6 +498,30 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-reject">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header"><h3>Lý do từ chối</h3><button class="modal-close" onclick="closeModal('modal-reject')">&times;</button></div>
+    <div class="modal-body" style="padding:16px 24px 24px;">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Chọn lý do hoặc nhập lý do riêng:</p>
+      <input type="hidden" id="reject-reg-id">
+      <div id="reject-reasons" style="display:flex;flex-direction:column;gap:6px;">
+        <button class="btn btn-outline" style="text-align:left;justify-content:flex-start;" onclick="pickReason(this)">Trình độ khai báo chưa phù hợp với hạng đăng ký</button>
+        <button class="btn btn-outline" style="text-align:left;justify-content:flex-start;" onclick="pickReason(this)">Giải đấu đã đủ số lượng VĐV đăng ký</button>
+        <button class="btn btn-outline" style="text-align:left;justify-content:flex-start;" onclick="pickReason(this)">Thiếu thông tin đồng đội cho hạng đôi</button>
+        <button class="btn btn-outline" style="text-align:left;justify-content:flex-start;" onclick="pickReason(this)">Ảnh chân dung không rõ mặt, vui lòng đăng ký lại</button>
+        <button class="btn btn-outline" style="text-align:left;justify-content:flex-start;" onclick="pickReason(this)">VĐV đã đăng ký ở hạng/giải khác trùng lịch</button>
+      </div>
+      <div class="form-group" style="margin-top:12px;margin-bottom:0;">
+        <input class="form-input" id="reject-custom" placeholder="Hoặc nhập lý do khác..." style="font-size:13px;">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-reject')">Hủy</button>
+      <button class="btn btn-danger" onclick="confirmReject()">Từ chối & Gửi Zalo</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -906,13 +930,32 @@ function approveReg(id) {
 }
 
 function rejectReg(id) {
-  if (!confirm('Từ chối đăng ký này?')) return;
+  document.getElementById('reject-reg-id').value = id;
+  document.getElementById('reject-custom').value = '';
+  document.querySelectorAll('#reject-reasons .btn').forEach(function(b) { b.style.borderColor = 'var(--border)'; b.style.color = 'var(--text)'; });
+  window._selectedReason = '';
+  openModal('modal-reject');
+}
+
+function pickReason(btn) {
+  document.querySelectorAll('#reject-reasons .btn').forEach(function(b) { b.style.borderColor = 'var(--border)'; b.style.color = 'var(--text)'; });
+  btn.style.borderColor = 'var(--red)'; btn.style.color = 'var(--red)';
+  window._selectedReason = btn.textContent;
+  document.getElementById('reject-custom').value = '';
+}
+
+function confirmReject() {
+  var id = document.getElementById('reject-reg-id').value;
+  var reason = document.getElementById('reject-custom').value.trim() || window._selectedReason;
+  if (!reason) { document.getElementById('reject-custom').focus(); return; }
   var idx = db.registrations.findIndex(function(r) { return r.id === id; });
   if (idx < 0) return;
   var reg = db.registrations[idx];
   reg.status = 'Từ chối';
+  reg.rejectReason = reason;
   saveDB(db); renderRegs(); updateCounts();
-  sendZaloNotify(reg, 'reject');
+  closeModal('modal-reject');
+  sendZaloReject(reg, reason);
 }
 
 function sendZaloNotify(reg, action) {
@@ -933,13 +976,6 @@ function sendZaloNotify(reg, action) {
       '179 Thống Nhất, P. Vũng Tàu, TP.HCM\n' +
       'Hotline: 0914 859 927\n\n' +
       'AMZ Pickleball';
-  } else {
-    msg = 'Chào ' + name + ',\n\n' +
-      'Rất tiếc, đăng ký ' + code + ' cho giải "' + eventName + '" chưa được duyệt.\n\n' +
-      'Lý do: [Admin điền lý do]\n\n' +
-      'Bạn có thể đăng ký lại hoặc liên hệ để biết thêm chi tiết.\n' +
-      'Hotline: 0914 859 927\n\n' +
-      'AMZ Pickleball';
   }
   navigator.clipboard.writeText(msg).then(function() {
     toast((action === 'approve' ? 'Đã duyệt' : 'Đã từ chối') + ' — Zalo đang mở, tin nhắn đã copy!');
@@ -947,6 +983,22 @@ function sendZaloNotify(reg, action) {
     toast(action === 'approve' ? 'Đã duyệt' : 'Đã từ chối');
   });
   window.open('https://zalo.me/' + phone, '_blank');
+}
+
+function sendZaloReject(reg, reason) {
+  var player = db.players.find(function(p) { return p.id === reg.playerId; });
+  var tournament = db.tournaments.find(function(t) { return t.id === reg.tournamentId; });
+  if (!player || !player.phone) { toast('Đã từ chối'); return; }
+  var phone = player.phone.replace(/\s/g, '');
+  var msg = 'Chào ' + player.name + ',\n\n' +
+    'Rất tiếc, đăng ký ' + (reg.code || '') + ' cho giải "' + (tournament ? tournament.name : '') + '" chưa được duyệt.\n\n' +
+    'Lý do: ' + reason + '\n\n' +
+    'Bạn có thể đăng ký lại hoặc liên hệ để biết thêm chi tiết.\n' +
+    'Hotline: 0914 859 927\n\n' +
+    'AMZ Pickleball';
+  navigator.clipboard.writeText(msg).catch(function() {});
+  window.open('https://zalo.me/' + phone, '_blank');
+  toast('Đã từ chối — Zalo đang mở, tin nhắn đã copy!');
 }
 
 function resendZalo(id) {
