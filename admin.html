@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AMZ Pickleball — Quản Lý VĐV & Giải Đấu</title>
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root {
+    --bg: #0a0a0a; --surface: #141414; --surface2: #1a1a1a; --border: #252525;
+    --text: #f0f0f0; --muted: #888; --accent: #c8f03a; --accent2: #a8d02a;
+    --red: #ef4444; --green: #22c55e; --blue: #3b82f6; --orange: #f59e0b;
+    --r: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .app { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 240px; background: var(--surface); border-right: 1px solid var(--border);
+    padding: 24px 0; flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0; overflow-y: auto;
+  }
+  .sidebar-logo { padding: 0 20px 24px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .sidebar-logo h2 { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; }
+  .sidebar-logo h2 span { color: var(--accent); }
+  .sidebar-logo p { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+    color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: all 0.15s; border: none; background: none; width: 100%; text-align: left;
+  }
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active { color: var(--accent); background: rgba(200,240,58,0.06); border-right: 2px solid var(--accent); }
+  .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .nav-badge { margin-left: auto; background: var(--accent); color: #000; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px; }
+
+  .main { margin-left: 240px; flex: 1; padding: 32px; }
+  .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .page-header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; }
+  .stat-card .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 8px; }
+  .stat-card .stat-value { font-size: 28px; font-weight: 900; letter-spacing: -0.03em; }
+  .stat-card .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+  .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .card-header h3 { font-size: 14px; font-weight: 700; }
+  .card-body { padding: 0; }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; }
+  .search-input {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r);
+    color: var(--text); padding: 8px 12px; font-size: 13px; width: 220px; outline: none;
+  }
+  .search-input:focus { border-color: var(--accent); }
+
+  .btn {
+    padding: 8px 16px; border-radius: var(--r); font-size: 13px; font-weight: 600;
+    cursor: pointer; border: none; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { border-color: var(--muted); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn-danger { background: var(--red); color: white; }
+  .btn-danger:hover { opacity: 0.9; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 10px 16px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+  td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-state p { font-size: 14px; margin-bottom: 16px; }
+
+  .badge {
+    display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;
+  }
+  .badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge-blue { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .badge-orange { background: rgba(245,158,11,0.15); color: var(--orange); }
+  .badge-red { background: rgba(239,68,68,0.15); color: var(--red); }
+  .badge-muted { background: rgba(255,255,255,0.06); color: var(--muted); }
+
+  .level-bar { display: flex; align-items: center; gap: 8px; }
+  .level-fill { height: 6px; border-radius: 3px; background: var(--accent); }
+  .level-track { flex: 1; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; max-width: 60px; }
+  .level-text { font-size: 13px; font-weight: 700; min-width: 30px; }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100;
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto;
+  }
+  .modal-header {
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .modal-header h3 { font-size: 16px; font-weight: 700; }
+  .modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 20px; }
+  .modal-body { padding: 24px; }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+  .form-group { margin-bottom: 16px; }
+  .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .form-input, .form-select, .form-textarea {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r);
+    color: var(--text); padding: 10px 12px; font-size: 14px; font-family: inherit; outline: none;
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
+  .form-textarea { min-height: 80px; resize: vertical; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .actions-cell { display: flex; gap: 4px; }
+  .icon-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px;
+    border-radius: 4px; transition: all 0.15s;
+  }
+  .icon-btn:hover { color: var(--text); background: var(--surface2); }
+  .icon-btn.delete:hover { color: var(--red); }
+
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--r); padding: 12px 20px;
+    font-size: 13px; z-index: 200; transform: translateY(100px); opacity: 0;
+    transition: all 0.3s ease;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--green); }
+
+  .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .tab-btn {
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: var(--muted);
+    background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; padding: 16px; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+    .form-row { grid-template-columns: 1fr; }
+    table { font-size: 12px; }
+    th, td { padding: 8px 10px; }
+    .mobile-nav {
+      display: flex; position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface);
+      border-top: 1px solid var(--border); z-index: 50; padding: 8px 0;
+    }
+    .mobile-nav button {
+      flex: 1; background: none; border: none; color: var(--muted); font-size: 10px;
+      padding: 6px 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    }
+    .mobile-nav button.active { color: var(--accent); }
+    .mobile-nav svg { width: 20px; height: 20px; }
+    .main { padding-bottom: 80px; }
+  }
+  @media (min-width: 769px) { .mobile-nav { display: none; } }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>AMZ<span>.</span> Admin</h2>
+      <p>Quản lý VĐV & Giải đấu</p>
+    </div>
+    <button class="nav-item active" data-page="dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Tổng quan
+    </button>
+    <button class="nav-item" data-page="players">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      Vận động viên
+      <span class="nav-badge" id="playerCount">0</span>
+    </button>
+    <button class="nav-item" data-page="tournaments">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      Giải đấu
+    </button>
+    <button class="nav-item" data-page="registrations">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      Đăng ký giải
+    </button>
+    <button class="nav-item" data-page="history">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Lịch sử trình
+    </button>
+    <div style="padding:16px 20px;margin-top:auto;border-top:1px solid var(--border);">
+      <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="exportAll()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Xuất CSV
+      </button>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header"><h1>Tổng quan</h1></div>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Tổng VĐV</div>
+          <div class="stat-value" id="s-total">0</div>
+          <div class="stat-sub">Đã đăng ký</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Giải đấu</div>
+          <div class="stat-value" id="s-tournaments">0</div>
+          <div class="stat-sub">Đã tạo</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Đang chờ duyệt</div>
+          <div class="stat-value" id="s-pending">0</div>
+          <div class="stat-sub">Đăng ký giải</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Trình TB</div>
+          <div class="stat-value" id="s-avg">0</div>
+          <div class="stat-sub">Trung bình</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>VĐV đăng ký gần đây</h3></div>
+        <div class="card-body">
+          <table><thead><tr><th>Họ tên</th><th>SĐT</th><th>Trình</th><th>Ngày</th></tr></thead>
+          <tbody id="recent-players"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLAYERS -->
+    <div class="page" id="page-players">
+      <div class="page-header">
+        <h1>Vận động viên</h1>
+        <div class="toolbar">
+          <input class="search-input" placeholder="Tìm theo tên / SĐT..." id="searchPlayer">
+          <button class="btn btn-primary" onclick="openPlayerModal()">+ Thêm VĐV</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <table>
+            <thead><tr><th>Họ tên</th><th>SĐT</th><th>Email</th><th>Trình</th><th>Cập nhật</th><th>Ghi chú</th><th></th></tr></thead>
+            <tbody id="players-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOURNAMENTS -->
+    <div class="page" id="page-tournaments">
+      <div class="page-header">
+        <h1>Giải đấu</h1>
+        <button class="btn btn-primary" onclick="openTournamentModal()">+ Tạo giải</button>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <table>
+            <thead><tr><th>Tên giải</th><th>Ngày</th><th>Loại</th><th>Hạng trình</th><th>Trạng thái</th><th>Đăng ký</th><th></th></tr></thead>
+            <tbody id="tournaments-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- REGISTRATIONS -->
+    <div class="page" id="page-registrations">
+      <div class="page-header">
+        <h1>Đăng ký giải</h1>
+        <div class="toolbar">
+          <select class="form-select" style="width:200px;padding:8px 12px;font-size:13px;" id="filterTournament">
+            <option value="">Tất cả giải đấu</option>
+          </select>
+          <button class="btn btn-primary" onclick="openRegModal()">+ Đăng ký</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <table>
+            <thead><tr><th>VĐV</th><th>Giải</th><th>Trình khai báo</th><th>Hạng</th><th>Đồng đội</th><th>Trạng thái</th><th>Kết quả</th><th></th></tr></thead>
+            <tbody id="regs-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="page" id="page-history">
+      <div class="page-header"><h1>Lịch sử trình độ</h1></div>
+      <div class="card">
+        <div class="card-body">
+          <table>
+            <thead><tr><th>VĐV</th><th>Ngày</th><th>Trình cũ</th><th>Trình mới</th><th>+/-</th><th>Lý do</th><th>Giải liên quan</th></tr></thead>
+            <tbody id="history-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="mobile-nav">
+  <button data-page="dashboard" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Tổng quan</button>
+  <button data-page="players"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/></svg>VĐV</button>
+  <button data-page="tournaments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Giải</button>
+  <button data-page="registrations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Đăng ký</button>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="modal-player">
+  <div class="modal">
+    <div class="modal-header"><h3 id="playerModalTitle">Thêm VĐV</h3><button class="modal-close" onclick="closeModal('modal-player')">&times;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="p-id">
+      <div class="form-group"><label class="form-label">Họ tên *</label><input class="form-input" id="p-name" placeholder="Nguyễn Văn A"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">SĐT *</label><input class="form-input" id="p-phone" placeholder="0912 345 678"></div>
+        <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="p-email" placeholder="email@example.com"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Trình độ (2.0 – 5.5)</label>
+          <input class="form-input" id="p-level" type="number" step="0.5" min="2.0" max="5.5" placeholder="3.5">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hạng</label>
+          <select class="form-select" id="p-tier">
+            <option value="Mới bắt đầu">Mới bắt đầu (2.0–2.5)</option>
+            <option value="Trung bình">Trung bình (3.0–3.5)</option>
+            <option value="Khá" selected>Khá (4.0–4.5)</option>
+            <option value="Nâng cao">Nâng cao (5.0+)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group"><label class="form-label">Ghi chú</label><textarea class="form-textarea" id="p-note" placeholder="VD: Forehand mạnh, cần cải thiện dink"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-player')">Hủy</button>
+      <button class="btn btn-primary" onclick="savePlayer()">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-tournament">
+  <div class="modal">
+    <div class="modal-header"><h3 id="tournamentModalTitle">Tạo giải đấu</h3><button class="modal-close" onclick="closeModal('modal-tournament')">&times;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="t-id">
+      <div class="form-group"><label class="form-label">Tên giải *</label><input class="form-input" id="t-name" placeholder="AMZ Cup Lần 2"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Ngày thi đấu *</label><input class="form-input" id="t-date" type="date"></div>
+        <div class="form-group">
+          <label class="form-label">Loại giải</label>
+          <select class="form-select" id="t-type">
+            <option value="Nội bộ">Nội bộ</option>
+            <option value="Liên CLB">Liên CLB</option>
+            <option value="Mở rộng">Mở rộng</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Hạng trình</label><input class="form-input" id="t-levels" placeholder="3.0–3.5, 4.0–4.5"></div>
+        <div class="form-group">
+          <label class="form-label">Trạng thái</label>
+          <select class="form-select" id="t-status">
+            <option value="Mở đăng ký">Mở đăng ký</option>
+            <option value="Đã đóng">Đã đóng đăng ký</option>
+            <option value="Đang diễn ra">Đang diễn ra</option>
+            <option value="Đã kết thúc">Đã kết thúc</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Số đội tối đa</label><input class="form-input" id="t-max" type="number" placeholder="16"></div>
+        <div class="form-group"><label class="form-label">Giải thưởng</label><input class="form-input" id="t-prize" placeholder="10 triệu"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Ghi chú</label><textarea class="form-textarea" id="t-note"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-tournament')">Hủy</button>
+      <button class="btn btn-primary" onclick="saveTournament()">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-reg">
+  <div class="modal">
+    <div class="modal-header"><h3>Đăng ký thi đấu</h3><button class="modal-close" onclick="closeModal('modal-reg')">&times;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="r-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">VĐV *</label>
+          <select class="form-select" id="r-player"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Giải đấu *</label>
+          <select class="form-select" id="r-tournament"></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Trình khai báo</label><input class="form-input" id="r-level" type="number" step="0.5" min="2.0" max="5.5" placeholder="3.5"></div>
+        <div class="form-group">
+          <label class="form-label">Hạng thi đấu</label>
+          <select class="form-select" id="r-category">
+            <option value="Đơn nam">Đơn nam</option>
+            <option value="Đơn nữ">Đơn nữ</option>
+            <option value="Đôi nam">Đôi nam</option>
+            <option value="Đôi nữ">Đôi nữ</option>
+            <option value="Đôi nam nữ">Đôi nam nữ (mixed)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Đồng đội</label>
+          <select class="form-select" id="r-partner"><option value="">— Không —</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Trạng thái</label>
+          <select class="form-select" id="r-status">
+            <option value="Chờ duyệt">Chờ duyệt</option>
+            <option value="Đã duyệt">Đã duyệt</option>
+            <option value="Từ chối">Từ chối</option>
+            <option value="Đã thi đấu">Đã thi đấu</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Kết quả</label>
+          <select class="form-select" id="r-result">
+            <option value="">— Chưa có —</option>
+            <option value="Vô địch">Vô địch</option>
+            <option value="Á quân">Á quân</option>
+            <option value="Hạng 3">Hạng 3</option>
+            <option value="Top 8">Top 8</option>
+            <option value="Tham gia">Tham gia</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Trình sau giải</label><input class="form-input" id="r-newlevel" type="number" step="0.5" min="2.0" max="5.5" placeholder=""></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-reg')">Hủy</button>
+      <button class="btn btn-primary" onclick="saveReg()">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const DB_KEY = 'amz_admin';
+
+function loadDB() {
+  try { return JSON.parse(localStorage.getItem(DB_KEY)) || defaultDB(); }
+  catch { return defaultDB(); }
+}
+function defaultDB() { return { players: [], tournaments: [], registrations: [], history: [] }; }
+function saveDB(db) { localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function fmt(d) { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('vi-VN'); }
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show success';
+  setTimeout(function() { t.className = 'toast'; }, 2500);
+}
+
+var db = loadDB();
+
+// Navigation
+document.querySelectorAll('[data-page]').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var pg = this.dataset.page;
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    document.getElementById('page-' + pg).classList.add('active');
+    document.querySelectorAll('[data-page]').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('[data-page="' + pg + '"]').forEach(function(b) { b.classList.add('active'); });
+    if (pg === 'dashboard') renderDashboard();
+    if (pg === 'players') renderPlayers();
+    if (pg === 'tournaments') renderTournaments();
+    if (pg === 'registrations') renderRegs();
+    if (pg === 'history') renderHistory();
+  });
+});
+
+// Modal
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(function(m) {
+  m.addEventListener('click', function(e) { if (e.target === m) m.classList.remove('open'); });
+});
+
+// PLAYERS
+function openPlayerModal(id) {
+  var p = id ? db.players.find(function(x) { return x.id === id; }) : null;
+  document.getElementById('playerModalTitle').textContent = p ? 'Sửa VĐV' : 'Thêm VĐV';
+  document.getElementById('p-id').value = p ? p.id : '';
+  document.getElementById('p-name').value = p ? p.name : '';
+  document.getElementById('p-phone').value = p ? p.phone : '';
+  document.getElementById('p-email').value = p ? p.email : '';
+  document.getElementById('p-level').value = p ? p.level : '';
+  document.getElementById('p-tier').value = p ? p.tier : 'Khá';
+  document.getElementById('p-note').value = p ? p.note : '';
+  openModal('modal-player');
+}
+
+function savePlayer() {
+  var id = document.getElementById('p-id').value;
+  var name = document.getElementById('p-name').value.trim();
+  var phone = document.getElementById('p-phone').value.trim();
+  if (!name || !phone) { alert('Vui lòng nhập họ tên và SĐT'); return; }
+  var data = {
+    name: name, phone: phone,
+    email: document.getElementById('p-email').value.trim(),
+    level: parseFloat(document.getElementById('p-level').value) || 3.0,
+    tier: document.getElementById('p-tier').value,
+    note: document.getElementById('p-note').value.trim(),
+    updatedAt: new Date().toISOString()
+  };
+  if (id) {
+    var idx = db.players.findIndex(function(x) { return x.id === id; });
+    if (idx >= 0) { var old = db.players[idx]; data.id = id; data.createdAt = old.createdAt; db.players[idx] = data; }
+  } else {
+    data.id = genId(); data.createdAt = new Date().toISOString(); db.players.push(data);
+  }
+  saveDB(db); closeModal('modal-player'); renderPlayers(); updateCounts();
+  toast(id ? 'Đã cập nhật VĐV' : 'Đã thêm VĐV mới');
+}
+
+function deletePlayer(id) {
+  if (!confirm('Xóa VĐV này?')) return;
+  db.players = db.players.filter(function(x) { return x.id !== id; });
+  saveDB(db); renderPlayers(); updateCounts(); toast('Đã xóa VĐV');
+}
+
+function renderPlayers(filter) {
+  var list = db.players;
+  if (filter) {
+    var q = filter.toLowerCase();
+    list = list.filter(function(p) { return p.name.toLowerCase().includes(q) || p.phone.includes(q); });
+  }
+  var html = '';
+  if (!list.length) {
+    html = '<tr><td colspan="7"><div class="empty-state"><p>Chưa có VĐV nào</p><button class="btn btn-primary" onclick="openPlayerModal()">+ Thêm VĐV đầu tiên</button></div></td></tr>';
+  } else {
+    list.forEach(function(p) {
+      var pct = Math.min(((p.level - 2) / 3.5) * 100, 100);
+      html += '<tr>' +
+        '<td><strong>' + esc(p.name) + '</strong></td>' +
+        '<td>' + esc(p.phone) + '</td>' +
+        '<td style="color:var(--muted)">' + esc(p.email || '—') + '</td>' +
+        '<td><div class="level-bar"><span class="level-text">' + p.level + '</span><div class="level-track"><div class="level-fill" style="width:' + pct + '%"></div></div></div></td>' +
+        '<td style="color:var(--muted);font-size:12px">' + fmt(p.updatedAt) + '</td>' +
+        '<td style="color:var(--muted);font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.note || '') + '</td>' +
+        '<td class="actions-cell">' +
+          '<button class="icon-btn" onclick="openPlayerModal(\'' + p.id + '\')" title="Sửa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+          '<button class="icon-btn delete" onclick="deletePlayer(\'' + p.id + '\')" title="Xóa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
+        '</td></tr>';
+    });
+  }
+  document.getElementById('players-table').innerHTML = html;
+}
+
+document.getElementById('searchPlayer').addEventListener('input', function() { renderPlayers(this.value); });
+
+// TOURNAMENTS
+function openTournamentModal(id) {
+  var t = id ? db.tournaments.find(function(x) { return x.id === id; }) : null;
+  document.getElementById('tournamentModalTitle').textContent = t ? 'Sửa giải' : 'Tạo giải đấu';
+  document.getElementById('t-id').value = t ? t.id : '';
+  document.getElementById('t-name').value = t ? t.name : '';
+  document.getElementById('t-date').value = t ? t.date : '';
+  document.getElementById('t-type').value = t ? t.type : 'Nội bộ';
+  document.getElementById('t-levels').value = t ? t.levels : '';
+  document.getElementById('t-status').value = t ? t.status : 'Mở đăng ký';
+  document.getElementById('t-max').value = t ? t.maxTeams : '';
+  document.getElementById('t-prize').value = t ? t.prize : '';
+  document.getElementById('t-note').value = t ? t.note : '';
+  openModal('modal-tournament');
+}
+
+function saveTournament() {
+  var id = document.getElementById('t-id').value;
+  var name = document.getElementById('t-name').value.trim();
+  var date = document.getElementById('t-date').value;
+  if (!name || !date) { alert('Vui lòng nhập tên giải và ngày'); return; }
+  var data = {
+    name: name, date: date,
+    type: document.getElementById('t-type').value,
+    levels: document.getElementById('t-levels').value.trim(),
+    status: document.getElementById('t-status').value,
+    maxTeams: parseInt(document.getElementById('t-max').value) || 0,
+    prize: document.getElementById('t-prize').value.trim(),
+    note: document.getElementById('t-note').value.trim()
+  };
+  if (id) {
+    var idx = db.tournaments.findIndex(function(x) { return x.id === id; });
+    if (idx >= 0) { data.id = id; db.tournaments[idx] = data; }
+  } else {
+    data.id = genId(); db.tournaments.push(data);
+  }
+  saveDB(db); closeModal('modal-tournament'); renderTournaments(); updateCounts();
+  toast(id ? 'Đã cập nhật giải' : 'Đã tạo giải đấu mới');
+}
+
+function deleteTournament(id) {
+  if (!confirm('Xóa giải đấu này?')) return;
+  db.tournaments = db.tournaments.filter(function(x) { return x.id !== id; });
+  saveDB(db); renderTournaments(); updateCounts(); toast('Đã xóa giải');
+}
+
+function renderTournaments() {
+  var html = '';
+  if (!db.tournaments.length) {
+    html = '<tr><td colspan="7"><div class="empty-state"><p>Chưa có giải đấu nào</p><button class="btn btn-primary" onclick="openTournamentModal()">+ Tạo giải đầu tiên</button></div></td></tr>';
+  } else {
+    db.tournaments.forEach(function(t) {
+      var regCount = db.registrations.filter(function(r) { return r.tournamentId === t.id; }).length;
+      var statusClass = t.status === 'Mở đăng ký' ? 'badge-green' : t.status === 'Đang diễn ra' ? 'badge-blue' : t.status === 'Đã kết thúc' ? 'badge-muted' : 'badge-orange';
+      var typeClass = t.type === 'Nội bộ' ? 'badge-blue' : t.type === 'Liên CLB' ? 'badge-orange' : 'badge-green';
+      html += '<tr>' +
+        '<td><strong>' + esc(t.name) + '</strong></td>' +
+        '<td>' + fmt(t.date) + '</td>' +
+        '<td><span class="badge ' + typeClass + '">' + esc(t.type) + '</span></td>' +
+        '<td style="color:var(--muted)">' + esc(t.levels || '—') + '</td>' +
+        '<td><span class="badge ' + statusClass + '">' + esc(t.status) + '</span></td>' +
+        '<td>' + regCount + (t.maxTeams ? '/' + t.maxTeams : '') + '</td>' +
+        '<td class="actions-cell">' +
+          '<button class="icon-btn" onclick="openTournamentModal(\'' + t.id + '\')" title="Sửa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+          '<button class="icon-btn delete" onclick="deleteTournament(\'' + t.id + '\')" title="Xóa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
+        '</td></tr>';
+    });
+  }
+  document.getElementById('tournaments-table').innerHTML = html;
+}
+
+// REGISTRATIONS
+function openRegModal(id) {
+  var r = id ? db.registrations.find(function(x) { return x.id === id; }) : null;
+  var pSel = '<option value="">— Chọn VĐV —</option>';
+  db.players.forEach(function(p) { pSel += '<option value="' + p.id + '"' + (r && r.playerId === p.id ? ' selected' : '') + '>' + esc(p.name) + ' (' + p.level + ')</option>'; });
+  document.getElementById('r-player').innerHTML = pSel;
+  var partnerSel = '<option value="">— Không —</option>';
+  db.players.forEach(function(p) { partnerSel += '<option value="' + p.id + '"' + (r && r.partnerId === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; });
+  document.getElementById('r-partner').innerHTML = partnerSel;
+  var tSel = '<option value="">— Chọn giải —</option>';
+  db.tournaments.forEach(function(t) { tSel += '<option value="' + t.id + '"' + (r && r.tournamentId === t.id ? ' selected' : '') + '>' + esc(t.name) + ' (' + fmt(t.date) + ')</option>'; });
+  document.getElementById('r-tournament').innerHTML = tSel;
+  document.getElementById('r-id').value = r ? r.id : '';
+  document.getElementById('r-level').value = r ? r.level : '';
+  document.getElementById('r-category').value = r ? r.category : 'Đơn nam';
+  document.getElementById('r-status').value = r ? r.status : 'Chờ duyệt';
+  document.getElementById('r-result').value = r ? (r.result || '') : '';
+  document.getElementById('r-newlevel').value = r ? (r.newLevel || '') : '';
+  openModal('modal-reg');
+}
+
+function saveReg() {
+  var id = document.getElementById('r-id').value;
+  var playerId = document.getElementById('r-player').value;
+  var tournamentId = document.getElementById('r-tournament').value;
+  if (!playerId || !tournamentId) { alert('Chọn VĐV và giải đấu'); return; }
+  var newLevel = parseFloat(document.getElementById('r-newlevel').value);
+  var data = {
+    playerId: playerId, tournamentId: tournamentId,
+    level: parseFloat(document.getElementById('r-level').value) || 0,
+    category: document.getElementById('r-category').value,
+    partnerId: document.getElementById('r-partner').value || null,
+    status: document.getElementById('r-status').value,
+    result: document.getElementById('r-result').value || null,
+    newLevel: newLevel || null,
+    date: new Date().toISOString()
+  };
+  if (id) {
+    var idx = db.registrations.findIndex(function(x) { return x.id === id; });
+    if (idx >= 0) { data.id = id; db.registrations[idx] = data; }
+  } else {
+    data.id = genId(); db.registrations.push(data);
+  }
+  if (newLevel) {
+    var player = db.players.find(function(p) { return p.id === playerId; });
+    if (player) {
+      var oldLevel = player.level;
+      var tournament = db.tournaments.find(function(t) { return t.id === tournamentId; });
+      db.history.push({
+        id: genId(), playerId: playerId, date: new Date().toISOString(),
+        oldLevel: oldLevel, newLevel: newLevel,
+        reason: 'Kết quả giải', tournamentId: tournamentId,
+        tournamentName: tournament ? tournament.name : ''
+      });
+      player.level = newLevel; player.updatedAt = new Date().toISOString();
+    }
+  }
+  saveDB(db); closeModal('modal-reg'); renderRegs(); updateCounts();
+  toast(id ? 'Đã cập nhật đăng ký' : 'Đã đăng ký thi đấu');
+}
+
+function deleteReg(id) {
+  if (!confirm('Xóa đăng ký này?')) return;
+  db.registrations = db.registrations.filter(function(x) { return x.id !== id; });
+  saveDB(db); renderRegs(); updateCounts(); toast('Đã xóa');
+}
+
+function renderRegs(tournamentFilter) {
+  var list = db.registrations;
+  if (tournamentFilter) list = list.filter(function(r) { return r.tournamentId === tournamentFilter; });
+  var html = '';
+  if (!list.length) {
+    html = '<tr><td colspan="8"><div class="empty-state"><p>Chưa có đăng ký nào</p></div></td></tr>';
+  } else {
+    list.forEach(function(r) {
+      var player = db.players.find(function(p) { return p.id === r.playerId; });
+      var tournament = db.tournaments.find(function(t) { return t.id === r.tournamentId; });
+      var partner = r.partnerId ? db.players.find(function(p) { return p.id === r.partnerId; }) : null;
+      var statusClass = r.status === 'Chờ duyệt' ? 'badge-orange' : r.status === 'Đã duyệt' ? 'badge-green' : r.status === 'Từ chối' ? 'badge-red' : 'badge-blue';
+      html += '<tr>' +
+        '<td><strong>' + (player ? esc(player.name) : '?') + '</strong></td>' +
+        '<td>' + (tournament ? esc(tournament.name) : '?') + '</td>' +
+        '<td>' + (r.level || '—') + '</td>' +
+        '<td>' + esc(r.category) + '</td>' +
+        '<td style="color:var(--muted)">' + (partner ? esc(partner.name) : '—') + '</td>' +
+        '<td><span class="badge ' + statusClass + '">' + esc(r.status) + '</span></td>' +
+        '<td>' + (r.result ? esc(r.result) : '—') + '</td>' +
+        '<td class="actions-cell">' +
+          '<button class="icon-btn" onclick="openRegModal(\'' + r.id + '\')" title="Sửa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+          '<button class="icon-btn delete" onclick="deleteReg(\'' + r.id + '\')" title="Xóa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
+        '</td></tr>';
+    });
+  }
+  document.getElementById('regs-table').innerHTML = html;
+
+  var fSel = '<option value="">Tất cả giải đấu</option>';
+  db.tournaments.forEach(function(t) { fSel += '<option value="' + t.id + '"' + (tournamentFilter === t.id ? ' selected' : '') + '>' + esc(t.name) + '</option>'; });
+  document.getElementById('filterTournament').innerHTML = fSel;
+}
+
+document.getElementById('filterTournament').addEventListener('change', function() { renderRegs(this.value || undefined); });
+
+// HISTORY
+function renderHistory() {
+  var html = '';
+  if (!db.history.length) {
+    html = '<tr><td colspan="7"><div class="empty-state"><p>Chưa có lịch sử thay đổi trình</p><p style="font-size:12px">Trình sẽ tự động ghi nhận khi nhập "Trình sau giải" trong đăng ký giải</p></div></td></tr>';
+  } else {
+    db.history.slice().reverse().forEach(function(h) {
+      var player = db.players.find(function(p) { return p.id === h.playerId; });
+      var diff = (h.newLevel - h.oldLevel).toFixed(1);
+      var diffClass = diff > 0 ? 'color:var(--green)' : diff < 0 ? 'color:var(--red)' : 'color:var(--muted)';
+      var diffText = diff > 0 ? '+' + diff : diff;
+      html += '<tr>' +
+        '<td><strong>' + (player ? esc(player.name) : '?') + '</strong></td>' +
+        '<td>' + fmt(h.date) + '</td>' +
+        '<td>' + h.oldLevel + '</td>' +
+        '<td><strong>' + h.newLevel + '</strong></td>' +
+        '<td style="' + diffClass + ';font-weight:700">' + diffText + '</td>' +
+        '<td>' + esc(h.reason || '') + '</td>' +
+        '<td style="color:var(--muted)">' + esc(h.tournamentName || '—') + '</td>' +
+        '</tr>';
+    });
+  }
+  document.getElementById('history-table').innerHTML = html;
+}
+
+// DASHBOARD
+function renderDashboard() {
+  var recent = db.players.slice().sort(function(a, b) { return (b.createdAt || '').localeCompare(a.createdAt || ''); }).slice(0, 5);
+  var html = '';
+  recent.forEach(function(p) {
+    html += '<tr><td><strong>' + esc(p.name) + '</strong></td><td>' + esc(p.phone) + '</td><td>' + p.level + '</td><td style="color:var(--muted);font-size:12px">' + fmt(p.createdAt) + '</td></tr>';
+  });
+  if (!html) html = '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--muted)">Chưa có VĐV</td></tr>';
+  document.getElementById('recent-players').innerHTML = html;
+}
+
+function updateCounts() {
+  document.getElementById('playerCount').textContent = db.players.length;
+  document.getElementById('s-total').textContent = db.players.length;
+  document.getElementById('s-tournaments').textContent = db.tournaments.length;
+  document.getElementById('s-pending').textContent = db.registrations.filter(function(r) { return r.status === 'Chờ duyệt'; }).length;
+  var avg = db.players.length ? (db.players.reduce(function(s, p) { return s + p.level; }, 0) / db.players.length).toFixed(1) : '0';
+  document.getElementById('s-avg').textContent = avg;
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// EXPORT CSV
+function exportAll() {
+  var csv = 'Họ tên,SĐT,Email,Trình độ,Hạng,Ghi chú,Ngày cập nhật\n';
+  db.players.forEach(function(p) {
+    csv += '"' + (p.name||'') + '","' + (p.phone||'') + '","' + (p.email||'') + '",' + p.level + ',"' + (p.tier||'') + '","' + (p.note||'').replace(/"/g,'""') + '","' + fmt(p.updatedAt) + '"\n';
+  });
+  var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'amz-vdv-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click(); toast('Đã xuất file CSV');
+}
+
+// Init
+updateCounts(); renderDashboard();
+</script>
+</body>
+</html>
