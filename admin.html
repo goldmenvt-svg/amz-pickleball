@@ -167,11 +167,43 @@
     .main { padding-bottom: 80px; }
   }
   @media (min-width: 769px) { .mobile-nav { display: none; } }
+
+  .login-screen {
+    position: fixed; inset: 0; z-index: 999; background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .login-screen.hidden { display: none; }
+  .login-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 48px 40px; width: 100%; max-width: 380px; text-align: center;
+  }
+  .login-box h2 { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+  .login-box h2 span { color: var(--accent); }
+  .login-box p { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+  .login-box input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r);
+    color: var(--text); padding: 12px 16px; font-size: 15px; text-align: center;
+    letter-spacing: 0.15em; outline: none; margin-bottom: 16px;
+  }
+  .login-box input:focus { border-color: var(--accent); }
+  .login-box .btn { width: 100%; justify-content: center; padding: 12px; font-size: 14px; }
+  .login-error { color: var(--red); font-size: 13px; margin-top: 12px; display: none; }
+  .login-error.show { display: block; }
 </style>
 </head>
 <body>
 
-<div class="app">
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <h2>AMZ<span>.</span> Admin</h2>
+    <p>Nhập mật khẩu để truy cập quản lý</p>
+    <input type="password" id="loginPass" placeholder="••••••" autofocus>
+    <button class="btn btn-primary" id="loginBtn">Đăng nhập</button>
+    <p class="login-error" id="loginError">Sai mật khẩu. Vui lòng thử lại.</p>
+  </div>
+</div>
+
+<div class="app" id="appMain" style="display:none;">
   <aside class="sidebar">
     <div class="sidebar-logo">
       <h2>AMZ<span>.</span> Admin</h2>
@@ -202,6 +234,10 @@
       <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="exportAll()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Xuất CSV
+      </button>
+      <button class="btn btn-outline" style="width:100%;justify-content:center;margin-top:8px;color:var(--muted);" onclick="logout()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Đăng xuất
       </button>
     </div>
   </aside>
@@ -465,6 +501,43 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// Auth
+var PASS_HASH = '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8';
+var AUTH_KEY = 'amz_admin_auth';
+
+async function hashPass(pw) {
+  var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+  return Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
+}
+
+function checkAuth() {
+  if (sessionStorage.getItem(AUTH_KEY) === '1') { showApp(); return; }
+  document.getElementById('loginScreen').classList.remove('hidden');
+}
+
+function showApp() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('appMain').style.display = 'flex';
+}
+
+document.getElementById('loginBtn').addEventListener('click', tryLogin);
+document.getElementById('loginPass').addEventListener('keydown', function(e) { if (e.key === 'Enter') tryLogin(); });
+
+async function tryLogin() {
+  var pw = document.getElementById('loginPass').value;
+  var hash = await hashPass(pw);
+  if (hash === PASS_HASH) {
+    sessionStorage.setItem(AUTH_KEY, '1');
+    showApp();
+  } else {
+    document.getElementById('loginError').classList.add('show');
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginPass').focus();
+  }
+}
+
+checkAuth();
+
 const DB_KEY = 'amz_admin';
 
 function loadDB() {
@@ -810,6 +883,8 @@ function exportAll() {
   a.download = 'amz-vdv-' + new Date().toISOString().slice(0,10) + '.csv';
   a.click(); toast('Đã xuất file CSV');
 }
+
+function logout() { sessionStorage.removeItem(AUTH_KEY); location.reload(); }
 
 // Init
 updateCounts(); renderDashboard();
