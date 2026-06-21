@@ -1,0 +1,1896 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AMZ Pickle Ball Club — 8 sân Pickleball tiêu chuẩn tại 179 Thống Nhất, Phường Vũng Tàu, TP.HCM. Huấn luyện chuyên nghiệp, cộng đồng thân thiện.">
+  <title>AMZ Pickleball — Sân Pickleball Chuyên Nghiệp TP.HCM</title>
+  <link rel="canonical" href="https://amzpickleball.vn/">
+  <meta property="og:type"        content="website">
+  <meta property="og:url"         content="https://amzpickleball.vn/">
+  <meta property="og:title"       content="AMZ Pickleball — Sân Pickleball Chuyên Nghiệp TP.HCM">
+  <meta property="og:description" content="AMZ Pickle Ball Club — 8 sân Pickleball tiêu chuẩn tại 179 Thống Nhất, Phường Vũng Tàu, TP.HCM. Huấn luyện chuyên nghiệp, cộng đồng thân thiện.">
+  <meta property="og:image"       content="https://amzpickleball.vn/logo.jpg">
+  <meta property="og:locale"      content="vi_VN">
+  <link rel="icon" href="logo.jpg" type="image/jpeg">
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"SportsActivityLocation","name":"AMZ Pickle Ball Club","url":"https://amzpickleball.vn","address":{"@type":"PostalAddress","streetAddress":"179 Thống Nhất, Phường Vũng Tàu","addressLocality":"TP. Hồ Chí Minh","addressCountry":"VN"},"telephone":"0914859927","openingHours":["Mo-Fr 05:00-22:00","Sa-Su 05:00-23:00"],"sameAs":["https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/"]}
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,400&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #ffffff;
+      --surface:   #f0f4fa;
+      --surface2:  #dde5f5;
+      --border:    rgba(15,28,63,0.1);
+      --text:      #0f1c3f;
+      --muted:     #5a6a8a;
+      --muted2:    #9aabcc;
+      --accent:    #FFB800;
+      --accent2:   rgba(255,184,0,0.14);
+      --primary:   #1a2744;
+      --font:      'Inter', system-ui, sans-serif;
+      --max:       1200px;
+      --nav:       72px;
+      --r:         8px;
+    }
+
+    html { scroll-behavior: smooth; font-size: 16px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── SCROLLBAR ─── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--muted2); border-radius: 2px; }
+
+    /* ─── UTILITIES ─── */
+    .container { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+    .label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .accent { color: var(--accent); }
+    .dim { color: var(--muted); font-size: 0.65em; vertical-align: super; }
+    img { max-width: 100%; display: block; }
+    a { color: inherit; text-decoration: none; }
+
+    /* ─── SCROLL ANIMATION ─── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+    .reveal-delay-4 { transition-delay: 0.4s; }
+    .reveal-delay-5 { transition-delay: 0.5s; }
+    .reveal-left {
+      opacity: 0; transform: translateX(-28px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+    }
+    .reveal-left.visible { opacity: 1; transform: translateX(0); }
+    .reveal-right {
+      opacity: 0; transform: translateX(28px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+    }
+    .reveal-right.visible { opacity: 1; transform: translateX(0); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .reveal, .reveal-left, .reveal-right {
+        opacity: 1; transform: none; transition: none;
+      }
+    }
+
+    /* ─── SHARED HEADING VARIANT ─── */
+    .section-h2-md {
+      font-size: clamp(32px, 4vw, 52px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1.1; margin-top: 14px;
+    }
+
+    /* ─── SECTION INTRO (label + heading left, cta right) ─── */
+    .section-intro {
+      display: grid; grid-template-columns: 1fr auto;
+      align-items: end; gap: 24px; margin-bottom: 48px; flex-wrap: wrap;
+    }
+
+    /* ─── NAVIGATION ─── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: var(--nav);
+      display: flex; align-items: center;
+      transition: background 0.3s, box-shadow 0.3s, border-color 0.3s;
+      border-bottom: 1px solid transparent;
+    }
+    nav.scrolled {
+      background: white;
+      border-bottom-color: var(--border);
+      box-shadow: 0 2px 20px rgba(15,28,63,0.08);
+    }
+    nav.scrolled .nav-logo { color: var(--text); }
+    nav.scrolled .nav-links a { color: var(--muted); }
+    nav.scrolled .nav-links a:hover, nav.scrolled .nav-links a.active { color: var(--text); }
+    nav.scrolled .hamburger span { background: var(--text); }
+    .nav-inner {
+      width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex; align-items: center;
+    }
+    .nav-logo img {
+      height: 53px; width: 53px;
+      object-fit: contain; border-radius: 50%;
+      transition: box-shadow 0.2s;
+    }
+    nav.scrolled .nav-logo img {
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.08);
+    }
+    .nav-links {
+      display: flex; align-items: center; gap: 36px;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 12px; font-weight: 500; letter-spacing: 0.06em;
+      text-transform: uppercase; color: rgba(255,255,255,0.75); transition: color 0.2s;
+    }
+    .nav-links a:hover, .nav-links a.active { color: white; }
+    .nav-cta {
+      display: flex; align-items: center; gap: 16px;
+    }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 10px 22px; border-radius: var(--r);
+      font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+      cursor: pointer; border: none; font-family: var(--font);
+      text-decoration: none; position: relative; overflow: hidden;
+      transition: background 0.25s, color 0.25s, border-color 0.25s,
+                  transform 0.2s cubic-bezier(0.34,1.56,0.64,1),
+                  box-shadow 0.25s;
+    }
+    .btn::after {
+      content: ''; position: absolute; inset: 0;
+      background: rgba(255,255,255,0.07);
+      opacity: 0; transition: opacity 0.2s;
+      border-radius: inherit;
+    }
+    .btn:hover::after { opacity: 1; }
+    .btn:active { transform: translateY(0) scale(0.97) !important; transition-duration: 0.1s; }
+
+    .btn-primary { background: var(--accent); color: #0f1c3f; }
+    .btn-primary:hover {
+      background: #ffc934; transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(255,184,0,0.35), 0 2px 8px rgba(255,184,0,0.2);
+    }
+    .btn-primary::after { background: rgba(255,255,255,0.15); }
+
+    .btn-outline {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover {
+      border-color: var(--primary); color: var(--primary);
+      background: rgba(15,28,63,0.04);
+      transform: translateY(-2px); box-shadow: 0 6px 20px rgba(15,28,63,0.1);
+    }
+
+    .btn-lg { padding: 14px 32px; font-size: 15px; border-radius: var(--r); }
+
+    .btn-ghost {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border); padding: 10px 20px;
+    }
+    .btn-ghost:hover {
+      color: var(--text); border-color: rgba(15,28,63,0.2); transform: translateY(-1px);
+    }
+
+    /* Buttons trên nền navy (hero, cta, training box) */
+    .hero .btn-outline, .cta-banner .btn-outline {
+      border-color: rgba(255,255,255,0.3); color: white;
+    }
+    .hero .btn-outline:hover, .cta-banner .btn-outline:hover {
+      border-color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.08); color: white;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .btn, .btn::after { transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s; }
+      .btn:hover { transform: none !important; box-shadow: none !important; }
+    }
+
+    @keyframes cta-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.5); }
+      50% { box-shadow: 0 0 0 14px rgba(255, 184, 0, 0); }
+    }
+    @keyframes cta-shimmer {
+      0% { transform: translateX(-100%) skewX(-15deg); }
+      100% { transform: translateX(350%) skewX(-15deg); }
+    }
+    @keyframes cta-gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes cta-ripple {
+      to { transform: scale(1); opacity: 0; }
+    }
+    @keyframes cta-outline-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.3); }
+      50% { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+    }
+
+    .btn-cta {
+      padding: 16px 36px;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      background: linear-gradient(135deg, #FFB800 0%, #FFD54F 50%, #FFB800 100%);
+      background-size: 200% 200%;
+      animation: cta-gradient 3s ease infinite, cta-pulse 2.5s ease-in-out infinite;
+      color: #0f1c3f;
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+      z-index: 1;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  box-shadow 0.3s ease, filter 0.3s ease;
+    }
+    .btn-cta::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 40%; height: 100%;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+      transform: translateX(-100%) skewX(-15deg);
+      animation: cta-shimmer 3.5s ease-in-out infinite;
+      animation-delay: 1s;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .btn-cta::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.2);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      border-radius: inherit;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .btn-cta:hover::after { opacity: 1; }
+    .btn-cta:hover {
+      transform: translateY(-3px) scale(1.04);
+      box-shadow: 0 14px 36px rgba(255,184,0,0.45), 0 6px 14px rgba(255,184,0,0.3), 0 0 24px rgba(255,184,0,0.2);
+      animation: cta-gradient 3s ease infinite;
+    }
+    .btn-cta:active { transform: translateY(0) scale(0.96) !important; transition-duration: 0.1s; }
+
+    .btn-cta-text { position: relative; z-index: 3; }
+    .btn-cta-arrow {
+      display: inline-flex;
+      align-items: center;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+      z-index: 3;
+    }
+    .btn-cta:hover .btn-cta-arrow,
+    .btn-cta-outline:hover .btn-cta-arrow { transform: translateX(6px); }
+
+    .training-cta-box .btn-cta {
+      padding: 18px 36px;
+      font-size: 17px;
+      min-height: 56px;
+    }
+
+    .btn-cta-outline {
+      padding: 14px 28px;
+      font-size: 15px;
+      font-weight: 600;
+      border: 2px solid rgba(255,255,255,0.45);
+      color: white;
+      background: transparent;
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+      animation: cta-outline-pulse 3s ease-in-out infinite;
+      animation-delay: 0.5s;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  box-shadow 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+    }
+    .btn-cta-outline::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 40%; height: 100%;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.12) 50%, transparent 100%);
+      transform: translateX(-100%) skewX(-15deg);
+      animation: cta-shimmer 4s ease-in-out infinite;
+      animation-delay: 2s;
+      z-index: 1;
+      pointer-events: none;
+    }
+    .btn-cta-outline .btn-cta-text,
+    .btn-cta-outline .btn-cta-arrow {
+      position: relative;
+      z-index: 2;
+    }
+    .btn-cta-outline .btn-cta-arrow {
+      display: inline-flex;
+      align-items: center;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .btn-cta-outline:hover {
+      transform: translateY(-3px) scale(1.04);
+      border-color: rgba(255,255,255,0.85);
+      background: rgba(255,255,255,0.1);
+      box-shadow: 0 10px 28px rgba(255,255,255,0.12), 0 0 18px rgba(255,255,255,0.06);
+      animation: none;
+    }
+    .btn-cta-outline:active { transform: translateY(0) scale(0.96) !important; transition-duration: 0.1s; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .btn-cta, .btn-cta-outline { animation: none !important; }
+      .btn-cta::before, .btn-cta-outline::before { animation: none !important; display: none; }
+      .btn-cta:hover, .btn-cta-outline:hover { transform: none !important; }
+      .btn-cta:hover .btn-cta-arrow, .btn-cta-outline:hover .btn-cta-arrow { transform: none; }
+    }
+
+    @media (max-width: 480px) {
+      .btn-cta { padding: 18px 32px; font-size: 16px; min-height: 52px; }
+      .btn-cta-outline { padding: 16px 28px; min-height: 48px; }
+    }
+
+    .hamburger {
+      display: none; flex-direction: column; gap: 5px;
+      cursor: pointer; padding: 8px; background: none; border: none;
+    }
+    .hamburger span {
+      display: block; width: 22px; height: 2px;
+      background: white; border-radius: 2px; transition: all 0.3s;
+    }
+    .hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+    .hamburger.open span:nth-child(2) { opacity: 0; }
+    .hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+
+    .mobile-menu {
+      display: none; position: fixed; inset: 0; z-index: 99;
+      background: white; padding: var(--nav) 24px 40px;
+      flex-direction: column; justify-content: center; gap: 32px;
+      overflow-y: auto;
+    }
+    .mobile-menu.open { display: flex; }
+    .mobile-menu a {
+      font-size: 28px; font-weight: 800; letter-spacing: -0.02em;
+      color: var(--muted); transition: color 0.2s;
+    }
+    .mobile-menu a:hover { color: var(--text); }
+    .mobile-menu .btn { align-self: flex-start; margin-top: 8px; }
+
+    /* ─── HERO ─── */
+    .hero {
+      min-height: 100svh; display: flex; flex-direction: column;
+      justify-content: flex-end; padding-bottom: 80px;
+      position: relative; overflow: hidden;
+      background: linear-gradient(140deg, #0a1628 0%, #1a2744 60%, #1f3060 100%);
+    }
+    .hero-visual {
+      position: absolute; top: var(--nav); right: 0;
+      width: 38%; height: calc(100% - var(--nav));
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none; z-index: 1;
+    }
+    .hero-visual-inner {
+      width: 80%; aspect-ratio: 3/4;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 2px;
+      background: rgba(255,255,255,0.04);
+      position: relative; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .hero-visual-inner::before {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% 40%, rgba(255,184,0,0.06) 0%, transparent 70%);
+    }
+    .hero-visual-lines {
+      position: relative; z-index: 1;
+      width: 60%; aspect-ratio: 1;
+      border: 1px solid rgba(255,255,255,0.1);
+      transform: rotate(12deg);
+    }
+    .hero-visual-lines::before {
+      content: ''; position: absolute; inset: -30%;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .hero-visual-lines::after {
+      content: ''; position: absolute; inset: -60%;
+      border: 1px solid rgba(255,255,255,0.03);
+    }
+    .hero-visual-label {
+      position: absolute; bottom: 24px; left: 24px; right: 24px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .hero-visual-label span {
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: rgba(255,255,255,0.3);
+    }
+    .hero-visual-label strong {
+      font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.5);
+    }
+    @media (max-width: 768px) { .hero-visual { display: none; } }
+    .hero-bg {
+      position: absolute; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 55% 45% at 65% 35%, rgba(255,184,0,0.07) 0%, transparent 65%),
+        radial-gradient(ellipse 35% 55% at 15% 75%, rgba(255,255,255,0.03) 0%, transparent 55%);
+    }
+    .hero-grid {
+      position: absolute; inset: 0; z-index: 0; opacity: 0.15;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px);
+      background-size: 80px 80px;
+      mask-image: radial-gradient(ellipse 90% 70% at 50% 60%, black 20%, transparent 75%);
+    }
+    .hero-noise {
+      position: absolute; inset: 0; z-index: 0; opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      background-size: 256px;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 100px; padding: 6px 14px; margin-bottom: 28px;
+      width: fit-content;
+    }
+    .hero-badge .label { color: rgba(255,255,255,0.6); }
+    .hero-badge-dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.8); }
+    }
+    .hero-content { position: relative; z-index: 1; }
+    .hero h1 {
+      font-size: clamp(56px, 11vw, 130px);
+      font-weight: 900; line-height: 0.92; letter-spacing: -0.045em;
+      margin-bottom: 32px; color: white;
+    }
+    .hero h1 em { font-style: italic; color: var(--accent); display: block; }
+    .hero .dim { color: rgba(255,255,255,0.4); }
+    .hero-sub {
+      font-size: clamp(14px, 1.6vw, 17px); color: rgba(255,255,255,0.6); font-weight: 300;
+      max-width: 440px; margin-bottom: 40px; line-height: 1.8; letter-spacing: 0.01em;
+    }
+    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 64px; }
+    .hero-meta {
+      display: flex; align-items: center;
+      border-top: 1px solid rgba(255,255,255,0.1); padding-top: 32px;
+      flex-wrap: wrap; gap: 20px;
+    }
+    .hero-meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .hero-meta-item strong { font-size: 20px; font-weight: 800; color: white; }
+    .hero-meta-item span { font-size: 11px; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.1em; }
+    .hero-meta-item .dim { color: rgba(255,255,255,0.25); }
+    .hero-scroll {
+      position: absolute; bottom: 32px; right: 32px; z-index: 1;
+      display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,0.35);
+      font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .hero-scroll-line {
+      width: 40px; height: 1px; background: rgba(255,255,255,0.2);
+      animation: scroll-line 2s ease-in-out infinite;
+    }
+    @keyframes scroll-line {
+      0%, 100% { width: 24px; } 50% { width: 48px; }
+    }
+
+    /* ─── MARQUEE ─── */
+    .marquee-wrap {
+      padding: 14px 0; background: var(--surface); overflow: hidden;
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    }
+    .marquee-track {
+      display: flex; gap: 0; width: max-content;
+      animation: marquee 32s linear infinite;
+    }
+    .marquee-item {
+      display: flex; align-items: center; gap: 24px;
+      padding: 0 32px; white-space: nowrap;
+      font-size: 11px; font-weight: 500; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .marquee-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--muted2); flex-shrink: 0; }
+    @keyframes marquee {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    /* ─── SECTIONS BASE ─── */
+    section { padding: 160px 0; }
+    .section-header { margin-bottom: 80px; }
+    .section-header .label { margin-bottom: 16px; display: block; }
+    .section-header h2 {
+      font-size: clamp(40px, 5.5vw, 68px); font-weight: 900;
+      letter-spacing: -0.04em; line-height: 1.0;
+    }
+    .section-header p { color: var(--muted); font-size: 15px; font-weight: 400; margin-top: 20px; max-width: 440px; line-height: 1.75; }
+    .section-divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+    /* ─── SERVICES ─── */
+    .services-list { display: flex; flex-direction: column; }
+    .service-row {
+      display: grid; grid-template-columns: 48px 1fr 1fr auto;
+      gap: 32px; align-items: start;
+      padding: 40px 0; border-top: 1px solid var(--border);
+      transition: padding-left 0.3s;
+      cursor: default;
+    }
+    .service-row:last-child { border-bottom: 1px solid var(--border); }
+    .service-row:hover { padding-left: 12px; }
+    .service-num {
+      font-size: 11px; font-weight: 500; color: var(--muted2);
+      letter-spacing: 0.08em; padding-top: 4px;
+    }
+    .service-row h3 {
+      font-size: clamp(20px, 2.5vw, 28px); font-weight: 800;
+      letter-spacing: -0.03em; line-height: 1.1;
+    }
+    .service-row p { font-size: 14px; color: var(--muted); line-height: 1.7; }
+    .service-row-arrow {
+      font-size: 18px; color: var(--muted2); padding-top: 4px;
+      transition: color 0.2s, transform 0.2s;
+    }
+    .service-row:hover .service-row-arrow { color: var(--accent); transform: translateX(4px); }
+
+    /* ─── ABOUT ─── */
+    #about { background: var(--surface); }
+    .about-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+    }
+    .about-number {
+      font-size: clamp(80px, 15vw, 160px); font-weight: 900;
+      letter-spacing: -0.05em; line-height: 0.9; color: var(--primary);
+    }
+    .about-number span { color: var(--accent); }
+    .about-number-label {
+      font-size: 13px; font-weight: 600; color: var(--muted);
+      letter-spacing: 0.12em; text-transform: uppercase; margin-top: 12px;
+    }
+    .about-stat { margin-top: 32px; display: flex; flex-direction: column; gap: 20px; }
+    .about-stat .about-number { font-size: clamp(40px, 7vw, 72px); }
+
+    .about-right h2 {
+      font-size: clamp(28px, 4vw, 44px); font-weight: 900;
+      letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 20px;
+    }
+    .about-right p { color: var(--muted); line-height: 1.75; margin-bottom: 16px; }
+    .about-features { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-top: 28px; }
+    .about-features li {
+      display: flex; align-items: center; gap: 12px;
+      font-size: 14px; font-weight: 500; color: var(--muted);
+    }
+    .about-features li::before {
+      content: '✓'; flex-shrink: 0;
+      color: var(--accent); font-size: 13px; font-weight: 700;
+    }
+
+    /* ─── STATS ─── */
+    .stats { background: var(--primary); border-top: none; border-bottom: none; }
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+    }
+    .stat-item {
+      padding: 56px 40px;
+      display: flex; flex-direction: column; gap: 10px;
+      border-right: 1px solid rgba(255,255,255,0.08);
+      transition: background 0.3s;
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-item:hover { background: rgba(255,255,255,0.04); }
+    .stat-item strong {
+      font-size: clamp(44px, 7vw, 80px); font-weight: 900;
+      letter-spacing: -0.05em; line-height: 1; color: var(--accent);
+    }
+    .stat-item span { font-size: 12px; color: rgba(255,255,255,0.45); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
+
+    /* ─── COURTS ─── */
+    .courts-intro {
+      display: grid; grid-template-columns: 1fr auto; align-items: end;
+      gap: 40px; margin-bottom: 48px;
+    }
+    .courts-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: auto auto;
+      gap: 12px;
+    }
+    .court-card {
+      border-radius: var(--r); overflow: hidden;
+      background: var(--surface); border: 1px solid var(--border);
+      position: relative; aspect-ratio: 4/3;
+      display: flex; align-items: flex-end;
+    }
+    .court-card:first-child {
+      grid-column: span 2; aspect-ratio: 16/7;
+    }
+    .court-visual {
+      position: absolute; inset: 0;
+      overflow: hidden;
+    }
+    .court-visual img {
+      width: 100%; height: 100%;
+      object-fit: cover; display: block;
+      transition: transform 0.5s ease;
+    }
+    .court-card:hover .court-visual img { transform: scale(1.04); }
+    .court-photo-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .court-photo-strip img {
+      width: 100%; aspect-ratio: 4/3;
+      object-fit: cover; border-radius: 6px;
+      display: block;
+      transition: opacity 0.3s ease;
+    }
+    .court-photo-strip img:hover { opacity: 0.8; }
+    .court-card-overlay {
+      position: relative; z-index: 1; padding: 20px;
+      background: linear-gradient(transparent, rgba(10,22,40,0.92));
+      width: 100%;
+    }
+    .court-tag {
+      display: inline-block; background: rgba(255,255,255,0.12); color: white;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; padding: 3px 10px; border-radius: 100px;
+      margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.15);
+    }
+    .court-card h4 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: white; }
+    .court-card p { font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 2px; }
+
+    /* ─── TRAINING ─── */
+    #training { background: var(--surface); }
+    .training-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: start; }
+    .training-programs { display: flex; flex-direction: column; gap: 2px; }
+    .training-item {
+      padding: 24px 0; border-bottom: 1px solid var(--border);
+      display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
+      cursor: pointer; transition: padding-left 0.2s;
+    }
+    .training-item:hover { padding-left: 12px; }
+    .training-item:first-child { border-top: 1px solid var(--border); }
+    .training-item-left { display: flex; align-items: center; gap: 20px; }
+    .training-num {
+      font-size: 11px; font-weight: 600; color: var(--muted2);
+      width: 24px; text-align: right;
+    }
+    .training-item h4 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 3px; }
+    .training-item p { font-size: 13px; color: var(--muted); }
+    .training-level {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 4px 10px;
+      background: var(--surface2); border-radius: 100px; color: var(--muted);
+      white-space: nowrap;
+    }
+    .training-level.beginner { background: rgba(255,184,0,0.14); color: #7a5200; }
+    .training-cta-box {
+      background: var(--primary); border: none;
+      border-radius: calc(var(--r) + 4px); padding: 40px; position: sticky; top: 100px;
+    }
+    .training-cta-box h3 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; color: white; }
+    .training-cta-box .dim { color: rgba(255,255,255,0.4); }
+    .training-cta-box p { color: rgba(255,255,255,0.55); font-size: 14px; line-height: 1.7; margin-bottom: 28px; }
+    .training-cta-box .btn-outline { border-color: rgba(255,255,255,0.25); color: white; }
+    .training-cta-box .btn-outline:hover { border-color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.08); color: white; transform: translateY(-2px); }
+    .training-price { margin-bottom: 28px; }
+    .training-price .from { font-size: 12px; color: rgba(255,255,255,0.45); }
+    .training-price strong { font-size: 36px; font-weight: 900; letter-spacing: -0.03em; color: var(--accent); }
+    .training-price small { font-size: 14px; color: rgba(255,255,255,0.45); }
+
+    /* ─── TESTIMONIALS ─── */
+    .testimonials { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+    .testimonial-card {
+      background: transparent; border: none;
+      border-right: 1px solid var(--border);
+      padding: 48px 40px;
+    }
+    .testimonial-card:last-child { border-right: none; }
+    .testimonial-stars { display: flex; gap: 3px; margin-bottom: 18px; }
+    .testimonial-stars span { color: var(--accent); font-size: 14px; }
+    .testimonial-card blockquote {
+      font-size: 15px; line-height: 1.7; color: var(--text);
+      font-style: italic; margin-bottom: 24px;
+    }
+    .testimonial-author { display: flex; align-items: center; gap: 12px; }
+    .author-avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: var(--primary);
+      border: 1px solid var(--border); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px; color: white;
+    }
+    .author-info strong { font-size: 14px; font-weight: 600; display: block; }
+    .author-info span { font-size: 12px; color: var(--muted); }
+
+    /* ─── EVENTS ─── */
+    #events { background: var(--surface); }
+    .events-list { display: flex; flex-direction: column; gap: 2px; }
+    .event-item {
+      display: grid; grid-template-columns: 72px 1fr auto;
+      gap: 24px; align-items: center;
+      padding: 28px 0; border-bottom: 1px solid var(--border);
+      transition: padding-left 0.2s;
+    }
+    .event-item:hover { padding-left: 8px; }
+    .event-item:first-child { border-top: 1px solid var(--border); }
+    .event-date {
+      text-align: center; display: flex; flex-direction: column;
+      align-items: center; gap: 2px;
+    }
+    .event-date strong { font-size: 28px; font-weight: 900; letter-spacing: -0.03em; line-height: 1; color: var(--primary); }
+    .event-date span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+    .event-info h4 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 4px; }
+    .event-info p { font-size: 13px; color: var(--muted); }
+    .event-badge {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 5px 12px;
+      border-radius: 100px; white-space: nowrap;
+    }
+    .badge-open { background: rgba(255,184,0,0.12); color: #7a5200; border: 1px solid rgba(255,184,0,0.25); }
+    .badge-soon { background: rgba(26,39,100,0.08); color: var(--primary); border: 1px solid rgba(26,39,100,0.12); }
+    .badge-full { background: var(--surface2); color: var(--muted); }
+
+    /* ─── CTA BANNER ─── */
+    .cta-banner {
+      background: var(--primary); padding: 60px 0;
+    }
+    .cta-banner .container {
+      display: flex; align-items: center;
+      justify-content: space-between; flex-wrap: wrap; gap: 20px;
+    }
+    .cta-banner .label { color: rgba(255,255,255,0.45); margin-bottom: 8px; }
+    .cta-banner .cta-desc { color: rgba(255,255,255,0.6); font-size: 14px; }
+    .cta-banner .cta-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+
+    /* ─── FOOTER ─── */
+    footer { padding: 64px 0 32px; background: #0a1628; border-top: none; }
+    .footer-grid {
+      display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 48px; margin-bottom: 56px;
+    }
+    .footer-brand { display: flex; flex-direction: column; gap: 16px; }
+    .footer-logo img { height: 86px; width: 86px; object-fit: contain; border-radius: 50%; margin-bottom: 16px; }
+    .footer-brand p { font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.7; max-width: 280px; }
+    .footer-social { display: flex; gap: 10px; margin-top: 4px; }
+    .social-btn {
+      width: 36px; height: 36px; border-radius: var(--r);
+      border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06);
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s; cursor: pointer;
+    }
+    .social-btn:hover { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.12); }
+    .social-btn svg { width: 16px; height: 16px; fill: rgba(255,255,255,0.55); }
+    .footer-col h5 {
+      font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase; color: rgba(255,255,255,0.35); margin-bottom: 18px;
+    }
+    .footer-links { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .footer-links a { font-size: 14px; color: rgba(255,255,255,0.55); transition: color 0.2s; }
+    .footer-links a:hover { color: white; }
+    .footer-info { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .footer-info li { display: flex; gap: 10px; font-size: 14px; color: rgba(255,255,255,0.55); align-items: flex-start; }
+    .footer-info li svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px; fill: rgba(255,255,255,0.35); }
+    .footer-info li a { color: rgba(255,255,255,0.55); }
+    .footer-info li a:hover { color: white; }
+    .footer-bottom {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-top: 28px; border-top: 1px solid rgba(255,255,255,0.08);
+      flex-wrap: wrap; gap: 12px;
+    }
+    .footer-bottom p { font-size: 13px; color: rgba(255,255,255,0.25); }
+    .footer-bottom a { color: rgba(255,255,255,0.35); transition: color 0.2s; }
+    .footer-bottom a:hover { color: rgba(255,255,255,0.7); }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 1024px) {
+      .about-grid { grid-template-columns: 1fr; gap: 48px; }
+      .training-grid { grid-template-columns: 1fr; }
+      .training-cta-box { position: static; }
+      .footer-grid { grid-template-columns: 1fr 1fr; gap: 40px; }
+      .footer-brand { grid-column: span 2; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 768px) {
+      section { padding: 88px 0; }
+      .nav-links, .nav-cta { display: none; }
+      .hamburger { display: flex; }
+      .service-row { grid-template-columns: 32px 1fr; gap: 16px; }
+      .service-row p, .service-row-arrow { display: none; }
+      .courts-grid { grid-template-columns: 1fr 1fr; }
+      .court-card:first-child { grid-column: span 2; }
+      .testimonials-grid { grid-template-columns: 1fr; }
+      .footer-grid { grid-template-columns: 1fr; }
+      .footer-brand { grid-column: span 1; }
+      .footer-bottom { flex-direction: column; align-items: flex-start; }
+      .hero h1 { font-size: clamp(44px, 12vw, 80px); }
+      .event-item { grid-template-columns: 56px 1fr; }
+      .event-badge { display: none; }
+      .courts-intro { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 480px) {
+      .container { padding: 0 18px; }
+      .hero { padding-bottom: 60px; }
+      .hero-actions { flex-direction: column; }
+      .btn-lg { width: 100%; }
+      .about-number { font-size: 80px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .stat-item { padding: 32px 20px; }
+      .courts-grid { grid-template-columns: 1fr; }
+      .court-card:first-child { grid-column: span 1; }
+    }
+
+    /* ─── CONTACT FORM ─── */
+    .contact-grid {
+      display: grid; grid-template-columns: 1fr 1.6fr;
+      gap: 80px; align-items: start;
+    }
+    .contact-info-card {
+      display: flex; flex-direction: column; gap: 32px;
+      position: sticky; top: calc(var(--nav) + 24px);
+    }
+    .contact-info-item { display: flex; flex-direction: column; gap: 6px; }
+    .contact-info-item .label { margin-bottom: 0; }
+    .contact-info-item a, .contact-info-item span {
+      font-size: 15px; color: var(--text); transition: color 0.2s;
+    }
+    .contact-info-item a:hover { color: var(--accent); }
+    .section-lien-he { background: var(--surface); border-top: 1px solid var(--border); }
+    .contact-hours { display: flex; flex-direction: column; gap: 4px; }
+    .contact-hours span { font-size: 14px; color: var(--muted); }
+
+    .form-group { margin-bottom: 20px; }
+    .form-label {
+      display: block; font-size: 11px; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    .form-label .required { color: var(--accent); margin-left: 2px; }
+    .form-control {
+      width: 100%; background: white;
+      border: 1px solid var(--border); border-radius: var(--r);
+      color: var(--text); padding: 14px 16px;
+      font-family: var(--font); font-size: 15px; line-height: 1.5;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      -webkit-appearance: none; appearance: none;
+    }
+    .form-control::placeholder { color: var(--muted2); }
+    .form-control:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent2);
+    }
+    .form-control.is-error { border-color: #ef4444; }
+    .form-control.is-error:focus { box-shadow: 0 0 0 3px rgba(239,68,68,0.12); }
+    .field-error {
+      font-size: 12px; color: #ef4444; margin-top: 6px;
+      display: none; align-items: center; gap: 4px;
+    }
+    .field-error.show { display: flex; }
+    select.form-control {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235a6a8a' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 14px center;
+      padding-right: 40px; cursor: pointer;
+    }
+    select.form-control option { background: white; color: var(--text); }
+    textarea.form-control { min-height: 130px; resize: vertical; }
+
+    .contact-submit-wrap { margin-top: 8px; }
+    .form-error-msg {
+      font-size: 13px; color: #ef4444; margin-top: 12px;
+      text-align: center; line-height: 1.5;
+    }
+    .form-error-msg a { color: #ef4444; font-weight: 600; text-decoration: underline; }
+    .btn-submit {
+      width: 100%; justify-content: center;
+      position: relative; overflow: hidden;
+    }
+    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    .contact-success {
+      background: white; border: 1px solid var(--border);
+      border-radius: calc(var(--r) + 6px); padding: 56px 40px;
+      text-align: center;
+    }
+    .success-icon {
+      width: 60px; height: 60px; border-radius: 50%;
+      background: var(--accent2); border: 1px solid rgba(255,184,0,0.3);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 24px; font-size: 26px;
+      animation: pop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes pop {
+      0% { transform: scale(0.4); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .success-name { color: var(--primary); font-weight: 700; }
+    .contact-success h3 {
+      font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px;
+    }
+    .contact-success p { color: var(--muted); font-size: 15px; line-height: 1.7; margin-bottom: 28px; }
+
+    @media (max-width: 1024px) {
+      .contact-grid { gap: 48px; }
+      .contact-info-card { position: static; }
+    }
+    @media (max-width: 768px) {
+      .contact-grid { grid-template-columns: 1fr; gap: 40px; }
+      .form-control { font-size: 16px; }
+    }
+    @media (max-width: 480px) {
+      .contact-success { padding: 40px 24px; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ─── NAVIGATION ─── -->
+  <nav id="nav">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo"><img src="logo.jpg" alt="AMZ Pickleball"></a>
+      <ul class="nav-links">
+        <li><a href="#services">Dịch Vụ</a></li>
+        <li><a href="#courts">Sân Chơi</a></li>
+        <li><a href="#training">Huấn Luyện</a></li>
+        <li><a href="#events">Sự Kiện</a></li>
+        <li><a href="#lien-he">Liên Hệ</a></li>
+      </ul>
+      <div class="nav-cta">
+        <a href="#lien-he" class="btn btn-primary">Đặt Sân Ngay</a>
+      </div>
+      <button class="hamburger" id="hamburger" aria-label="Menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ─── MOBILE MENU ─── -->
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="#services" class="mobile-link">Dịch Vụ</a>
+    <a href="#courts" class="mobile-link">Sân Chơi</a>
+    <a href="#training" class="mobile-link">Huấn Luyện</a>
+    <a href="#events" class="mobile-link">Sự Kiện</a>
+    <a href="#lien-he" class="mobile-link">Liên Hệ</a>
+    <a href="#lien-he" class="btn btn-primary btn-lg">Đặt Sân Ngay</a>
+  </div>
+
+  <main>
+
+    <!-- ─── HERO ─── -->
+    <section class="hero">
+      <div class="hero-bg"></div>
+      <div class="hero-grid"></div>
+      <div class="hero-noise"></div>
+
+      <div class="hero-visual">
+        <div class="hero-visual-inner">
+          <div class="hero-visual-lines"></div>
+          <div class="hero-visual-label">
+            <span>AMZ Pickleball</span>
+            <strong>Sân Chuyên Nghiệp</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="container hero-content">
+        <div class="hero-badge reveal">
+          <div class="hero-badge-dot"></div>
+          <span class="label">Social Club Pickleball · Vũng Tàu, TP.HCM</span>
+        </div>
+
+        <h1 class="reveal reveal-delay-1">
+          ĐỈNH CAO<br>
+          <em>PICKLEBALL</em>
+        </h1>
+
+        <p class="hero-sub reveal reveal-delay-2">
+          Chơi. Cafe. Kết Nối. — 8 sân tiêu chuẩn thi đấu,<br>
+          huấn luyện chuyên nghiệp, cộng đồng Pickleball<br>
+          sôi động nhất Vũng Tàu.
+        </p>
+
+        <div class="hero-actions reveal reveal-delay-3">
+          <a href="#lien-he" class="btn btn-primary btn-lg">Đặt Sân Ngay</a>
+          <a href="#services" class="btn btn-outline btn-lg">Xem Dịch Vụ</a>
+        </div>
+
+        <div class="hero-meta reveal reveal-delay-4">
+          <div class="hero-meta-item">
+            <strong>8</strong>
+            <span>Sân chuyên nghiệp</span>
+          </div>
+          <div class="hero-meta-item">
+            <strong>05:00</strong>
+            <span>Mở cửa hàng ngày</span>
+          </div>
+          <div class="hero-meta-item">
+            <strong>1000<span class="dim">+</span></strong>
+            <span>Thành viên</span>
+          </div>
+          <div class="hero-meta-item">
+            <strong>50<span class="dim">+</span></strong>
+            <span>Giải đấu</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-scroll">
+        <div class="hero-scroll-line"></div>
+        <span>Cuộn xuống</span>
+      </div>
+    </section>
+
+    <!-- ─── MARQUEE ─── -->
+    <div class="marquee-wrap" aria-hidden="true">
+      <div class="marquee-track">
+        <div class="marquee-item">AMZ Pickleball<div class="marquee-dot"></div></div>
+        <div class="marquee-item">Chơi. Cafe. Kết Nối.<div class="marquee-dot"></div></div>
+        <div class="marquee-item">8 Sân Tiêu Chuẩn Thi Đấu<div class="marquee-dot"></div></div>
+        <div class="marquee-item">Social Club Đầu Tiên Vũng Tàu<div class="marquee-dot"></div></div>
+        <div class="marquee-item">Huấn Luyện Viên Chuyên Nghiệp<div class="marquee-dot"></div></div>
+        <div class="marquee-item">Dink &amp; Drink Friday<div class="marquee-dot"></div></div>
+        <div class="marquee-item">Đặt Sân Online 24/7<div class="marquee-dot"></div></div>
+        <div class="marquee-item">179 Thống Nhất, P. Vũng Tàu<div class="marquee-dot"></div></div>
+        <div class="marquee-item">AMZ Pickleball<div class="marquee-dot"></div></div>
+        <div class="marquee-item">Chơi. Cafe. Kết Nối.<div class="marquee-dot"></div></div>
+        <div class="marquee-item">8 Sân Tiêu Chuẩn Thi Đấu<div class="marquee-dot"></div></div>
+        <div class="marquee-item">Social Club Đầu Tiên Vũng Tàu<div class="marquee-dot"></div></div>
+        <div class="marquee-item">Huấn Luyện Viên Chuyên Nghiệp<div class="marquee-dot"></div></div>
+        <div class="marquee-item">Dink &amp; Drink Friday<div class="marquee-dot"></div></div>
+        <div class="marquee-item">Đặt Sân Online 24/7<div class="marquee-dot"></div></div>
+        <div class="marquee-item">179 Thống Nhất, P. Vũng Tàu<div class="marquee-dot"></div></div>
+      </div>
+    </div>
+
+    <!-- ─── SERVICES ─── -->
+    <section id="services">
+      <div class="container">
+        <div class="section-header">
+          <span class="label reveal">Dịch Vụ</span>
+          <h2 class="reveal reveal-delay-1">Tất cả trong<br><span class="dim">một địa điểm</span></h2>
+          <p class="reveal reveal-delay-2">AMZ không chỉ là sân Pickleball — đây là điểm đến thể thao và kết nối xã hội hàng đầu Vũng Tàu.</p>
+        </div>
+
+        <div class="services-list">
+          <div class="service-row reveal">
+            <span class="service-num">01</span>
+            <h3>Cho Thuê Sân</h3>
+            <p>8 sân tiêu chuẩn thi đấu, mặt sân chuyên biệt, đèn LED 500 lux. Đặt sân theo giờ hoặc gói tháng — mở cửa từ 5 giờ sáng để phục vụ buổi sáng sớm trước giờ làm.</p>
+            <span class="service-row-arrow">→</span>
+          </div>
+          <div class="service-row reveal reveal-delay-1">
+            <span class="service-num">02</span>
+            <h3>Tập Luyện Nhóm</h3>
+            <p>Lớp học có cấu trúc từ người mới đến nâng cao. HLV chuyên nghiệp, lịch học sáng–chiều–tối linh hoạt — phù hợp mọi lịch làm việc.</p>
+            <span class="service-row-arrow">→</span>
+          </div>
+          <div class="service-row reveal reveal-delay-2">
+            <span class="service-num">03</span>
+            <h3>Huấn Luyện 1-on-1</h3>
+            <p>Chương trình cá nhân hóa theo trình độ và mục tiêu riêng của bạn với HLV chuyên nghiệp.</p>
+            <span class="service-row-arrow">→</span>
+          </div>
+          <div class="service-row reveal reveal-delay-3">
+            <span class="service-num">04</span>
+            <h3>Tổ Chức Giải Đấu & Sự Kiện</h3>
+            <p>Giải đấu nội bộ hàng tháng, giao hữu liên CLB, và "Dink &amp; Drink Friday" — sự kiện tối thứ 6 kết hợp mini-tournament và giao lưu cộng đồng.</p>
+            <span class="service-row-arrow">→</span>
+          </div>
+          <div class="service-row reveal reveal-delay-4">
+            <span class="service-num">05</span>
+            <h3>Gói Membership</h3>
+            <p>3 tầng thành viên — Basic, Pro, Elite. Ưu đãi giờ đặt sân, giảm học phí, ưu tiên đăng ký sự kiện và tournament seeding cho thành viên cao cấp.</p>
+            <span class="service-row-arrow">→</span>
+          </div>
+          <div class="service-row reveal reveal-delay-5">
+            <span class="service-num">06</span>
+            <h3>Thuê Thiết Bị</h3>
+            <p>Vợt Pickleball, bóng và phụ kiện đa dạng. Thuê theo buổi, không cần mang theo đồ.</p>
+            <span class="service-row-arrow">→</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ─── ABOUT ─── -->
+    <section id="about">
+      <div class="container">
+        <div class="about-grid">
+          <div class="reveal-left">
+            <div class="about-number">8<span>.</span></div>
+            <div class="about-number-label">Sân Pickleball Chuyên Nghiệp</div>
+            <div class="about-stat">
+              <div>
+                <div class="about-number">1000<span class="dim">+</span></div>
+                <div class="about-number-label">Thành Viên Đang Hoạt Động</div>
+              </div>
+              <div>
+                <div class="about-number">5<span class="dim">+</span></div>
+                <div class="about-number-label">Huấn Luyện Viên Chuyên Nghiệp</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="reveal-right">
+            <span class="label" style="margin-bottom: 16px; display: block;">Về Chúng Tôi</span>
+            <h2>Pickleball Social Club<br><span class="dim">đầu tiên tại</span><br>Vũng Tàu</h2>
+            <p style="margin-top: 20px;">AMZ Pickle Ball Club không chỉ là sân cho thuê — đây là điểm đến thể thao và kết nối xã hội. Chúng tôi xây dựng cộng đồng Pickleball thực thụ, nơi bạn vừa rèn luyện thể chất, vừa gặp gỡ những người cùng đam mê.</p>
+            <p>Tọa lạc ngay trên đường Thống Nhất, Vũng Tàu — với 8 sân lớn nhất khu vực, đội ngũ HLV chuyên nghiệp, và lịch sự kiện phong phú hàng tuần — AMZ là lựa chọn số 1 cho người chơi Pickleball tại TP.HCM.</p>
+            <ul class="about-features">
+              <li>8 sân — quy mô lớn nhất khu vực Vũng Tàu</li>
+              <li>Mở cửa từ 05:00 mỗi ngày — linh hoạt mọi lịch trình</li>
+              <li>HLV chuyên nghiệp, chương trình học bài bản từng cấp độ</li>
+              <li>Giải đấu và sự kiện cộng đồng mỗi tuần</li>
+              <li>Cộng đồng thân thiện — từ người mới đến vận động viên</li>
+            </ul>
+            <a href="#lien-he" class="btn btn-primary" style="margin-top: 36px;">Liên Hệ Chúng Tôi</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── STATS ─── -->
+    <section class="stats">
+      <div class="container">
+        <div class="stats-grid">
+          <div class="stat-item reveal">
+            <strong><span data-count="8" data-suffix="">8</span></strong>
+            <span>Sân tiêu chuẩn thi đấu</span>
+          </div>
+          <div class="stat-item reveal reveal-delay-1">
+            <strong><span data-count="5" data-suffix="+">5+</span></strong>
+            <span>Huấn luyện viên chuyên nghiệp</span>
+          </div>
+          <div class="stat-item reveal reveal-delay-2">
+            <strong><span data-count="1000" data-suffix="+">1000+</span></strong>
+            <span>Thành viên đang hoạt động</span>
+          </div>
+          <div class="stat-item reveal reveal-delay-3">
+            <strong><span data-count="50" data-suffix="+">50+</span></strong>
+            <span>Giải đấu đã tổ chức</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── COURTS ─── -->
+    <section id="courts">
+      <div class="container">
+        <div class="courts-intro">
+          <div>
+            <span class="label reveal">Cơ Sở Vật Chất</span>
+            <h2 class="reveal reveal-delay-1 section-h2-md">
+              8 sân · Lớn nhất<br><span class="dim">khu vực Vũng Tàu</span>
+            </h2>
+          </div>
+          <a href="#lien-he" class="btn btn-outline reveal reveal-delay-2">Đặt sân ngay →</a>
+        </div>
+
+        <div class="courts-grid">
+          <div class="court-card reveal">
+            <div class="court-visual">
+              <img src="images/san/san-toan-canh.jpg" alt="Khu sân thi đấu chính AMZ Pickleball" loading="lazy">
+            </div>
+            <div class="court-card-overlay">
+              <div class="court-tag">Sân chính</div>
+              <h4>Khu Thi Đấu Chính</h4>
+              <p>8 sân · Mái che · Mặt sân tiêu chuẩn thi đấu</p>
+            </div>
+          </div>
+
+          <div class="court-card reveal reveal-delay-1">
+            <div class="court-visual">
+              <img src="images/san/san-amz-club.jpg" alt="Sân AMZ Pickleball Club" loading="lazy">
+            </div>
+            <div class="court-card-overlay">
+              <div class="court-tag">AMZ Club</div>
+              <h4>Sân AMZ Có Mái Che</h4>
+              <p>Đèn LED · Thoáng mát · Phù hợp mọi thời tiết</p>
+            </div>
+          </div>
+
+          <div class="court-card reveal reveal-delay-2">
+            <div class="court-visual">
+              <img src="images/san/san-mai-che-led.jpg" alt="Sân Pickleball AMZ có mái che" loading="lazy">
+            </div>
+            <div class="court-card-overlay">
+              <div class="court-tag">Tập luyện</div>
+              <h4>Khu Luyện Tập</h4>
+              <p>HLV hướng dẫn · Mọi trình độ · Linh hoạt lịch học</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="court-photo-strip reveal">
+          <img src="images/hanh-dong/doi-khang-net.jpg" alt="Thi đấu đối kháng tại AMZ Pickleball" loading="lazy">
+          <img src="images/hanh-dong/tap-luyen-1.jpg" alt="Tập luyện Pickleball tại AMZ" loading="lazy">
+          <img src="images/san/san-tap-luyen.jpg" alt="Sân tập luyện AMZ Club" loading="lazy">
+          <img src="images/hanh-dong/hanh-dong-dep.jpg" alt="Khoảnh khắc thi đấu Pickleball" loading="lazy">
+        </div>
+
+        <div style="margin-top: 32px; display:flex; gap:24px; flex-wrap:wrap;" class="reveal">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--muted2);display:inline-block;"></span>
+            T2–T6: 05:00 – 22:00
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--muted2);display:inline-block;"></span>
+            T7–CN: 05:00 – 23:00
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--muted2);display:inline-block;"></span>
+            179 Thống Nhất, Phường Vũng Tàu, TP.HCM
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ─── TRAINING ─── -->
+    <section id="training">
+      <div class="container">
+        <div class="training-grid">
+          <div>
+            <span class="label reveal">Huấn Luyện</span>
+            <h2 class="reveal reveal-delay-1 section-h2-md" style="margin-bottom:40px;">
+              Nâng trình độ của<br>bạn lên <span class="dim">tầm cao mới</span>
+            </h2>
+
+            <div class="training-programs">
+              <div class="training-item reveal">
+                <div class="training-item-left">
+                  <span class="training-num">01</span>
+                  <div>
+                    <h4>Khóa Người Mới Bắt Đầu</h4>
+                    <p>Học luật chơi, kỹ thuật cơ bản, tư thế và di chuyển</p>
+                  </div>
+                </div>
+                <span class="training-level beginner">Cơ bản</span>
+              </div>
+
+              <div class="training-item reveal reveal-delay-1">
+                <div class="training-item-left">
+                  <span class="training-num">02</span>
+                  <div>
+                    <h4>Khóa Trung Cấp</h4>
+                    <p>Chiến thuật đánh đôi, kiểm soát bóng, dink & drive</p>
+                  </div>
+                </div>
+                <span class="training-level">Trung cấp</span>
+              </div>
+
+              <div class="training-item reveal reveal-delay-2">
+                <div class="training-item-left">
+                  <span class="training-num">03</span>
+                  <div>
+                    <h4>Khóa Nâng Cao</h4>
+                    <p>Kỹ thuật tấn công, phòng thủ, tâm lý thi đấu</p>
+                  </div>
+                </div>
+                <span class="training-level">Nâng cao</span>
+              </div>
+
+              <div class="training-item reveal reveal-delay-3">
+                <div class="training-item-left">
+                  <span class="training-num">04</span>
+                  <div>
+                    <h4>Huấn Luyện 1-on-1</h4>
+                    <p>Chương trình cá nhân hóa theo mục tiêu riêng</p>
+                  </div>
+                </div>
+                <span class="training-level">Mọi trình độ</span>
+              </div>
+
+              <div class="training-item reveal reveal-delay-4">
+                <div class="training-item-left">
+                  <span class="training-num">05</span>
+                  <div>
+                    <h4>Khóa Chuẩn Bị Thi Đấu</h4>
+                    <p>Luyện tập thực chiến, chuẩn bị cho giải đấu chính thức</p>
+                  </div>
+                </div>
+                <span class="training-level">Nâng cao</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="training-cta-box reveal-right">
+              <h3>Đăng ký<br><span class="dim">tập luyện ngay</span></h3>
+              <p>Buổi đầu tiên: HLV đánh giá trình độ miễn phí và thiết kế lộ trình tập cá nhân hóa phù hợp mục tiêu của bạn.</p>
+              <div class="training-price">
+                <div class="from">Học phí từ</div>
+                <strong>500K</strong><small> / buổi</small>
+              </div>
+              <a href="tel:0914859927" class="btn btn-primary btn-lg btn-cta" style="width:100%;justify-content:center;margin-bottom:12px;">
+                <span class="btn-cta-text">Đăng Ký Ngay</span>
+                <span class="btn-cta-arrow" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
+              </a>
+              <a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="width:100%;justify-content:center;">
+                Nhắn tin Facebook
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── TESTIMONIALS ─── -->
+    <section class="testimonials" id="testimonials">
+      <div class="container">
+        <div class="section-header">
+          <span class="label reveal">Thành Viên Nói Gì</span>
+          <h2 class="reveal reveal-delay-1">Thành viên<br><span class="dim">nói về AMZ</span></h2>
+        </div>
+
+        <div class="testimonials-grid">
+          <div class="testimonial-card reveal">
+            <div class="testimonial-stars">
+              <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+            </div>
+            <blockquote>Chơi ở AMZ khác hẳn các sân khác — cộng đồng ở đây thực sự thân thiện. Mới đến lần đầu đã có người hỏi thăm và rủ chơi cùng. Sân rộng, đèn sáng, mặt sân êm tay. Tôi đã giới thiệu cả nhóm đồng nghiệp đến đây.</blockquote>
+            <div class="testimonial-author">
+              <div class="author-avatar">TN</div>
+              <div class="author-info">
+                <strong>Trần Ngọc Anh</strong>
+                <span>Thành viên · 6 tháng</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="testimonial-card reveal reveal-delay-1">
+            <div class="testimonial-stars">
+              <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+            </div>
+            <blockquote>Trước khi đến AMZ tôi nghĩ Pickleball chỉ dành cho người trẻ. Sau 3 tháng học với HLV ở đây, tôi đã có thể đánh cơ bản và tham gia giải đấu nội bộ. Được dạy từng kỹ thuật, rất kiên nhẫn và không bỏ ai lại phía sau.</blockquote>
+            <div class="testimonial-author">
+              <div class="author-avatar">PH</div>
+              <div class="author-info">
+                <strong>Phạm Hữu Tài</strong>
+                <span>Thành viên · 3 tháng</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="testimonial-card reveal reveal-delay-2">
+            <div class="testimonial-stars">
+              <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+            </div>
+            <blockquote>Sự kiện Dink &amp; Drink tối thứ 6 là lý do tôi giữ membership dài hạn. Đánh giải mini xong ngồi lại tán chuyện cùng nhau — vui hơn nhiều so với chỉ thuê sân rồi về. AMZ đã tạo ra thứ gì đó thực sự khác biệt ở Vũng Tàu.</blockquote>
+            <div class="testimonial-author">
+              <div class="author-avatar">LM</div>
+              <div class="author-info">
+                <strong>Lê Minh Châu</strong>
+                <span>Thành viên · 1 năm</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── EVENTS ─── -->
+    <section id="events">
+      <div class="container">
+        <div class="section-intro">
+          <div>
+            <span class="label reveal">Sự Kiện</span>
+            <h2 class="reveal reveal-delay-1 section-h2-md">
+              Giải đấu &<br><span class="dim">sự kiện sắp tới</span>
+            </h2>
+          </div>
+          <a href="#lien-he" class="btn btn-outline reveal reveal-delay-2">Xem tất cả →</a>
+        </div>
+
+        <div class="events-list">
+          <div class="event-item reveal">
+            <div class="event-date">
+              <strong>14</strong>
+              <span>Th6</span>
+            </div>
+            <div class="event-info">
+              <h4>AMZ Open Tournament — Vòng Tháng 6</h4>
+              <p>Giải đấu nội bộ hàng tháng · Đôi nam + Đôi nữ + Đôi hỗn hợp</p>
+            </div>
+            <span class="event-badge badge-open">Đang mở đăng ký</span>
+          </div>
+
+          <div class="event-item reveal reveal-delay-1">
+            <div class="event-date">
+              <strong>21</strong>
+              <span>Th6</span>
+            </div>
+            <div class="event-info">
+              <h4>Buổi Tập Thử Miễn Phí — Người Mới</h4>
+              <p>Trải nghiệm Pickleball lần đầu · Được hướng dẫn bởi HLV chuyên nghiệp</p>
+            </div>
+            <span class="event-badge badge-open">Còn chỗ</span>
+          </div>
+
+          <div class="event-item reveal reveal-delay-2">
+            <div class="event-date">
+              <strong>28</strong>
+              <span>Th6</span>
+            </div>
+            <div class="event-info">
+              <h4>AMZ vs Các CLB TP.HCM — Giao Hữu</h4>
+              <p>Trận giao hữu liên câu lạc bộ · Dành cho thành viên đã đăng ký</p>
+            </div>
+            <span class="event-badge badge-soon">Sắp mở</span>
+          </div>
+
+          <div class="event-item reveal reveal-delay-3">
+            <div class="event-date">
+              <strong>06</strong>
+              <span>Th6</span>
+            </div>
+            <div class="event-info">
+              <h4>Dink &amp; Drink Friday — Tuần Đầu Tháng 6</h4>
+              <p>Mini-tournament tối thứ 6 · Giao lưu cộng đồng · Mọi trình độ tham gia được</p>
+            </div>
+            <span class="event-badge badge-open">Đang mở đăng ký</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── CTA BANNER ─── -->
+    <section class="cta-banner" id="contact">
+      <div class="container">
+        <div>
+          <p class="label">Sẵn sàng lên sân chưa?</p>
+          <p class="cta-desc">179 Thống Nhất, P. Vũng Tàu, TP.HCM · Mở từ 05:00 mỗi ngày · 8 sân chờ bạn</p>
+        </div>
+        <div class="cta-actions">
+          <a href="tel:0914859927" class="btn btn-primary btn-cta">
+            <span class="btn-cta-text">Gọi Ngay 0914 859 927</span>
+            <span class="btn-cta-arrow" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
+          </a>
+          <a href="#lien-he" class="btn btn-outline btn-cta-outline">
+            <span class="btn-cta-text">Đăng Ký Online</span>
+            <span class="btn-cta-arrow" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── LIÊN HỆ ─── -->
+    <section id="lien-he" class="section-lien-he">
+      <div class="container">
+        <div class="section-header">
+          <span class="label reveal">Liên Hệ</span>
+          <h2 class="reveal reveal-delay-1">Đặt sân hoặc<br><em style="font-style:italic;color:var(--accent);">đăng ký ngay</em></h2>
+          <p class="reveal reveal-delay-2">Điền form bên dưới — chúng tôi phản hồi trong vòng 2 giờ trong giờ hoạt động.</p>
+        </div>
+
+        <div class="contact-grid">
+
+          <!-- Cột trái: thông tin liên hệ -->
+          <div class="contact-info-card reveal-left">
+            <div class="contact-info-item">
+              <span class="label">Địa chỉ</span>
+              <span>179 Thống Nhất, Phường Vũng Tàu<br>TP. Hồ Chí Minh</span>
+            </div>
+            <div class="contact-info-item">
+              <span class="label">Điện thoại</span>
+              <a href="tel:0914859927">0914 859 927</a>
+            </div>
+            <div class="contact-info-item">
+              <span class="label">Facebook</span>
+              <a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener noreferrer">AMZ Pickle Ball Club</a>
+            </div>
+            <div class="contact-info-item">
+              <span class="label">Giờ mở cửa</span>
+              <div class="contact-hours">
+                <span>Thứ 2 – Thứ 6: 05:00 – 22:00</span>
+                <span>Thứ 7 – Chủ nhật: 05:00 – 23:00</span>
+              </div>
+            </div>
+            <div style="padding-top:8px;border-top:1px solid var(--border);">
+              <p style="font-size:13px;color:var(--muted);line-height:1.7;">
+                Hoặc nhắn tin qua Facebook để được tư vấn ngay lập tức.
+              </p>
+            </div>
+          </div>
+
+          <!-- Cột phải: form -->
+          <div class="contact-form-wrap reveal-right">
+
+            <form id="contactForm" novalidate>
+              <div class="form-group">
+                <label class="form-label" for="cf-name">Họ và tên <span class="required">*</span></label>
+                <input id="cf-name" name="name" type="text" class="form-control"
+                  placeholder="Nguyễn Văn A" autocomplete="name"
+                  data-field="name" data-min="2">
+                <span class="field-error" id="err-name">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  Vui lòng nhập họ và tên (tối thiểu 2 ký tự)
+                </span>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div class="form-group">
+                  <label class="form-label" for="cf-phone">Số điện thoại <span class="required">*</span></label>
+                  <input id="cf-phone" name="phone" type="tel" class="form-control"
+                    placeholder="0914 859 927" autocomplete="tel"
+                    data-field="phone">
+                  <span class="field-error" id="err-phone">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Số điện thoại không hợp lệ
+                  </span>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="cf-email">Email</label>
+                  <input id="cf-email" name="email" type="email" class="form-control"
+                    placeholder="email@example.com" autocomplete="email"
+                    data-field="email">
+                  <span class="field-error" id="err-email">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Địa chỉ email không hợp lệ
+                  </span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="cf-type">Loại yêu cầu <span class="required">*</span></label>
+                <select id="cf-type" name="type" class="form-control" data-field="type">
+                  <option value="">— Chọn loại yêu cầu —</option>
+                  <option value="dat-san">Đặt sân</option>
+                  <option value="dang-ky-hoc">Đăng ký học Pickleball</option>
+                  <option value="tham-gia-social">Tham gia Social</option>
+                  <option value="to-chuc-giai">Tổ chức giải đấu</option>
+                  <option value="hop-tac">Hợp tác kinh doanh</option>
+                  <option value="khac">Khác</option>
+                </select>
+                <span class="field-error" id="err-type">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  Vui lòng chọn loại yêu cầu
+                </span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="cf-message">Nội dung <span class="required">*</span></label>
+                <textarea id="cf-message" name="message" class="form-control"
+                  placeholder="Mô tả chi tiết yêu cầu của bạn..." rows="5"
+                  data-field="message" data-min="10"></textarea>
+                <span class="field-error" id="err-message">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  Nội dung quá ngắn (tối thiểu 10 ký tự)
+                </span>
+              </div>
+
+              <div class="contact-submit-wrap">
+                <button type="submit" id="contactSubmit" class="btn btn-primary btn-lg btn-submit">
+                  Gửi Liên Hệ
+                </button>
+                <p id="formError" class="form-error-msg" hidden>
+                  Có lỗi xảy ra. Vui lòng thử lại hoặc gọi <a href="tel:0914859927">0914 859 927</a>.
+                </p>
+                <p style="font-size:12px;color:var(--muted2);margin-top:12px;text-align:center;">
+                  Phản hồi trong vòng 24 giờ · <a href="tel:0914859927" style="color:var(--muted);">0914 859 927</a>
+                </p>
+              </div>
+            </form>
+
+            <!-- Success state -->
+            <div id="contactSuccess" class="contact-success" hidden>
+              <div class="success-icon">✓</div>
+              <h3>Cảm ơn <span class="success-name" id="successName"></span>!</h3>
+              <p>Chúng tôi đã nhận được thông tin và sẽ liên hệ lại trong vòng <strong style="color:var(--text);">2 giờ</strong> (trong giờ hoạt động).<br>
+              Hoặc nhắn tin Facebook để được tư vấn ngay lập tức.</p>
+              <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+                <a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Nhắn tin Facebook</a>
+                <button id="resetForm" class="btn btn-outline">Gửi thêm liên hệ</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ─── FOOTER ─── -->
+  <footer>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <div class="footer-logo"><img src="logo.jpg" alt="AMZ Pickleball" loading="lazy"></div>
+          <p>Pickleball Social Club đầu tiên tại Vũng Tàu — 8 sân lớn nhất khu vực, HLV chuyên nghiệp, cộng đồng sôi động. Chơi. Cafe. Kết Nối.</p>
+          <div class="footer-social">
+            <a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener noreferrer" class="social-btn" aria-label="Facebook">
+              <svg viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"/></svg>
+            </a>
+            <a href="#" class="social-btn" aria-label="Instagram">
+              <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+            </a>
+            <a href="#" class="social-btn" aria-label="Zalo">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H8l4-6v4h3l-4 6z"/></svg>
+            </a>
+            <a href="#" class="social-btn" aria-label="TikTok">
+              <svg viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.22 8.22 0 004.79 1.53V6.77a4.85 4.85 0 01-1.02-.08z"/></svg>
+            </a>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h5>Dịch Vụ</h5>
+          <ul class="footer-links">
+            <li><a href="#services">Cho Thuê Sân</a></li>
+            <li><a href="#services">Tập Luyện Nhóm</a></li>
+            <li><a href="#training">Huấn Luyện 1-on-1</a></li>
+            <li><a href="#services">Tổ Chức Giải Đấu</a></li>
+            <li><a href="#services">Gói Membership</a></li>
+            <li><a href="#services">Thuê Thiết Bị</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5>Câu Lạc Bộ</h5>
+          <ul class="footer-links">
+            <li><a href="#about">Về Chúng Tôi</a></li>
+            <li><a href="#courts">Cơ Sở Vật Chất</a></li>
+            <li><a href="#events">Lịch Sự Kiện</a></li>
+            <li><a href="#testimonials">Thành Viên</a></li>
+            <li><a href="#lien-he">Liên Hệ</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5>Liên Hệ</h5>
+          <ul class="footer-info">
+            <li>
+              <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              179 Thống Nhất, P. Vũng Tàu, TP.HCM
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.84 8.81a19.79 19.79 0 01-3.07-8.63A2 2 0 012.95 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L7 9.91a16 16 0 006.06 6.06l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+              <a href="tel:0914859927">0914 859 927</a>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              T2–T6: 05:00 – 22:00<br>T7–CN: 05:00 – 23:00
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p>© 2026 AMZ Pickle Ball Club. All rights reserved.</p>
+        <div style="display:flex;gap:20px;">
+          <a href="#">Chính sách bảo mật</a>
+          <a href="#">Điều khoản sử dụng</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Nav scroll effect
+    const nav = document.getElementById('nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 20);
+    }, { passive: true });
+
+    // Mobile menu
+    const hamburger = document.getElementById('hamburger');
+    const mobileMenu = document.getElementById('mobileMenu');
+    hamburger.addEventListener('click', () => {
+      hamburger.classList.toggle('open');
+      mobileMenu.classList.toggle('open');
+      const isOpen = mobileMenu.classList.contains('open');
+      hamburger.setAttribute('aria-expanded', isOpen);
+      document.body.style.overflow = isOpen ? 'hidden' : '';
+    });
+    document.querySelectorAll('.mobile-link, .mobile-menu .btn').forEach(link => {
+      link.addEventListener('click', () => {
+        hamburger.classList.remove('open');
+        mobileMenu.classList.remove('open');
+        document.body.style.overflow = '';
+      });
+    });
+
+    // Scroll animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.reveal, .reveal-left, .reveal-right').forEach(el => {
+      observer.observe(el);
+    });
+
+
+    // Count-up animation for stat numbers
+    function countUp(el, target, suffix, duration) {
+      const start = performance.now();
+      const update = (now) => {
+        const progress = Math.min((now - start) / duration, 1);
+        const ease = 1 - Math.pow(1 - progress, 3);
+        el.textContent = Math.round(ease * target).toLocaleString() + suffix;
+        if (progress < 1) requestAnimationFrame(update);
+      };
+      requestAnimationFrame(update);
+    }
+
+    const statsObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        entry.target.querySelectorAll('[data-count]').forEach(el => {
+          const target = parseInt(el.dataset.count);
+          const suffix = el.dataset.suffix || '';
+          countUp(el, target, suffix, 1400);
+        });
+        statsObserver.unobserve(entry.target);
+      });
+    }, { threshold: 0.3 });
+
+    const statsGrid = document.querySelector('.stats-grid');
+    if (statsGrid) statsObserver.observe(statsGrid);
+
+    // Nav active link highlight on scroll
+    const sections = document.querySelectorAll('section[id]');
+    const navLinks = document.querySelectorAll('.nav-links a');
+    window.addEventListener('scroll', () => {
+      let current = '';
+      sections.forEach(s => {
+        if (window.scrollY >= s.offsetTop - 120) current = s.id;
+      });
+      navLinks.forEach(a => {
+        const href = a.getAttribute('href').replace('#', '');
+        a.classList.toggle('active', href === current);
+      });
+    }, { passive: true });
+
+    // ─── CONTACT FORM ───
+    (function () {
+      const form = document.getElementById('contactForm');
+      if (!form) return;
+
+      const successEl  = document.getElementById('contactSuccess');
+      const submitBtn  = document.getElementById('contactSubmit');
+      const successName = document.getElementById('successName');
+      const resetBtn   = document.getElementById('resetForm');
+      const formError  = document.getElementById('formError');
+
+      const validators = {
+        name:    v => v.trim().length >= 2,
+        phone:   v => /(03|05|07|08|09)\d{8}/.test(v.replace(/\s/g, '')),
+        email:   v => !v.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()),
+        type:    v => v !== '',
+        message: v => v.trim().length >= 10,
+      };
+
+      function setError(field, show) {
+        const el = form.querySelector('[data-field="' + field + '"]');
+        const err = document.getElementById('err-' + field);
+        if (!el || !err) return;
+        el.classList.toggle('is-error', show);
+        err.classList.toggle('show', show);
+      }
+
+      function validateField(field) {
+        const el = form.querySelector('[data-field="' + field + '"]');
+        if (!el) return true;
+        const valid = validators[field](el.value);
+        setError(field, !valid);
+        return valid;
+      }
+
+      function validateAll() {
+        const fields = ['name', 'phone', 'email', 'type', 'message'];
+        return fields.map(f => validateField(f)).every(Boolean);
+      }
+
+      function scrollToFirstError() {
+        const first = form.querySelector('.is-error');
+        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      // Real-time validation on blur
+      form.querySelectorAll('[data-field]').forEach(el => {
+        el.addEventListener('blur', () => validateField(el.dataset.field));
+      });
+
+      // Submit
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!validateAll()) { scrollToFirstError(); return; }
+
+        const nameVal = form.querySelector('[data-field="name"]').value.trim();
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Đang gửi...';
+
+        if (formError) formError.hidden = true;
+        try {
+          const res = await fetch('https://formspree.io/f/YOUR_FORM_ID', {
+            method: 'POST',
+            body: new FormData(form),
+            headers: { Accept: 'application/json' }
+          });
+          if (!res.ok) throw new Error('server');
+        } catch {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Gửi Liên Hệ';
+          if (formError) formError.hidden = false;
+          return;
+        }
+
+        form.hidden = true;
+        successName.textContent = nameVal.split(' ').pop();
+        successEl.hidden = false;
+        successEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+
+      // Reset form
+      resetBtn && resetBtn.addEventListener('click', () => {
+        form.reset();
+        form.querySelectorAll('[data-field]').forEach(el => el.classList.remove('is-error'));
+        form.querySelectorAll('.field-error').forEach(el => el.classList.remove('show'));
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Gửi Liên Hệ';
+        successEl.hidden = true;
+        form.hidden = false;
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    })();
+
+    document.querySelectorAll('.btn-cta, .btn-cta-outline').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const ripple = document.createElement('span');
+        const rect = this.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height) * 2;
+        const x = e.clientX - rect.left - size / 2;
+        const y = e.clientY - rect.top - size / 2;
+        ripple.style.cssText = `position:absolute;width:${size}px;height:${size}px;left:${x}px;top:${y}px;background:rgba(255,255,255,0.35);border-radius:50%;transform:scale(0);opacity:1;pointer-events:none;z-index:10;animation:cta-ripple 0.6s ease-out forwards;`;
+        this.appendChild(ripple);
+        ripple.addEventListener('animationend', () => ripple.remove());
+      });
+    });
+  </script>
+
+</body>
+</html>

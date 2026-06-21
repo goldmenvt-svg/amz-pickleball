@@ -1,0 +1,28 @@
+.vercel
+
+# Dependencies
+node_modules/
+
+# Large video files
+images/video-san-amz.mp4
+hinh anh/DUKB7660.MP4
+
+# Temp files
+hinh anh/b64.txt
+wp-upload/
+
+# Screenshots (dev only)
+screenshots/
+screenshot-*.png
+compare-*.png
+final-*.png
+v2-*.png
+
+# Dev scripts
+screenshot.mjs
+verify.js
+reports/
+
+# OS files
+Thumbs.db
+.DS_Store
