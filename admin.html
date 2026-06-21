@@ -819,7 +819,9 @@ function renderRegs(tournamentFilter) {
           (r.status === 'Chờ duyệt' ?
             '<button class="btn btn-sm" style="background:var(--green);color:#fff;margin-right:4px;" onclick="approveReg(\'' + r.id + '\')" title="Duyệt">✓ Duyệt</button>' +
             '<button class="btn btn-sm" style="background:var(--red);color:#fff;margin-right:4px;" onclick="rejectReg(\'' + r.id + '\')" title="Từ chối">✗ Từ chối</button>'
-          : '') +
+          :
+            '<button class="icon-btn" onclick="resendZalo(\'' + r.id + '\')" title="Gửi lại Zalo" style="color:var(--blue)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></button>'
+          ) +
           '<button class="icon-btn" onclick="openRegModal(\'' + r.id + '\')" title="Sửa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
           '<button class="icon-btn delete" onclick="deleteReg(\'' + r.id + '\')" title="Xóa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
         '</td></tr>';
@@ -896,13 +898,60 @@ function exportAll() {
 
 function approveReg(id) {
   var idx = db.registrations.findIndex(function(r) { return r.id === id; });
-  if (idx >= 0) { db.registrations[idx].status = 'Đã duyệt'; saveDB(db); renderRegs(); updateCounts(); toast('Đã duyệt đăng ký'); }
+  if (idx < 0) return;
+  var reg = db.registrations[idx];
+  reg.status = 'Đã duyệt';
+  saveDB(db); renderRegs(); updateCounts();
+  sendZaloNotify(reg, 'approve');
 }
 
 function rejectReg(id) {
   if (!confirm('Từ chối đăng ký này?')) return;
   var idx = db.registrations.findIndex(function(r) { return r.id === id; });
-  if (idx >= 0) { db.registrations[idx].status = 'Từ chối'; saveDB(db); renderRegs(); updateCounts(); toast('Đã từ chối đăng ký'); }
+  if (idx < 0) return;
+  var reg = db.registrations[idx];
+  reg.status = 'Từ chối';
+  saveDB(db); renderRegs(); updateCounts();
+  sendZaloNotify(reg, 'reject');
+}
+
+function sendZaloNotify(reg, action) {
+  var player = db.players.find(function(p) { return p.id === reg.playerId; });
+  var tournament = db.tournaments.find(function(t) { return t.id === reg.tournamentId; });
+  if (!player || !player.phone) { toast(action === 'approve' ? 'Đã duyệt' : 'Đã từ chối'); return; }
+  var phone = player.phone.replace(/\s/g, '');
+  var name = player.name;
+  var code = reg.code || '';
+  var eventName = tournament ? tournament.name : '';
+  var msg;
+  if (action === 'approve') {
+    msg = 'Chào ' + name + ',\n\n' +
+      'Đăng ký ' + code + ' cho giải "' + eventName + '" đã được DUYỆT ✓\n\n' +
+      'Hạng: ' + reg.category + '\nTrình: ' + reg.level + '\n' +
+      (reg.partnerName ? 'Đồng đội: ' + reg.partnerName + '\n' : '') + '\n' +
+      'Vui lòng đến sân AMZ Pickleball đúng giờ.\n' +
+      '179 Thống Nhất, P. Vũng Tàu, TP.HCM\n' +
+      'Hotline: 0914 859 927\n\n' +
+      'AMZ Pickleball';
+  } else {
+    msg = 'Chào ' + name + ',\n\n' +
+      'Rất tiếc, đăng ký ' + code + ' cho giải "' + eventName + '" chưa được duyệt.\n\n' +
+      'Lý do: [Admin điền lý do]\n\n' +
+      'Bạn có thể đăng ký lại hoặc liên hệ để biết thêm chi tiết.\n' +
+      'Hotline: 0914 859 927\n\n' +
+      'AMZ Pickleball';
+  }
+  navigator.clipboard.writeText(msg).then(function() {
+    toast((action === 'approve' ? 'Đã duyệt' : 'Đã từ chối') + ' — Zalo đang mở, tin nhắn đã copy!');
+  }).catch(function() {
+    toast(action === 'approve' ? 'Đã duyệt' : 'Đã từ chối');
+  });
+  window.open('https://zalo.me/' + phone, '_blank');
+}
+
+function resendZalo(id) {
+  var reg = db.registrations.find(function(r) { return r.id === id; });
+  if (reg) sendZaloNotify(reg, reg.status === 'Từ chối' ? 'reject' : 'approve');
 }
 
 function logout() { sessionStorage.removeItem(AUTH_KEY); location.reload(); }
