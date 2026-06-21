@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AMZ Pickleball">
   <meta name="description" content="AMZ Pickle Ball Club — 8 sân Pickleball tiêu chuẩn tại 179 Thống Nhất, Phường Vũng Tàu, TP.HCM. Huấn luyện chuyên nghiệp, cộng đồng thân thiện.">
   <title>AMZ Pickleball — Sân Pickleball Chuyên Nghiệp TP.HCM</title>
   <link rel="canonical" href="https://amzpickleball.vn/">
@@ -100,6 +104,7 @@
       .reveal, .reveal-left, .reveal-right {
         opacity: 1; transform: none; transition: none;
       }
+      .marquee-track { animation: none; }
     }
 
     /* ─── SHARED HEADING VARIANT ─── */
@@ -362,7 +367,8 @@
 
     .hamburger {
       display: none; flex-direction: column; gap: 5px;
-      cursor: pointer; padding: 8px; background: none; border: none;
+      cursor: pointer; padding: 12px; background: none; border: none;
+      min-width: 44px; min-height: 44px; align-items: center; justify-content: center;
     }
     .hamburger span {
       display: block; width: 22px; height: 2px;
@@ -548,7 +554,7 @@
       cursor: default;
     }
     .service-row:last-child { border-bottom: 1px solid var(--border); }
-    .service-row:hover { padding-left: 12px; }
+    .service-row:hover, .service-row:active { padding-left: 12px; }
     .service-num {
       font-size: 11px; font-weight: 500; color: var(--muted2);
       letter-spacing: 0.08em; padding-top: 4px;
@@ -562,7 +568,7 @@
       font-size: 18px; color: var(--muted2); padding-top: 4px;
       transition: color 0.2s, transform 0.2s;
     }
-    .service-row:hover .service-row-arrow { color: var(--accent); transform: translateX(4px); }
+    .service-row:hover .service-row-arrow, .service-row:active .service-row-arrow { color: var(--accent); transform: translateX(4px); }
 
     /* ─── ABOUT ─── */
     #about { background: var(--surface); }
@@ -645,7 +651,7 @@
       object-fit: cover; display: block;
       transition: transform 0.5s ease;
     }
-    .court-card:hover .court-visual img { transform: scale(1.04); }
+    .court-card:hover .court-visual img, .court-card:active .court-visual img { transform: scale(1.04); }
     .court-photo-strip {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -658,7 +664,7 @@
       display: block;
       transition: opacity 0.3s ease;
     }
-    .court-photo-strip img:hover { opacity: 0.8; }
+    .court-photo-strip img:hover, .court-photo-strip img:active { opacity: 0.8; }
     .court-card-overlay {
       position: relative; z-index: 1; padding: 20px;
       background: linear-gradient(transparent, rgba(10,22,40,0.92));
@@ -682,7 +688,7 @@
       display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
       cursor: pointer; transition: padding-left 0.2s;
     }
-    .training-item:hover { padding-left: 12px; }
+    .training-item:hover, .training-item:active { padding-left: 12px; }
     .training-item:first-child { border-top: 1px solid var(--border); }
     .training-item-left { display: flex; align-items: center; gap: 20px; }
     .training-num {
@@ -789,7 +795,7 @@
     .footer-brand p { font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.7; max-width: 280px; }
     .footer-social { display: flex; gap: 10px; margin-top: 4px; }
     .social-btn {
-      width: 36px; height: 36px; border-radius: var(--r);
+      width: 44px; height: 44px; border-radius: var(--r);
       border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06);
       display: flex; align-items: center; justify-content: center;
       transition: all 0.2s; cursor: pointer;
@@ -954,8 +960,12 @@
       .contact-grid { grid-template-columns: 1fr; gap: 40px; }
       .form-control { font-size: 16px; }
     }
+    .contact-row-2col {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    }
     @media (max-width: 480px) {
       .contact-success { padding: 40px 24px; }
+      .contact-row-2col { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -965,7 +975,7 @@
   <!-- ─── NAVIGATION ─── -->
   <nav id="nav">
     <div class="nav-inner">
-      <a href="#" class="nav-logo"><img src="logo.jpg" alt="AMZ Pickleball"></a>
+      <a href="#" class="nav-logo"><picture><source srcset="logo.webp" type="image/webp"><img src="logo.jpg" alt="AMZ Pickleball" width="200" height="200"></picture></a>
       <ul class="nav-links">
         <li><a href="#services">Dịch Vụ</a></li>
         <li><a href="#courts">Sân Chơi</a></li>
@@ -1209,7 +1219,7 @@
         <div class="courts-grid">
           <div class="court-card reveal">
             <div class="court-visual">
-              <img src="images/san/san-toan-canh.jpg" alt="Khu sân thi đấu chính AMZ Pickleball" loading="lazy">
+              <picture><source srcset="images/san/san-toan-canh.webp" type="image/webp"><img src="images/san/san-toan-canh.jpg" alt="Khu sân thi đấu chính AMZ Pickleball" loading="lazy" width="1200" height="1600" decoding="async"></picture>
             </div>
             <div class="court-card-overlay">
               <div class="court-tag">Sân chính</div>
@@ -1220,7 +1230,7 @@
 
           <div class="court-card reveal reveal-delay-1">
             <div class="court-visual">
-              <img src="images/san/san-amz-club.jpg" alt="Sân AMZ Pickleball Club" loading="lazy">
+              <picture><source srcset="images/san/san-amz-club.webp" type="image/webp"><img src="images/san/san-amz-club.jpg" alt="Sân AMZ Pickleball Club" loading="lazy" width="1200" height="1600" decoding="async"></picture>
             </div>
             <div class="court-card-overlay">
               <div class="court-tag">AMZ Club</div>
@@ -1231,7 +1241,7 @@
 
           <div class="court-card reveal reveal-delay-2">
             <div class="court-visual">
-              <img src="images/san/san-mai-che-led.jpg" alt="Sân Pickleball AMZ có mái che" loading="lazy">
+              <picture><source srcset="images/san/san-mai-che-led.webp" type="image/webp"><img src="images/san/san-mai-che-led.jpg" alt="Sân Pickleball AMZ có mái che" loading="lazy" width="1200" height="1600" decoding="async"></picture>
             </div>
             <div class="court-card-overlay">
               <div class="court-tag">Tập luyện</div>
@@ -1242,10 +1252,10 @@
         </div>
 
         <div class="court-photo-strip reveal">
-          <img src="images/hanh-dong/doi-khang-net.jpg" alt="Thi đấu đối kháng tại AMZ Pickleball" loading="lazy">
-          <img src="images/hanh-dong/tap-luyen-1.jpg" alt="Tập luyện Pickleball tại AMZ" loading="lazy">
-          <img src="images/san/san-tap-luyen.jpg" alt="Sân tập luyện AMZ Club" loading="lazy">
-          <img src="images/hanh-dong/hanh-dong-dep.jpg" alt="Khoảnh khắc thi đấu Pickleball" loading="lazy">
+          <picture><source srcset="images/hanh-dong/doi-khang-net.webp" type="image/webp"><img src="images/hanh-dong/doi-khang-net.jpg" alt="Thi đấu đối kháng tại AMZ Pickleball" loading="lazy" width="1200" height="800" decoding="async"></picture>
+          <picture><source srcset="images/hanh-dong/tap-luyen-1.webp" type="image/webp"><img src="images/hanh-dong/tap-luyen-1.jpg" alt="Tập luyện Pickleball tại AMZ" loading="lazy" width="1200" height="800" decoding="async"></picture>
+          <picture><source srcset="images/san/san-tap-luyen.webp" type="image/webp"><img src="images/san/san-tap-luyen.jpg" alt="Sân tập luyện AMZ Club" loading="lazy" width="1200" height="1600" decoding="async"></picture>
+          <picture><source srcset="images/hanh-dong/hanh-dong-dep.webp" type="image/webp"><img src="images/hanh-dong/hanh-dong-dep.jpg" alt="Khoảnh khắc thi đấu Pickleball" loading="lazy" width="1200" height="800" decoding="async"></picture>
         </div>
 
         <div style="margin-top: 32px; display:flex; gap:24px; flex-wrap:wrap;" class="reveal">
@@ -1552,7 +1562,7 @@
                 </span>
               </div>
 
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div class="contact-row-2col">
                 <div class="form-group">
                   <label class="form-label" for="cf-phone">Số điện thoại <span class="required">*</span></label>
                   <input id="cf-phone" name="phone" type="tel" class="form-control"
@@ -1640,7 +1650,7 @@
     <div class="container">
       <div class="footer-grid">
         <div class="footer-brand">
-          <div class="footer-logo"><img src="logo.jpg" alt="AMZ Pickleball" loading="lazy"></div>
+          <div class="footer-logo"><picture><source srcset="logo.webp" type="image/webp"><img src="logo.jpg" alt="AMZ Pickleball" loading="lazy" width="200" height="200" decoding="async"></picture></div>
           <p>Pickleball Social Club đầu tiên tại Vũng Tàu — 8 sân lớn nhất khu vực, HLV chuyên nghiệp, cộng đồng sôi động. Chơi. Cafe. Kết Nối.</p>
           <div class="footer-social">
             <a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener noreferrer" class="social-btn" aria-label="Facebook">
@@ -1711,11 +1721,7 @@
   </footer>
 
   <script>
-    // Nav scroll effect
     const nav = document.getElementById('nav');
-    window.addEventListener('scroll', () => {
-      nav.classList.toggle('scrolled', window.scrollY > 20);
-    }, { passive: true });
 
     // Mobile menu
     const hamburger = document.getElementById('hamburger');
@@ -1777,18 +1783,24 @@
     const statsGrid = document.querySelector('.stats-grid');
     if (statsGrid) statsObserver.observe(statsGrid);
 
-    // Nav active link highlight on scroll
     const sections = document.querySelectorAll('section[id]');
     const navLinks = document.querySelectorAll('.nav-links a');
+    let scrollTicking = false;
     window.addEventListener('scroll', () => {
-      let current = '';
-      sections.forEach(s => {
-        if (window.scrollY >= s.offsetTop - 120) current = s.id;
-      });
-      navLinks.forEach(a => {
-        const href = a.getAttribute('href').replace('#', '');
-        a.classList.toggle('active', href === current);
-      });
+      if (!scrollTicking) {
+        requestAnimationFrame(() => {
+          nav.classList.toggle('scrolled', window.scrollY > 20);
+          let current = '';
+          sections.forEach(s => {
+            if (window.scrollY >= s.offsetTop - 120) current = s.id;
+          });
+          navLinks.forEach(a => {
+            a.classList.toggle('active', a.getAttribute('href').replace('#', '') === current);
+          });
+          scrollTicking = false;
+        });
+        scrollTicking = true;
+      }
     }, { passive: true });
 
     // ─── CONTACT FORM ───
