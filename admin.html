@@ -522,6 +522,25 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-zalo-msg">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header">
+      <div>
+        <h3 style="color:var(--green);">✓ Tin nhắn đã copy!</h3>
+        <p style="font-size:13px;color:var(--muted);margin-top:2px;">Dán vào Zalo và gửi cho VĐV</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('modal-zalo-msg')">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:0 24px 24px;">
+      <pre id="zaloMsgPreview" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:13px;line-height:1.7;white-space:pre-wrap;word-wrap:break-word;color:var(--text);max-height:260px;overflow-y:auto;font-family:inherit;margin:0;"></pre>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="copyZaloMsg()">Copy lại</button>
+      <button class="btn btn-primary" onclick="closeModal('modal-zalo-msg')">Đóng</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -926,7 +945,7 @@ function approveReg(id) {
   var reg = db.registrations[idx];
   reg.status = 'Đã duyệt';
   saveDB(db); renderRegs(); updateCounts();
-  sendZaloNotify(reg, 'approve');
+  sendZalo(reg);
 }
 
 function rejectReg(id) {
@@ -955,19 +974,23 @@ function confirmReject() {
   reg.rejectReason = reason;
   saveDB(db); renderRegs(); updateCounts();
   closeModal('modal-reject');
-  sendZaloReject(reg, reason);
+  sendZalo(reg);
 }
 
-function sendZaloNotify(reg, action) {
+var _lastZaloMsg = '';
+
+function sendZalo(reg) {
   var player = db.players.find(function(p) { return p.id === reg.playerId; });
   var tournament = db.tournaments.find(function(t) { return t.id === reg.tournamentId; });
-  if (!player || !player.phone) { toast(action === 'approve' ? 'Đã duyệt' : 'Đã từ chối'); return; }
+  if (!player || !player.phone) { toast('Không tìm thấy SĐT VĐV'); return; }
+
   var phone = player.phone.replace(/\s/g, '');
   var name = player.name;
   var code = reg.code || '';
   var eventName = tournament ? tournament.name : '';
   var msg;
-  if (action === 'approve') {
+
+  if (reg.status === 'Đã duyệt') {
     msg = 'Chào ' + name + ',\n\n' +
       'Đăng ký ' + code + ' cho giải "' + eventName + '" đã được DUYỆT ✓\n\n' +
       'Hạng: ' + reg.category + '\nTrình: ' + reg.level + '\n' +
@@ -976,34 +999,29 @@ function sendZaloNotify(reg, action) {
       '179 Thống Nhất, P. Vũng Tàu, TP.HCM\n' +
       'Hotline: 0914 859 927\n\n' +
       'AMZ Pickleball';
+  } else {
+    msg = 'Chào ' + name + ',\n\n' +
+      'Rất tiếc, đăng ký ' + code + ' cho giải "' + eventName + '" chưa được duyệt.\n\n' +
+      'Lý do: ' + (reg.rejectReason || 'Chưa đủ điều kiện') + '\n\n' +
+      'Bạn có thể đăng ký lại hoặc liên hệ để biết thêm chi tiết.\n' +
+      'Hotline: 0914 859 927\n\n' +
+      'AMZ Pickleball';
   }
-  navigator.clipboard.writeText(msg).then(function() {
-    toast((action === 'approve' ? 'Đã duyệt' : 'Đã từ chối') + ' — Zalo đang mở, tin nhắn đã copy!');
-  }).catch(function() {
-    toast(action === 'approve' ? 'Đã duyệt' : 'Đã từ chối');
-  });
-  window.open('https://zalo.me/' + phone, '_blank');
-}
 
-function sendZaloReject(reg, reason) {
-  var player = db.players.find(function(p) { return p.id === reg.playerId; });
-  var tournament = db.tournaments.find(function(t) { return t.id === reg.tournamentId; });
-  if (!player || !player.phone) { toast('Đã từ chối'); return; }
-  var phone = player.phone.replace(/\s/g, '');
-  var msg = 'Chào ' + player.name + ',\n\n' +
-    'Rất tiếc, đăng ký ' + (reg.code || '') + ' cho giải "' + (tournament ? tournament.name : '') + '" chưa được duyệt.\n\n' +
-    'Lý do: ' + reason + '\n\n' +
-    'Bạn có thể đăng ký lại hoặc liên hệ để biết thêm chi tiết.\n' +
-    'Hotline: 0914 859 927\n\n' +
-    'AMZ Pickleball';
+  _lastZaloMsg = msg;
   navigator.clipboard.writeText(msg).catch(function() {});
   window.open('https://zalo.me/' + phone, '_blank');
-  toast('Đã từ chối — Zalo đang mở, tin nhắn đã copy!');
+  document.getElementById('zaloMsgPreview').textContent = msg;
+  openModal('modal-zalo-msg');
+}
+
+function copyZaloMsg() {
+  navigator.clipboard.writeText(_lastZaloMsg).then(function() { toast('Đã copy lại!'); });
 }
 
 function resendZalo(id) {
   var reg = db.registrations.find(function(r) { return r.id === id; });
-  if (reg) sendZaloNotify(reg, reg.status === 'Từ chối' ? 'reject' : 'approve');
+  if (reg) sendZalo(reg);
 }
 
 function logout() { sessionStorage.removeItem(AUTH_KEY); location.reload(); }
