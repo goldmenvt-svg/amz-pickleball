@@ -739,6 +739,41 @@
     .training-price small { font-size: 14px; color: rgba(255,255,255,0.45); }
 
     /* ─── TESTIMONIALS ─── */
+    .pricing { border-top: 1px solid var(--border); }
+    .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 60px; }
+    .pricing-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 40px 32px; display: flex; flex-direction: column; transition: border-color 0.3s ease;
+    }
+    .pricing-card:hover { border-color: rgba(255,255,255,0.12); }
+    .pricing-card.featured { border-color: var(--accent); position: relative; }
+    .pricing-badge {
+      position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+      background: var(--accent); color: #000; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 16px; border-radius: 20px;
+    }
+    .pricing-name {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 16px;
+    }
+    .pricing-price { margin-bottom: 8px; }
+    .pricing-price strong {
+      font-size: clamp(36px, 4vw, 48px); font-weight: 900; color: var(--text);
+      letter-spacing: -0.03em;
+    }
+    .pricing-price span { font-size: 15px; color: var(--muted); margin-left: 4px; }
+    .pricing-desc { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 32px; }
+    .pricing-features { list-style: none; padding: 0; margin: 0 0 32px; flex: 1; }
+    .pricing-features li {
+      font-size: 14px; color: var(--text); padding: 10px 0;
+      border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px;
+    }
+    .pricing-features li:last-child { border-bottom: none; }
+    .pricing-check { color: var(--accent); flex-shrink: 0; }
+    .pricing-cta { margin-top: auto; }
+    .pricing-cta .btn { width: 100%; justify-content: center; }
+    .pricing-note { text-align: center; margin-top: 40px; font-size: 13px; color: var(--muted); }
+
     .testimonials { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
     .testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
     .testimonial-card {
@@ -848,6 +883,8 @@
       .about-grid { grid-template-columns: 1fr; gap: 48px; }
       .training-grid { grid-template-columns: 1fr; }
       .training-cta-box { position: static; }
+      .pricing-grid { grid-template-columns: 1fr; max-width: 400px; margin-left: auto; margin-right: auto; }
+      .pricing-card.featured { order: -1; }
       .footer-grid { grid-template-columns: 1fr 1fr; gap: 40px; }
       .footer-brand { grid-column: span 2; }
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1139,6 +1176,7 @@
         <li><a href="#services">Dịch Vụ</a></li>
         <li><a href="#courts">Sân Chơi</a></li>
         <li><a href="#training">Huấn Luyện</a></li>
+        <li><a href="#bang-gia">Bảng Giá</a></li>
         <li><a href="#events">Sự Kiện</a></li>
         <li><a href="#lien-he">Liên Hệ</a></li>
       </ul>
@@ -1156,6 +1194,7 @@
     <a href="#services" class="mobile-link">Dịch Vụ</a>
     <a href="#courts" class="mobile-link">Sân Chơi</a>
     <a href="#training" class="mobile-link">Huấn Luyện</a>
+    <a href="#bang-gia" class="mobile-link">Bảng Giá</a>
     <a href="#events" class="mobile-link">Sự Kiện</a>
     <a href="#lien-he" class="mobile-link">Liên Hệ</a>
     <a href="#lien-he" class="btn btn-primary btn-lg">Đặt Sân Ngay</a>
@@ -1531,6 +1570,67 @@
             </div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ─── PRICING ─── -->
+    <section class="pricing" id="bang-gia">
+      <div class="container">
+        <div class="section-header">
+          <span class="label reveal">Bảng Giá</span>
+          <h2 class="reveal reveal-delay-1">Gói dịch vụ<br><span class="dim">phù hợp mọi nhu cầu</span></h2>
+        </div>
+
+        <div class="pricing-grid">
+          <div class="pricing-card reveal">
+            <div class="pricing-name">Thuê sân lẻ</div>
+            <div class="pricing-price"><strong>120K</strong><span>/ giờ / sân</span></div>
+            <p class="pricing-desc">Thuê sân linh hoạt theo giờ, phù hợp chơi cùng bạn bè hoặc tập luyện tự do.</p>
+            <ul class="pricing-features">
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Sân tiêu chuẩn thi đấu</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Đèn chiếu sáng đầy đủ</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Phòng thay đồ & nước uống</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Đặt sân qua điện thoại / Facebook</li>
+            </ul>
+            <div class="pricing-cta">
+              <a href="#lien-he" class="btn btn-outline">Đặt Sân Ngay</a>
+            </div>
+          </div>
+
+          <div class="pricing-card featured reveal reveal-delay-1">
+            <div class="pricing-badge">Phổ biến nhất</div>
+            <div class="pricing-name">Gói Membership</div>
+            <div class="pricing-price"><strong>800K</strong><span>/ tháng</span></div>
+            <p class="pricing-desc">Gói thành viên toàn diện — chơi không giới hạn, ưu tiên sân giờ đẹp, tham gia cộng đồng AMZ.</p>
+            <ul class="pricing-features">
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Chơi không giới hạn giờ</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Ưu tiên đặt sân giờ vàng</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Giảm 20% khóa huấn luyện</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Tham gia giải nội bộ miễn phí</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Cộng đồng thành viên AMZ</li>
+            </ul>
+            <div class="pricing-cta">
+              <a href="#lien-he" class="btn btn-primary">Đăng Ký Membership</a>
+            </div>
+          </div>
+
+          <div class="pricing-card reveal reveal-delay-2">
+            <div class="pricing-name">Khóa huấn luyện</div>
+            <div class="pricing-price"><strong>2.5TR</strong><span>/ 8 buổi</span></div>
+            <p class="pricing-desc">Huấn luyện bài bản với HLV kinh nghiệm, lộ trình cá nhân hóa theo trình độ.</p>
+            <ul class="pricing-features">
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> 8 buổi / khóa (90 phút / buổi)</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Nhóm nhỏ 4–6 người</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Video phân tích kỹ thuật</li>
+              <li><svg class="pricing-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Chứng nhận hoàn thành</li>
+            </ul>
+            <div class="pricing-cta">
+              <a href="#lien-he" class="btn btn-outline">Đăng Ký Học</a>
+            </div>
+          </div>
+        </div>
+
+        <p class="pricing-note reveal">Giá có thể thay đổi theo chương trình khuyến mãi. Liên hệ <a href="tel:0914859927" style="color:var(--text);">0914 859 927</a> để được tư vấn chi tiết.</p>
       </div>
     </section>
 
