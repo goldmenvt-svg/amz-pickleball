@@ -834,6 +834,10 @@
     }
     .btn-reg:hover { background: #b8e030; }
     .btn-reg:disabled { background: var(--surface2); color: var(--muted); cursor: default; }
+    .reg-count { font-size: 12px; color: var(--accent); margin-top: 6px; display: block; }
+    .slots-badge { font-size: 11px; font-weight: 600; }
+    .slots-low { color: #ef4444; }
+    .slots-ok { color: var(--muted); }
 
     .reg-modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000;
@@ -1020,12 +1024,13 @@
     }
     select.form-control option { background: white; color: var(--text); }
     textarea.form-control { min-height: 130px; resize: vertical; }
-    .tournament-fields:not([hidden]) { animation: fieldReveal 0.3s ease; }
-    #partner-fields:not([hidden]) { animation: fieldReveal 0.3s ease; }
-    @keyframes fieldReveal {
-      from { opacity: 0; transform: translateY(-8px); }
-      to { opacity: 1; transform: translateY(0); }
+    .redirect-toast {
+      position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--accent); color: #000; padding: 12px 24px; border-radius: 8px;
+      font-size: 14px; font-weight: 600; z-index: 100; opacity: 0;
+      transition: all 0.3s ease; pointer-events: none; white-space: nowrap;
     }
+    .redirect-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     .contact-submit-wrap { margin-top: 8px; }
     .form-error-msg {
@@ -1750,7 +1755,7 @@
         </div>
 
         <div class="events-list">
-          <div class="event-item reveal" data-event-name="AMZ Open Tournament — Vòng Tháng 7" data-event-type="Nội bộ" data-event-date="2026-07-05">
+          <div class="event-item reveal" data-event-name="AMZ Open Tournament — Vòng Tháng 7" data-event-type="Nội bộ" data-event-date="2026-07-05" data-max-slots="16">
             <div class="event-date">
               <strong>05</strong>
               <span>Th7</span>
@@ -1766,7 +1771,7 @@
             </div>
           </div>
 
-          <div class="event-item reveal reveal-delay-1" data-event-name="Buổi Tập Thử Miễn Phí — Người Mới" data-event-type="Nội bộ" data-event-date="2026-07-12">
+          <div class="event-item reveal reveal-delay-1" data-event-name="Buổi Tập Thử Miễn Phí — Người Mới" data-event-type="Nội bộ" data-event-date="2026-07-12" data-max-slots="20">
             <div class="event-date">
               <strong>12</strong>
               <span>Th7</span>
@@ -1782,7 +1787,7 @@
             </div>
           </div>
 
-          <div class="event-item reveal reveal-delay-2" data-event-name="AMZ vs Các CLB TP.HCM — Giao Hữu" data-event-type="Liên CLB" data-event-date="2026-07-19">
+          <div class="event-item reveal reveal-delay-2" data-event-name="AMZ vs Các CLB TP.HCM — Giao Hữu" data-event-type="Liên CLB" data-event-date="2026-07-19" data-max-slots="12">
             <div class="event-date">
               <strong>19</strong>
               <span>Th7</span>
@@ -1798,7 +1803,7 @@
             </div>
           </div>
 
-          <div class="event-item reveal reveal-delay-3" data-event-name="Dink &amp; Drink Friday — Cuối Tháng 6" data-event-type="Nội bộ" data-event-date="2026-06-27">
+          <div class="event-item reveal reveal-delay-3" data-event-name="Dink &amp; Drink Friday — Cuối Tháng 6" data-event-type="Nội bộ" data-event-date="2026-06-27" data-max-slots="24">
             <div class="event-date">
               <strong>27</strong>
               <span>Th6</span>
@@ -1935,58 +1940,6 @@
                 </span>
               </div>
 
-              <div id="tournament-fields" class="tournament-fields" hidden>
-                <div class="contact-row-2col">
-                  <div class="form-group">
-                    <label class="form-label" for="cf-level">Trình độ <span class="required">*</span></label>
-                    <select id="cf-level" name="level" class="form-control" data-field="level">
-                      <option value="">— Chọn trình độ —</option>
-                      <option value="2.0-2.5">2.0 – 2.5 (Mới bắt đầu)</option>
-                      <option value="3.0-3.5">3.0 – 3.5 (Trung bình)</option>
-                      <option value="4.0-4.5">4.0 – 4.5 (Khá)</option>
-                      <option value="5.0+">5.0+ (Nâng cao)</option>
-                    </select>
-                    <span class="field-error" id="err-level">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                      Vui lòng chọn trình độ
-                    </span>
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label" for="cf-category">Hạng thi đấu <span class="required">*</span></label>
-                    <select id="cf-category" name="category" class="form-control" data-field="category">
-                      <option value="">— Chọn hạng —</option>
-                      <option value="don-nam">Đơn nam</option>
-                      <option value="don-nu">Đơn nữ</option>
-                      <option value="doi-nam">Đôi nam</option>
-                      <option value="doi-nu">Đôi nữ</option>
-                      <option value="doi-nam-nu">Đôi nam nữ (mixed)</option>
-                    </select>
-                    <span class="field-error" id="err-category">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                      Vui lòng chọn hạng thi đấu
-                    </span>
-                  </div>
-                </div>
-                <div id="partner-fields" hidden>
-                  <div class="contact-row-2col">
-                    <div class="form-group">
-                      <label class="form-label" for="cf-partner">Tên đồng đội <span class="required">*</span></label>
-                      <input id="cf-partner" name="partner_name" type="text" class="form-control"
-                        placeholder="Họ tên đồng đội" data-field="partner_name" data-min="2">
-                      <span class="field-error" id="err-partner_name">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        Vui lòng nhập tên đồng đội
-                      </span>
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label" for="cf-partner-phone">SĐT đồng đội</label>
-                      <input id="cf-partner-phone" name="partner_phone" type="tel" class="form-control"
-                        placeholder="0912 345 678">
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <div class="form-group">
                 <label class="form-label" for="cf-message">Nội dung <span class="required">*</span></label>
                 <textarea id="cf-message" name="message" class="form-control"
@@ -2094,8 +2047,15 @@
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <h4>Đăng ký thành công!</h4>
-        <p>Chúng tôi đã nhận được đăng ký của bạn.<br>AMZ sẽ liên hệ xác nhận trong vòng 24 giờ.</p>
-        <button class="btn btn-outline" style="margin-top:20px;" onclick="closeRegModal()">Đóng</button>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">Mã đăng ký của bạn</p>
+        <p id="regCode" style="font-size:28px;font-weight:900;letter-spacing:0.08em;color:var(--accent);margin-bottom:20px;"></p>
+        <div id="regDetails" style="text-align:left;background:rgba(255,255,255,0.04);border-radius:8px;padding:16px;font-size:13px;line-height:1.8;margin-bottom:20px;"></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:20px;">AMZ sẽ liên hệ xác nhận trong vòng 24 giờ.</p>
+        <div style="padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);">
+          <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Nhắn Zalo để xác nhận nhanh hơn:</p>
+          <a href="https://zalo.me/0914859927" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="width:100%;justify-content:center;margin-bottom:8px;">Zalo: 0914 859 927</a>
+          <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="closeRegModal()">Đóng</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2286,30 +2246,21 @@
         email:   v => !v.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()),
         type:    v => v !== '',
         message: v => v.trim().length >= 10,
-        level:   v => v !== '',
-        category: v => v !== '',
-        partner_name: v => v.trim().length >= 2,
       };
 
-      const typeSelect = document.getElementById('cf-type');
-      const tournamentFields = document.getElementById('tournament-fields');
-      const categorySelect = document.getElementById('cf-category');
-      const partnerFields = document.getElementById('partner-fields');
+      var redirectToast = document.createElement('div');
+      redirectToast.className = 'redirect-toast';
+      redirectToast.textContent = 'Chọn giải đấu bên dưới để đăng ký ↓';
+      document.body.appendChild(redirectToast);
 
-      function isTournament() { return typeSelect && typeSelect.value === 'dang-ky-giai'; }
-      function isDoubles() { return categorySelect && categorySelect.value.startsWith('doi'); }
-
+      var typeSelect = document.getElementById('cf-type');
       typeSelect && typeSelect.addEventListener('change', function() {
-        tournamentFields.hidden = !isTournament();
-        if (!isTournament()) {
-          partnerFields.hidden = true;
-          ['level','category','partner_name'].forEach(f => setError(f, false));
+        if (this.value === 'dang-ky-giai') {
+          this.value = '';
+          document.getElementById('events').scrollIntoView({ behavior: 'smooth' });
+          redirectToast.classList.add('show');
+          setTimeout(function() { redirectToast.classList.remove('show'); }, 3000);
         }
-      });
-
-      categorySelect && categorySelect.addEventListener('change', function() {
-        partnerFields.hidden = !isDoubles();
-        if (!isDoubles()) setError('partner_name', false);
       });
 
       function setError(field, show) {
@@ -2323,9 +2274,6 @@
       function validateField(field) {
         const el = form.querySelector('[data-field="' + field + '"]');
         if (!el) return true;
-        if (field === 'level' && !isTournament()) return true;
-        if (field === 'category' && !isTournament()) return true;
-        if (field === 'partner_name' && (!isTournament() || !isDoubles())) return true;
         const valid = validators[field](el.value);
         setError(field, !valid);
         return valid;
@@ -2333,10 +2281,6 @@
 
       function validateAll() {
         var fields = ['name', 'phone', 'email', 'type', 'message'];
-        if (isTournament()) {
-          fields.push('level', 'category');
-          if (isDoubles()) fields.push('partner_name');
-        }
         return fields.map(f => validateField(f)).every(Boolean);
       }
 
@@ -2486,8 +2430,9 @@
             db.tournaments.push(tournament);
           }
 
+          var code = 'AMZ-' + genId().slice(0,4).toUpperCase();
           var reg = {
-            id: genId(), playerId: player.id, tournamentId: tournament.id,
+            id: genId(), code: code, playerId: player.id, tournamentId: tournament.id,
             level: levelToNum(level), category: category,
             partnerId: null, partnerName: partner || null,
             status: 'Chờ duyệt', result: null, newLevel: null,
@@ -2496,6 +2441,16 @@
           db.registrations.push(reg);
 
           localStorage.setItem('amz_admin', JSON.stringify(db));
+
+          document.getElementById('regCode').textContent = code;
+          document.getElementById('regDetails').innerHTML =
+            '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><span style="color:var(--muted)">Giải đấu</span><strong>' + eventName + '</strong></div>' +
+            '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><span style="color:var(--muted)">Họ tên</span><strong>' + name + '</strong></div>' +
+            '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><span style="color:var(--muted)">Trình độ</span><strong>' + level + '</strong></div>' +
+            '<div style="display:flex;justify-content:space-between;padding:4px 0;' + (partner ? 'border-bottom:1px solid rgba(255,255,255,0.06)' : '') + '"><span style="color:var(--muted)">Hạng</span><strong>' + category + '</strong></div>' +
+            (partner ? '<div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Đồng đội</span><strong>' + partner + '</strong></div>' : '');
+
+          updateRegCounts();
         } catch(err) {}
 
         formWrap.style.display = 'none';
@@ -2504,6 +2459,38 @@
         submitBtn.textContent = 'Gửi Đăng Ký';
       });
     })();
+
+    // ─── REGISTRATION COUNTS & SLOTS ───
+    function updateRegCounts() {
+      try {
+        var db = JSON.parse(localStorage.getItem('amz_admin')) || { registrations: [], tournaments: [] };
+        document.querySelectorAll('.event-item[data-event-name]').forEach(function(item) {
+          var eName = item.dataset.eventName;
+          var maxSlots = parseInt(item.dataset.maxSlots) || 0;
+          var tournament = db.tournaments.find(function(t) { return t.name === eName; });
+          var count = tournament ? db.registrations.filter(function(r) { return r.tournamentId === tournament.id; }).length : 0;
+
+          var info = item.querySelector('.event-info');
+          var existing = info.querySelector('.reg-count');
+          if (!existing) { existing = document.createElement('span'); existing.className = 'reg-count'; info.appendChild(existing); }
+
+          if (count > 0) {
+            var slotsLeft = maxSlots - count;
+            var slotsText = maxSlots ? ' · <span class="slots-badge ' + (slotsLeft <= 5 ? 'slots-low' : 'slots-ok') + '">Còn ' + slotsLeft + ' chỗ</span>' : '';
+            existing.innerHTML = count + ' người đã đăng ký' + slotsText;
+
+            if (maxSlots && slotsLeft <= 0) {
+              existing.innerHTML = count + ' người đã đăng ký · <span class="slots-badge slots-low">Hết chỗ</span>';
+              var btn = item.querySelector('.btn-reg');
+              if (btn) { btn.disabled = true; btn.textContent = 'Hết chỗ'; }
+            }
+          } else {
+            existing.innerHTML = '';
+          }
+        });
+      } catch(e) {}
+    }
+    updateRegCounts();
 
     // Page loader
     window.addEventListener('load', () => {

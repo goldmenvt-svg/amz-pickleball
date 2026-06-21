@@ -327,7 +327,7 @@
       <div class="card">
         <div class="card-body">
           <table>
-            <thead><tr><th>VĐV</th><th>Giải</th><th>Trình khai báo</th><th>Hạng</th><th>Đồng đội</th><th>Trạng thái</th><th>Kết quả</th><th></th></tr></thead>
+            <thead><tr><th>Mã</th><th>VĐV</th><th>Giải</th><th>Trình</th><th>Hạng</th><th>Đồng đội</th><th>Trạng thái</th><th>Kết quả</th><th></th></tr></thead>
             <tbody id="regs-table"></tbody>
           </table>
         </div>
@@ -795,7 +795,7 @@ function renderRegs(tournamentFilter) {
   if (tournamentFilter) list = list.filter(function(r) { return r.tournamentId === tournamentFilter; });
   var html = '';
   if (!list.length) {
-    html = '<tr><td colspan="8"><div class="empty-state"><p>Chưa có đăng ký nào</p></div></td></tr>';
+    html = '<tr><td colspan="9"><div class="empty-state"><p>Chưa có đăng ký nào</p></div></td></tr>';
   } else {
     list.forEach(function(r) {
       var player = db.players.find(function(p) { return p.id === r.playerId; });
@@ -803,6 +803,7 @@ function renderRegs(tournamentFilter) {
       var partner = r.partnerId ? db.players.find(function(p) { return p.id === r.partnerId; }) : null;
       var statusClass = r.status === 'Chờ duyệt' ? 'badge-orange' : r.status === 'Đã duyệt' ? 'badge-green' : r.status === 'Từ chối' ? 'badge-red' : 'badge-blue';
       html += '<tr>' +
+        '<td style="font-size:12px;font-weight:700;color:var(--accent);letter-spacing:0.04em">' + esc(r.code || '—') + '</td>' +
         '<td><strong>' + (player ? esc(player.name) : '?') + '</strong></td>' +
         '<td>' + (tournament ? esc(tournament.name) : '?') + '</td>' +
         '<td>' + (r.level || '—') + '</td>' +
