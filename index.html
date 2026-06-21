@@ -937,6 +937,12 @@
     }
     select.form-control option { background: white; color: var(--text); }
     textarea.form-control { min-height: 130px; resize: vertical; }
+    .tournament-fields:not([hidden]) { animation: fieldReveal 0.3s ease; }
+    #partner-fields:not([hidden]) { animation: fieldReveal 0.3s ease; }
+    @keyframes fieldReveal {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
 
     .contact-submit-wrap { margin-top: 8px; }
     .form-error-msg {
@@ -1757,6 +1763,7 @@
                   <option value="">— Chọn loại yêu cầu —</option>
                   <option value="dat-san">Đặt sân</option>
                   <option value="dang-ky-hoc">Đăng ký học Pickleball</option>
+                  <option value="dang-ky-giai">Đăng ký thi đấu</option>
                   <option value="tham-gia-social">Tham gia Social</option>
                   <option value="to-chuc-giai">Tổ chức giải đấu</option>
                   <option value="hop-tac">Hợp tác kinh doanh</option>
@@ -1766,6 +1773,58 @@
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                   Vui lòng chọn loại yêu cầu
                 </span>
+              </div>
+
+              <div id="tournament-fields" class="tournament-fields" hidden>
+                <div class="contact-row-2col">
+                  <div class="form-group">
+                    <label class="form-label" for="cf-level">Trình độ <span class="required">*</span></label>
+                    <select id="cf-level" name="level" class="form-control" data-field="level">
+                      <option value="">— Chọn trình độ —</option>
+                      <option value="2.0-2.5">2.0 – 2.5 (Mới bắt đầu)</option>
+                      <option value="3.0-3.5">3.0 – 3.5 (Trung bình)</option>
+                      <option value="4.0-4.5">4.0 – 4.5 (Khá)</option>
+                      <option value="5.0+">5.0+ (Nâng cao)</option>
+                    </select>
+                    <span class="field-error" id="err-level">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      Vui lòng chọn trình độ
+                    </span>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="cf-category">Hạng thi đấu <span class="required">*</span></label>
+                    <select id="cf-category" name="category" class="form-control" data-field="category">
+                      <option value="">— Chọn hạng —</option>
+                      <option value="don-nam">Đơn nam</option>
+                      <option value="don-nu">Đơn nữ</option>
+                      <option value="doi-nam">Đôi nam</option>
+                      <option value="doi-nu">Đôi nữ</option>
+                      <option value="doi-nam-nu">Đôi nam nữ (mixed)</option>
+                    </select>
+                    <span class="field-error" id="err-category">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      Vui lòng chọn hạng thi đấu
+                    </span>
+                  </div>
+                </div>
+                <div id="partner-fields" hidden>
+                  <div class="contact-row-2col">
+                    <div class="form-group">
+                      <label class="form-label" for="cf-partner">Tên đồng đội <span class="required">*</span></label>
+                      <input id="cf-partner" name="partner_name" type="text" class="form-control"
+                        placeholder="Họ tên đồng đội" data-field="partner_name" data-min="2">
+                      <span class="field-error" id="err-partner_name">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        Vui lòng nhập tên đồng đội
+                      </span>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" for="cf-partner-phone">SĐT đồng đội</label>
+                      <input id="cf-partner-phone" name="partner_phone" type="tel" class="form-control"
+                        placeholder="0912 345 678">
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div class="form-group">
@@ -1996,7 +2055,31 @@
         email:   v => !v.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()),
         type:    v => v !== '',
         message: v => v.trim().length >= 10,
+        level:   v => v !== '',
+        category: v => v !== '',
+        partner_name: v => v.trim().length >= 2,
       };
+
+      const typeSelect = document.getElementById('cf-type');
+      const tournamentFields = document.getElementById('tournament-fields');
+      const categorySelect = document.getElementById('cf-category');
+      const partnerFields = document.getElementById('partner-fields');
+
+      function isTournament() { return typeSelect && typeSelect.value === 'dang-ky-giai'; }
+      function isDoubles() { return categorySelect && categorySelect.value.startsWith('doi'); }
+
+      typeSelect && typeSelect.addEventListener('change', function() {
+        tournamentFields.hidden = !isTournament();
+        if (!isTournament()) {
+          partnerFields.hidden = true;
+          ['level','category','partner_name'].forEach(f => setError(f, false));
+        }
+      });
+
+      categorySelect && categorySelect.addEventListener('change', function() {
+        partnerFields.hidden = !isDoubles();
+        if (!isDoubles()) setError('partner_name', false);
+      });
 
       function setError(field, show) {
         const el = form.querySelector('[data-field="' + field + '"]');
@@ -2009,13 +2092,20 @@
       function validateField(field) {
         const el = form.querySelector('[data-field="' + field + '"]');
         if (!el) return true;
+        if (field === 'level' && !isTournament()) return true;
+        if (field === 'category' && !isTournament()) return true;
+        if (field === 'partner_name' && (!isTournament() || !isDoubles())) return true;
         const valid = validators[field](el.value);
         setError(field, !valid);
         return valid;
       }
 
       function validateAll() {
-        const fields = ['name', 'phone', 'email', 'type', 'message'];
+        var fields = ['name', 'phone', 'email', 'type', 'message'];
+        if (isTournament()) {
+          fields.push('level', 'category');
+          if (isDoubles()) fields.push('partner_name');
+        }
         return fields.map(f => validateField(f)).every(Boolean);
       }
 
