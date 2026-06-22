@@ -3,6 +3,7 @@ name: Video Discovery Scan
 on:
   schedule:
     - cron: '0 3 * * *'
+    - cron: '0 13 * * *'
   workflow_dispatch: {}
 
 jobs:
@@ -10,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: master
 
       - uses: actions/setup-node@v4
         with:
@@ -20,10 +23,10 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: node scripts/video-discover.js
 
-      - name: Commit new videos
+      - name: Commit and push new videos
         run: |
           git config user.name "AMZ Video Bot"
           git config user.email "bot@amzpickleball.vn"
           git add data/videos.json
-          git diff --staged --quiet || git commit -m "chore: update video suggestions $(date +%Y-%m-%d)"
+          git diff --staged --quiet || git commit -m "chore: auto-discover videos $(date +%Y-%m-%d-%H%M)"
           git push
