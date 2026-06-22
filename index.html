@@ -56,7 +56,7 @@
       --bronze: #cd7f32;
     }
 
-    html { scroll-behavior: smooth; font-size: 16px; }
+    html { scroll-behavior: smooth; font-size: 16px; overflow-x: hidden; }
 
     body {
       background: var(--bg);
@@ -696,6 +696,7 @@
     .training-cta-box {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: var(--r); padding: 40px; position: sticky; top: 100px;
+      overflow: hidden; max-width: 100%; box-sizing: border-box;
     }
     .training-cta-box h3 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; color: white; }
     .training-cta-box .dim { color: rgba(255,255,255,0.4); }
@@ -1008,7 +1009,7 @@
     /* ─── CONTACT FORM ─── */
     .contact-grid {
       display: grid; grid-template-columns: 1fr 1.6fr;
-      gap: 80px; align-items: start;
+      gap: 80px; align-items: start; overflow: hidden; max-width: 100%;
     }
     .contact-info-card {
       display: flex; flex-direction: column; gap: 32px;
@@ -1409,8 +1410,9 @@
 
     /* ─── LEADERBOARD ─── */
     .leaderboard-section { border-top: 1px solid var(--border); }
+    .leaderboard-content { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .leaderboard-table {
-      margin-top: 32px; width: 100%; border-collapse: collapse;
+      margin-top: 32px; width: 100%; border-collapse: collapse; min-width: 500px;
     }
     .leaderboard-table th {
       font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase;
