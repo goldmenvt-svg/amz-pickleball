@@ -1205,6 +1205,7 @@ function logout() { sessionStorage.removeItem(AUTH_KEY); location.reload(); }
 var GH_TOKEN_KEY = 'amz_gh_token';
 var GH_REPO = 'goldmenvt-svg/amz-pickleball';
 var GH_FILE_PATH = 'data/videos.json';
+var GH_BRANCH = 'master';
 var _ghToken = localStorage.getItem(GH_TOKEN_KEY) || '';
 var _ghPushing = false;
 var _ghPushTimer = null;
@@ -1261,8 +1262,9 @@ async function pushVideosToGitHub() {
   updateSyncStatus('pending', 'Đang push lên GitHub...');
 
   try {
-    var getRes = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + GH_FILE_PATH + '?ref=master', {
-      headers: { 'Authorization': 'Bearer ' + _ghToken, 'Accept': 'application/vnd.github.v3+json' }
+    var getRes = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + GH_FILE_PATH + '?ref=' + GH_BRANCH + '&t=' + Date.now(), {
+      headers: { 'Authorization': 'Bearer ' + _ghToken, 'Accept': 'application/vnd.github.v3+json' },
+      cache: 'no-store'
     });
     if (!getRes.ok) throw new Error('Không đọc được file: ' + getRes.status);
     var fileInfo = await getRes.json();
@@ -1280,7 +1282,8 @@ async function pushVideosToGitHub() {
       body: JSON.stringify({
         message: 'chore: update video approvals ' + new Date().toISOString().substring(0, 10),
         content: content,
-        sha: sha
+        sha: sha,
+        branch: GH_BRANCH
       })
     });
 
