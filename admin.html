@@ -1261,7 +1261,7 @@ async function pushVideosToGitHub() {
   updateSyncStatus('pending', 'Đang push lên GitHub...');
 
   try {
-    var getRes = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + GH_FILE_PATH, {
+    var getRes = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + GH_FILE_PATH + '?ref=master', {
       headers: { 'Authorization': 'Bearer ' + _ghToken, 'Accept': 'application/vnd.github.v3+json' }
     });
     if (!getRes.ok) throw new Error('Không đọc được file: ' + getRes.status);
