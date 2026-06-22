@@ -1,0 +1,21 @@
+node_modules/
+scripts/
+reports/
+screenshots/
+.claude/
+CLAUDE.md
+package.json
+package-lock.json
+*.mjs
+verify.js
+*-compare-*.png
+*-desktop.png
+*-mobile.png
+final-*.png
+v2-*.png
+screenshot*.png
+contact-*.png
+compare-*.png
+godly.website_*.png
+wp-upload/
+hinh anh/

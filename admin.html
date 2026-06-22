@@ -168,6 +168,76 @@
   }
   @media (min-width: 769px) { .mobile-nav { display: none; } }
 
+  .video-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; padding: 20px; }
+  .v-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .v-card:hover { border-color: rgba(255,255,255,0.12); }
+  .v-thumb-wrap { position: relative; aspect-ratio: 16/9; overflow: hidden; cursor: pointer; }
+  .v-thumb-wrap img { width: 100%; height: 100%; object-fit: cover; }
+  .v-thumb-wrap .v-play {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.35); opacity: 0; transition: opacity 0.2s;
+  }
+  .v-thumb-wrap:hover .v-play { opacity: 1; }
+  .v-play svg { width: 40px; height: 40px; fill: #fff; }
+  .v-duration {
+    position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.8);
+    color: #fff; font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px;
+  }
+  .v-info { padding: 12px; }
+  .v-info h4 { font-size: 13px; font-weight: 600; line-height: 1.4; margin-bottom: 6px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .v-meta { display: flex; gap: 12px; font-size: 11px; color: var(--muted); margin-bottom: 10px; flex-wrap: wrap; }
+  .v-meta span { display: flex; align-items: center; gap: 4px; }
+  .v-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .v-actions select {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text); padding: 4px 8px; font-size: 11px; outline: none;
+  }
+  .v-badge-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .v-badge-thi-dau { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .v-badge-tap-luyen { background: rgba(34,197,94,0.15); color: var(--green); }
+  .v-badge-review { background: rgba(168,85,247,0.15); color: #a855f7; }
+  .v-badge-tin-tuc { background: rgba(245,158,11,0.15); color: var(--orange); }
+  .v-badge-su-kien { background: rgba(236,72,153,0.15); color: #ec4899; }
+  .video-empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .video-empty p { font-size: 14px; }
+  .v-add-form { max-width: 560px; padding: 20px; }
+  .v-add-form .form-group { margin-bottom: 16px; }
+  .v-preview { display: none; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; margin-top: 16px; }
+  .v-preview.show { display: flex; gap: 16px; align-items: flex-start; }
+  .v-preview img { width: 160px; border-radius: 6px; flex-shrink: 0; }
+  .v-preview-info h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .v-preview-info p { font-size: 12px; color: var(--muted); }
+
+  .sync-bar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+    font-size: 12px; margin-bottom: 16px;
+  }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .sync-dot.ok { background: var(--green); }
+  .sync-dot.pending { background: var(--orange); animation: pulse-dot 1s infinite; }
+  .sync-dot.error { background: var(--red); }
+  .sync-dot.off { background: var(--muted); }
+  @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .sync-msg { color: var(--muted); }
+  .sync-msg.ok { color: var(--green); }
+  .sync-msg.error { color: var(--red); }
+  .gh-setup { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; margin-bottom: 20px; }
+  .gh-setup summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .gh-setup summary:hover { color: var(--text); }
+  .gh-setup .gh-body { padding-top: 16px; }
+  .gh-token-input { display: flex; gap: 8px; margin-top: 8px; }
+  .gh-token-input input { flex: 1; }
+  .gh-steps { font-size: 12px; color: var(--muted); line-height: 1.8; margin-top: 12px; }
+  .gh-steps a { color: var(--accent); text-decoration: none; }
+
   .login-screen {
     position: fixed; inset: 0; z-index: 999; background: var(--bg);
     display: flex; align-items: center; justify-content: center;
@@ -229,6 +299,11 @@
     <button class="nav-item" data-page="history">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       Lịch sử trình
+    </button>
+    <button class="nav-item" data-page="videos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+      Video
+      <span class="nav-badge" id="videoPendingCount">0</span>
     </button>
     <div style="padding:16px 20px;margin-top:auto;border-top:1px solid var(--border);">
       <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="exportAll()">
@@ -334,6 +409,104 @@
       </div>
     </div>
 
+    <!-- VIDEOS -->
+    <div class="page" id="page-videos">
+      <div class="page-header">
+        <h1>Quản lý Video</h1>
+        <div class="toolbar">
+          <button class="btn btn-outline" onclick="exportVideosJSON()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Xuất JSON
+          </button>
+        </div>
+      </div>
+
+      <div class="sync-bar" id="syncBar">
+        <span class="sync-dot off" id="syncDot"></span>
+        <span class="sync-msg" id="syncMsg">Chưa kết nối GitHub — video duyệt sẽ lưu local</span>
+        <button class="btn btn-sm btn-outline" style="margin-left:auto;" onclick="toggleGHSetup()">⚙ Kết nối GitHub</button>
+      </div>
+
+      <details class="gh-setup" id="ghSetup" style="display:none">
+        <summary>Cấu hình GitHub Auto-Push</summary>
+        <div class="gh-body">
+          <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Khi kết nối, mỗi lần duyệt video sẽ tự động push lên GitHub → Vercel deploy → web cập nhật trong ~30 giây.</p>
+          <div class="gh-token-input">
+            <input class="form-input" id="ghTokenInput" type="password" placeholder="ghp_xxxx hoặc github_pat_xxxx">
+            <button class="btn btn-primary btn-sm" onclick="saveGHToken()">Lưu</button>
+            <button class="btn btn-outline btn-sm" onclick="clearGHToken()">Xóa</button>
+          </div>
+          <div class="gh-steps">
+            <strong>Cách tạo token (1 lần duy nhất):</strong><br>
+            1. Vào <a href="https://github.com/settings/tokens?type=beta" target="_blank">GitHub → Settings → Fine-grained tokens</a><br>
+            2. Click "Generate new token"<br>
+            3. Tên: <code>AMZ Admin</code> · Expiration: 90 days<br>
+            4. Repository access: chọn <code>amz-pickleball</code><br>
+            5. Permissions → Contents: <strong>Read and write</strong><br>
+            6. Click "Generate token" → copy & paste vào ô trên
+          </div>
+        </div>
+      </details>
+
+      <div class="stats-row" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="stat-card">
+          <div class="stat-label">Chờ duyệt</div>
+          <div class="stat-value" id="vs-pending" style="color:var(--orange)">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Đang hiển thị</div>
+          <div class="stat-value" id="vs-approved" style="color:var(--green)">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Đã từ chối</div>
+          <div class="stat-value" id="vs-rejected" style="color:var(--muted)">0</div>
+        </div>
+      </div>
+
+      <div class="tab-bar">
+        <button class="tab-btn active" data-vtab="pending">Chờ duyệt</button>
+        <button class="tab-btn" data-vtab="approved">Đã duyệt</button>
+        <button class="tab-btn" data-vtab="rejected">Đã từ chối</button>
+        <button class="tab-btn" data-vtab="add">+ Thêm thủ công</button>
+      </div>
+
+      <div id="vtab-pending">
+        <div class="video-cards" id="pending-videos"></div>
+      </div>
+      <div id="vtab-approved" style="display:none">
+        <div class="video-cards" id="approved-videos"></div>
+      </div>
+      <div id="vtab-rejected" style="display:none">
+        <div class="video-cards" id="rejected-videos"></div>
+      </div>
+      <div id="vtab-add" style="display:none">
+        <div class="v-add-form">
+          <div class="form-group">
+            <label class="form-label">URL Video YouTube</label>
+            <input class="form-input" id="v-add-url" placeholder="https://www.youtube.com/watch?v=..." oninput="previewVideoURL()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Badge</label>
+            <select class="form-select" id="v-add-badge">
+              <option value="Thi đấu">Thi đấu</option>
+              <option value="Tập luyện">Tập luyện</option>
+              <option value="Sự kiện">Sự kiện</option>
+              <option value="Tin tức">Tin tức</option>
+              <option value="Review">Review</option>
+            </select>
+          </div>
+          <div class="v-preview" id="v-add-preview">
+            <img id="v-add-thumb" src="">
+            <div class="v-preview-info">
+              <h4 id="v-add-title">—</h4>
+              <p id="v-add-channel">—</p>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:16px;" onclick="addManualVideo()">Thêm & Duyệt ngay</button>
+        </div>
+      </div>
+    </div>
+
     <!-- HISTORY -->
     <div class="page" id="page-history">
       <div class="page-header"><h1>Lịch sử trình độ</h1></div>
@@ -354,6 +527,7 @@
   <button data-page="players"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/></svg>VĐV</button>
   <button data-page="tournaments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Giải</button>
   <button data-page="registrations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Đăng ký</button>
+  <button data-page="videos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>Video</button>
 </div>
 
 <!-- MODALS -->
@@ -612,6 +786,7 @@ document.querySelectorAll('[data-page]').forEach(function(btn) {
     if (pg === 'tournaments') renderTournaments();
     if (pg === 'registrations') renderRegs();
     if (pg === 'history') renderHistory();
+    if (pg === 'videos') renderVideos();
   });
 });
 
@@ -1026,8 +1201,374 @@ function resendZalo(id) {
 
 function logout() { sessionStorage.removeItem(AUTH_KEY); location.reload(); }
 
+// === GITHUB AUTO-PUSH ===
+var GH_TOKEN_KEY = 'amz_gh_token';
+var GH_REPO = 'goldmenvt-svg/amz-pickleball';
+var GH_FILE_PATH = 'data/videos.json';
+var _ghToken = localStorage.getItem(GH_TOKEN_KEY) || '';
+var _ghPushing = false;
+var _ghPushTimer = null;
+
+function toggleGHSetup() {
+  var el = document.getElementById('ghSetup');
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+function saveGHToken() {
+  var token = document.getElementById('ghTokenInput').value.trim();
+  if (!token) return;
+  localStorage.setItem(GH_TOKEN_KEY, token);
+  _ghToken = token;
+  document.getElementById('ghTokenInput').value = '';
+  document.getElementById('ghSetup').style.display = 'none';
+  updateSyncStatus('ok', 'GitHub đã kết nối — sẵn sàng auto-push');
+  toast('Đã lưu GitHub token');
+}
+
+function clearGHToken() {
+  localStorage.removeItem(GH_TOKEN_KEY);
+  _ghToken = '';
+  updateSyncStatus('off', 'Chưa kết nối GitHub — video duyệt sẽ lưu local');
+  toast('Đã xóa GitHub token');
+}
+
+function updateSyncStatus(state, msg) {
+  var dot = document.getElementById('syncDot');
+  var msgEl = document.getElementById('syncMsg');
+  dot.className = 'sync-dot ' + state;
+  msgEl.className = 'sync-msg ' + (state === 'error' ? 'error' : state === 'ok' ? 'ok' : '');
+  msgEl.textContent = msg;
+}
+
+function initSyncStatus() {
+  if (_ghToken) {
+    updateSyncStatus('ok', 'GitHub đã kết nối — auto-push khi duyệt video');
+  } else {
+    updateSyncStatus('off', 'Chưa kết nối GitHub — video duyệt sẽ lưu local');
+  }
+}
+
+function schedulePush() {
+  if (!_ghToken) return;
+  if (_ghPushTimer) clearTimeout(_ghPushTimer);
+  updateSyncStatus('pending', 'Đợi 2s để gộp thay đổi...');
+  _ghPushTimer = setTimeout(function() { pushVideosToGitHub(); }, 2000);
+}
+
+async function pushVideosToGitHub() {
+  if (!_ghToken || _ghPushing) return;
+  _ghPushing = true;
+  updateSyncStatus('pending', 'Đang push lên GitHub...');
+
+  try {
+    var getRes = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + GH_FILE_PATH, {
+      headers: { 'Authorization': 'Bearer ' + _ghToken, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (!getRes.ok) throw new Error('Không đọc được file: ' + getRes.status);
+    var fileInfo = await getRes.json();
+    var sha = fileInfo.sha;
+
+    var content = btoa(unescape(encodeURIComponent(JSON.stringify(videoData, null, 2))));
+
+    var putRes = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + GH_FILE_PATH, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer ' + _ghToken,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: 'chore: update video approvals ' + new Date().toISOString().substring(0, 10),
+        content: content,
+        sha: sha
+      })
+    });
+
+    if (!putRes.ok) {
+      var errBody = await putRes.text();
+      throw new Error('Push thất bại: ' + putRes.status + ' ' + errBody.substring(0, 100));
+    }
+
+    updateSyncStatus('ok', 'Đã push lên GitHub — web cập nhật trong ~30s');
+    toast('Đã push lên GitHub — Vercel đang deploy...');
+  } catch (err) {
+    console.error('GitHub push error:', err);
+    updateSyncStatus('error', 'Lỗi: ' + err.message.substring(0, 80));
+    toast('Push thất bại — dữ liệu đã lưu local, dùng "Xuất JSON" để cập nhật thủ công');
+  } finally {
+    _ghPushing = false;
+  }
+}
+
+// === VIDEO MANAGEMENT ===
+var VIDEO_DB_KEY = 'amz_videos';
+var videoData = { lastScan: '', videos: [] };
+
+function loadVideoData() {
+  var local = null;
+  try { local = JSON.parse(localStorage.getItem(VIDEO_DB_KEY)); } catch(e) {}
+  if (local && local.videos && local.videos.length) {
+    videoData = local;
+    updateVideoStats();
+    return Promise.resolve();
+  }
+  return fetch('data/videos.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      videoData = data;
+      localStorage.setItem(VIDEO_DB_KEY, JSON.stringify(videoData));
+      updateVideoStats();
+    })
+    .catch(function(err) { console.error('Failed to load videos:', err); });
+}
+
+function saveVideoData() {
+  localStorage.setItem(VIDEO_DB_KEY, JSON.stringify(videoData));
+  updateVideoStats();
+}
+
+function updateVideoStats() {
+  var pending = 0, approved = 0, rejected = 0;
+  videoData.videos.forEach(function(v) {
+    if (v.status === 'pending') pending++;
+    else if (v.status === 'approved') approved++;
+    else if (v.status === 'rejected') rejected++;
+  });
+  var pe = document.getElementById('vs-pending');
+  var ae = document.getElementById('vs-approved');
+  var re = document.getElementById('vs-rejected');
+  var badge = document.getElementById('videoPendingCount');
+  if (pe) pe.textContent = pending;
+  if (ae) ae.textContent = approved;
+  if (re) re.textContent = rejected;
+  if (badge) { badge.textContent = pending; badge.style.display = pending ? '' : 'none'; }
+}
+
+function badgeClass(badge) {
+  if (!badge) return '';
+  var slug = badge.toLowerCase().replace(/\s/g, '-').replace(/[àáảãạ]/g,'a').replace(/[èéẻẽẹê]/g,'e').replace(/[ìíỉĩị]/g,'i').replace(/[ùúủũụư]/g,'u').replace(/[đ]/g,'d');
+  if (slug.indexOf('thi') >= 0 || slug.indexOf('dau') >= 0) return 'v-badge-thi-dau';
+  if (slug.indexOf('tap') >= 0 || slug.indexOf('luyen') >= 0) return 'v-badge-tap-luyen';
+  if (slug.indexOf('review') >= 0) return 'v-badge-review';
+  if (slug.indexOf('tin') >= 0) return 'v-badge-tin-tuc';
+  if (slug.indexOf('su-kien') >= 0 || slug.indexOf('event') >= 0) return 'v-badge-su-kien';
+  return 'badge-muted';
+}
+
+function videoCardHTML(v, actions) {
+  var thumb = v.thumbnail || 'https://i.ytimg.com/vi/' + v.platformId + '/mqdefault.jpg';
+  var ytLink = 'https://www.youtube.com/watch?v=' + v.platformId;
+  var viewStr = v.viewCount >= 1000 ? (v.viewCount / 1000).toFixed(1) + 'K' : (v.viewCount || 0);
+  return '<div class="v-card" data-id="' + v.id + '">' +
+    '<div class="v-thumb-wrap" onclick="window.open(\'' + ytLink + '\',\'_blank\')">' +
+      '<img src="' + esc(thumb) + '" alt="" loading="lazy">' +
+      '<div class="v-play"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>' +
+      (v.duration ? '<span class="v-duration">' + esc(v.duration) + '</span>' : '') +
+    '</div>' +
+    '<div class="v-info">' +
+      '<h4>' + esc(v.title) + '</h4>' +
+      '<div class="v-meta">' +
+        '<span>' + esc(v.channelTitle || '') + '</span>' +
+        '<span>' + viewStr + ' views</span>' +
+        '<span>' + esc(v.publishedAt || '') + '</span>' +
+        (v.badge ? '<span class="v-badge-tag ' + badgeClass(v.badge) + '">' + esc(v.badge) + '</span>' : '') +
+      '</div>' +
+      '<div class="v-actions">' + actions + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderVideos() {
+  renderPendingVideos();
+  renderApprovedVideos();
+  renderRejectedVideos();
+  updateVideoStats();
+}
+
+function renderPendingVideos() {
+  var list = videoData.videos.filter(function(v) { return v.status === 'pending'; });
+  var container = document.getElementById('pending-videos');
+  if (!list.length) {
+    container.innerHTML = '<div class="video-empty"><p>Không có video nào chờ duyệt</p></div>';
+    return;
+  }
+  var html = '';
+  list.forEach(function(v) {
+    var actions =
+      '<select onchange="setVideoBadge(\'' + v.id + '\', this.value)" style="font-size:11px">' +
+        '<option value="Thi đấu"' + (v.badge === 'Thi đấu' ? ' selected' : '') + '>Thi đấu</option>' +
+        '<option value="Tập luyện"' + (v.badge === 'Tập luyện' ? ' selected' : '') + '>Tập luyện</option>' +
+        '<option value="Sự kiện"' + (v.badge === 'Sự kiện' ? ' selected' : '') + '>Sự kiện</option>' +
+        '<option value="Tin tức"' + (v.badge === 'Tin tức' ? ' selected' : '') + '>Tin tức</option>' +
+        '<option value="Review"' + (v.badge === 'Review' ? ' selected' : '') + '>Review</option>' +
+      '</select>' +
+      '<button class="btn btn-sm" style="background:var(--green);color:#fff;" onclick="approveVideo(\'' + v.id + '\')">✓ Duyệt</button>' +
+      '<button class="btn btn-sm" style="background:var(--red);color:#fff;" onclick="rejectVideo(\'' + v.id + '\')">✗ Bỏ</button>';
+    html += videoCardHTML(v, actions);
+  });
+  container.innerHTML = html;
+}
+
+function renderApprovedVideos() {
+  var list = videoData.videos.filter(function(v) { return v.status === 'approved'; });
+  var container = document.getElementById('approved-videos');
+  if (!list.length) {
+    container.innerHTML = '<div class="video-empty"><p>Chưa có video nào được duyệt</p></div>';
+    return;
+  }
+  var html = '';
+  list.sort(function(a, b) { return (b.approvedAt || '').localeCompare(a.approvedAt || ''); });
+  list.forEach(function(v) {
+    var actions =
+      '<span class="v-badge-tag ' + badgeClass(v.badge) + '">' + esc(v.badge || '') + '</span>' +
+      '<button class="btn btn-sm btn-outline" onclick="unapproveVideo(\'' + v.id + '\')" style="margin-left:auto">Gỡ khỏi web</button>';
+    html += videoCardHTML(v, actions);
+  });
+  container.innerHTML = html;
+}
+
+function renderRejectedVideos() {
+  var list = videoData.videos.filter(function(v) { return v.status === 'rejected'; });
+  var container = document.getElementById('rejected-videos');
+  if (!list.length) {
+    container.innerHTML = '<div class="video-empty"><p>Không có video bị từ chối</p></div>';
+    return;
+  }
+  var html = '';
+  list.forEach(function(v) {
+    var actions =
+      '<button class="btn btn-sm btn-outline" onclick="restoreVideo(\'' + v.id + '\')">Khôi phục</button>' +
+      '<button class="btn btn-sm" style="background:var(--red);color:#fff;" onclick="deleteVideo(\'' + v.id + '\')">Xóa hẳn</button>';
+    html += videoCardHTML(v, actions);
+  });
+  container.innerHTML = html;
+}
+
+function setVideoBadge(id, badge) {
+  var v = videoData.videos.find(function(x) { return x.id === id; });
+  if (v) { v.badge = badge; saveVideoData(); }
+}
+
+function approveVideo(id) {
+  var v = videoData.videos.find(function(x) { return x.id === id; });
+  if (!v) return;
+  v.status = 'approved';
+  v.badge = v.badge || 'Thi đấu';
+  v.approvedAt = new Date().toISOString();
+  saveVideoData(); renderVideos();
+  toast('Đã duyệt: ' + v.title.substring(0, 40));
+  schedulePush();
+}
+
+function rejectVideo(id) {
+  var v = videoData.videos.find(function(x) { return x.id === id; });
+  if (!v) return;
+  v.status = 'rejected';
+  saveVideoData(); renderVideos();
+  toast('Đã từ chối video');
+  schedulePush();
+}
+
+function unapproveVideo(id) {
+  if (!confirm('Gỡ video này khỏi website?')) return;
+  var v = videoData.videos.find(function(x) { return x.id === id; });
+  if (!v) return;
+  v.status = 'pending';
+  v.approvedAt = null;
+  saveVideoData(); renderVideos();
+  toast('Đã gỡ khỏi web');
+  schedulePush();
+}
+
+function restoreVideo(id) {
+  var v = videoData.videos.find(function(x) { return x.id === id; });
+  if (!v) return;
+  v.status = 'pending';
+  saveVideoData(); renderVideos();
+  toast('Đã khôi phục về chờ duyệt');
+  schedulePush();
+}
+
+function deleteVideo(id) {
+  if (!confirm('Xóa hẳn video này?')) return;
+  videoData.videos = videoData.videos.filter(function(x) { return x.id !== id; });
+  saveVideoData(); renderVideos();
+  toast('Đã xóa video');
+  schedulePush();
+}
+
+function exportVideosJSON() {
+  var blob = new Blob([JSON.stringify(videoData, null, 2)], { type: 'application/json' });
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'videos.json'; a.click();
+  toast('Đã xuất videos.json — commit file này vào data/videos.json để cập nhật web');
+}
+
+function parseYouTubeId(url) {
+  var match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
+
+function previewVideoURL() {
+  var url = document.getElementById('v-add-url').value.trim();
+  var ytId = parseYouTubeId(url);
+  var preview = document.getElementById('v-add-preview');
+  if (!ytId) { preview.classList.remove('show'); return; }
+  document.getElementById('v-add-thumb').src = 'https://i.ytimg.com/vi/' + ytId + '/mqdefault.jpg';
+  document.getElementById('v-add-title').textContent = 'YouTube ID: ' + ytId;
+  document.getElementById('v-add-channel').textContent = 'Thumbnail đã tải — nhấn "Thêm & Duyệt" để lưu';
+  preview.classList.add('show');
+}
+
+function addManualVideo() {
+  var url = document.getElementById('v-add-url').value.trim();
+  var ytId = parseYouTubeId(url);
+  if (!ytId) { alert('URL YouTube không hợp lệ'); return; }
+  var existing = videoData.videos.find(function(v) { return v.platformId === ytId; });
+  if (existing) { alert('Video này đã có trong danh sách (status: ' + existing.status + ')'); return; }
+  var badge = document.getElementById('v-add-badge').value;
+  var now = new Date().toISOString();
+  videoData.videos.unshift({
+    id: 'yt_' + ytId,
+    platform: 'youtube',
+    platformId: ytId,
+    title: 'Video thủ công — ' + ytId,
+    description: '',
+    channelTitle: '',
+    thumbnail: 'https://i.ytimg.com/vi/' + ytId + '/mqdefault.jpg',
+    duration: '',
+    publishedAt: now.substring(0, 10),
+    viewCount: 0,
+    priority: 1,
+    badge: badge,
+    status: 'approved',
+    addedAt: now,
+    approvedAt: now
+  });
+  saveVideoData(); renderVideos();
+  document.getElementById('v-add-url').value = '';
+  document.getElementById('v-add-preview').classList.remove('show');
+  toast('Đã thêm & duyệt video');
+  schedulePush();
+  document.querySelector('[data-vtab="approved"]').click();
+}
+
+// Video tab switching
+document.querySelectorAll('[data-vtab]').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('[data-vtab]').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var tab = btn.dataset.vtab;
+    ['pending', 'approved', 'rejected', 'add'].forEach(function(t) {
+      var el = document.getElementById('vtab-' + t);
+      if (el) el.style.display = t === tab ? '' : 'none';
+    });
+  });
+});
+
 // Init
 updateCounts(); renderDashboard();
+loadVideoData().then(function() { updateVideoStats(); initSyncStatus(); });
 </script>
 </body>
 </html>

@@ -15,6 +15,12 @@
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
+    },
+    {
+      "source": "/data/videos.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=300, s-maxage=60" }
+      ]
     }
   ]
 }

@@ -1342,7 +1342,28 @@
       display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
       text-transform: uppercase; color: var(--accent); margin-bottom: 6px;
     }
+    @media (max-width: 1024px) { .video-grid { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 768px) { .video-grid { grid-template-columns: 1fr; } }
+    .video-embed-active .video-thumb img,
+    .video-embed-active .video-play-overlay,
+    .video-embed-active .video-duration { display: none; }
+    .video-embed-active .video-thumb { aspect-ratio: 16/9; }
+    .video-embed-active .video-thumb iframe {
+      position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
+    }
+    .video-card .video-thumb { position: relative; }
+    .video-channel {
+      font-size: 11px; color: var(--muted2); margin-top: 4px;
+    }
+    .video-views {
+      font-size: 11px; color: var(--muted2);
+    }
+    .video-meta {
+      display: flex; gap: 12px; align-items: center; margin-top: 6px;
+    }
+    .video-empty {
+      text-align: center; padding: 60px 0; color: var(--muted);
+    }
 
     /* ─── SPONSORS / PARTNERS ─── */
     .partners-section { border-top: 1px solid var(--border); }
@@ -1613,52 +1634,7 @@
           <p class="reveal reveal-delay-2">Xem lại những trận đấu hấp dẫn và khoảnh khắc đáng nhớ tại AMZ.</p>
         </div>
 
-        <div class="video-grid">
-          <div class="video-card reveal">
-            <div class="video-thumb">
-              <img src="images/hanh-dong/doi-khang-net.jpg" alt="Trận thi đấu tại AMZ" loading="lazy">
-              <div class="video-play-overlay">
-                <div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div>
-              </div>
-              <span class="video-duration">12:34</span>
-            </div>
-            <div class="video-info">
-              <span class="video-badge">Thi đấu</span>
-              <h4>Chung Kết AMZ Cup Lần 1</h4>
-              <p>Trận đấu kịch tính giữa 2 đội mạnh nhất</p>
-            </div>
-          </div>
-
-          <div class="video-card reveal reveal-delay-1">
-            <div class="video-thumb">
-              <img src="images/hanh-dong/tap-luyen-1.jpg" alt="Buổi tập luyện Pickleball" loading="lazy">
-              <div class="video-play-overlay">
-                <div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div>
-              </div>
-              <span class="video-duration">8:15</span>
-            </div>
-            <div class="video-info">
-              <span class="video-badge">Tập luyện</span>
-              <h4>5 Bài Tập Serve Cơ Bản</h4>
-              <p>HLV hướng dẫn kỹ thuật serve cho người mới</p>
-            </div>
-          </div>
-
-          <div class="video-card reveal reveal-delay-2">
-            <div class="video-thumb">
-              <img src="images/su-kien/le-trao-giai-amz-cup.jpg" alt="Lễ trao giải AMZ Cup" loading="lazy">
-              <div class="video-play-overlay">
-                <div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div>
-              </div>
-              <span class="video-duration">15:42</span>
-            </div>
-            <div class="video-info">
-              <span class="video-badge">Sự kiện</span>
-              <h4>Recap: AMZ Cup Lần 1</h4>
-              <p>Toàn cảnh giải đấu đầu tiên tại AMZ Pickleball</p>
-            </div>
-          </div>
-        </div>
+        <div class="video-grid" id="videoGrid"></div>
       </div>
     </section>
 
@@ -3248,6 +3224,89 @@
           console.error('Newsletter signup error:', err);
         }
       });
+    })();
+
+    // ═══ VIDEO GALLERY ═══
+    (function() {
+      var grid = document.getElementById('videoGrid');
+      if (!grid) return;
+
+      function renderVideoCards(videos) {
+        if (!videos.length) {
+          grid.innerHTML = '<div class="video-empty">Chưa có video nào. Hãy quay lại sau!</div>';
+          return;
+        }
+        grid.innerHTML = videos.map(function(v, i) {
+          var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
+          var isYT = v.platform === 'youtube';
+          var thumb = v.thumbnail || '';
+          if (isYT && v.platformId && !thumb.startsWith('images/')) {
+            thumb = 'https://i.ytimg.com/vi/' + v.platformId + '/mqdefault.jpg';
+          }
+          return '<div class="video-card reveal' + delay + '" data-platform="' + escapeHTML(v.platform) + '" data-video-id="' + escapeHTML(v.platformId || '') + '">' +
+            '<div class="video-thumb">' +
+            '<img src="' + escapeHTML(thumb) + '" alt="' + escapeHTML(v.title) + '" loading="lazy">' +
+            '<div class="video-play-overlay"><div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div></div>' +
+            (v.duration ? '<span class="video-duration">' + escapeHTML(v.duration) + '</span>' : '') +
+            '</div>' +
+            '<div class="video-info">' +
+            (v.badge ? '<span class="video-badge">' + escapeHTML(v.badge) + '</span>' : '') +
+            '<h4>' + escapeHTML(v.title) + '</h4>' +
+            '<p>' + escapeHTML(v.description || '') + '</p>' +
+            '<div class="video-meta">' +
+            (v.channelTitle ? '<span class="video-channel">' + escapeHTML(v.channelTitle) + '</span>' : '') +
+            (v.viewCount ? '<span class="video-views">' + Number(v.viewCount).toLocaleString('vi-VN') + ' lượt xem</span>' : '') +
+            '</div></div></div>';
+        }).join('');
+
+        grid.querySelectorAll('.video-card').forEach(function(card) {
+          card.addEventListener('click', function() {
+            if (card.classList.contains('video-embed-active')) return;
+            var platform = card.dataset.platform;
+            var videoId = card.dataset.videoId;
+            var thumb = card.querySelector('.video-thumb');
+            if (platform === 'youtube' && videoId) {
+              var iframe = document.createElement('iframe');
+              iframe.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
+              iframe.allow = 'autoplay; encrypted-media';
+              iframe.allowFullscreen = true;
+              thumb.appendChild(iframe);
+              card.classList.add('video-embed-active');
+            } else if (platform === 'facebook' && videoId) {
+              var iframe = document.createElement('iframe');
+              iframe.src = 'https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(videoId) + '&width=560&show_text=false';
+              iframe.allow = 'autoplay; encrypted-media';
+              iframe.allowFullscreen = true;
+              thumb.appendChild(iframe);
+              card.classList.add('video-embed-active');
+            }
+          });
+        });
+
+        initVideoReveal();
+      }
+
+      function initVideoReveal() {
+        var obs = new IntersectionObserver(function(entries) {
+          entries.forEach(function(e) {
+            if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }
+          });
+        }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+        grid.querySelectorAll('.reveal:not(.visible)').forEach(function(el) { obs.observe(el); });
+      }
+
+      fetch('data/videos.json')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var approved = data.videos
+            .filter(function(v) { return v.status === 'approved'; })
+            .sort(function(a, b) { return new Date(b.approvedAt || b.addedAt) - new Date(a.approvedAt || a.addedAt); })
+            .slice(0, 6);
+          renderVideoCards(approved);
+        })
+        .catch(function() {
+          grid.innerHTML = '<div class="video-empty">Không thể tải video. Vui lòng thử lại sau.</div>';
+        });
     })();
 
     // FAQ accordion
