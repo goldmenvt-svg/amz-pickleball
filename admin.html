@@ -448,14 +448,18 @@
         </div>
       </details>
 
-      <div class="stats-row" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="stats-row" style="grid-template-columns: repeat(4, 1fr);">
         <div class="stat-card">
           <div class="stat-label">Chờ duyệt</div>
           <div class="stat-value" id="vs-pending" style="color:var(--orange)">0</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Đang hiển thị</div>
+          <div class="stat-label">AMZ Highlights</div>
           <div class="stat-value" id="vs-approved" style="color:var(--green)">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Đỉnh Cao</div>
+          <div class="stat-value" id="vs-featured" style="color:#6366f1">0</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Đã từ chối</div>
@@ -465,7 +469,8 @@
 
       <div class="tab-bar">
         <button class="tab-btn active" data-vtab="pending">Chờ duyệt</button>
-        <button class="tab-btn" data-vtab="approved">Đã duyệt</button>
+        <button class="tab-btn" data-vtab="approved">AMZ (Đã duyệt)</button>
+        <button class="tab-btn" data-vtab="featured">Trận Đấu Đỉnh Cao</button>
         <button class="tab-btn" data-vtab="rejected">Đã từ chối</button>
         <button class="tab-btn" data-vtab="add">+ Thêm thủ công</button>
       </div>
@@ -476,6 +481,10 @@
       <div id="vtab-approved" style="display:none">
         <div class="video-cards" id="approved-videos"></div>
       </div>
+      <div id="vtab-featured" style="display:none">
+        <div style="margin-bottom:12px;color:var(--muted);font-size:13px;">Video trận đấu hay của tay vợt nổi tiếng — hiển thị ở section "Trận Đấu Đỉnh Cao" trên web.</div>
+        <div class="video-cards" id="featured-videos"></div>
+      </div>
       <div id="vtab-rejected" style="display:none">
         <div class="video-cards" id="rejected-videos"></div>
       </div>
@@ -484,6 +493,13 @@
           <div class="form-group">
             <label class="form-label">URL Video YouTube</label>
             <input class="form-input" id="v-add-url" placeholder="https://www.youtube.com/watch?v=..." oninput="previewVideoURL()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Hiển thị ở section</label>
+            <select class="form-select" id="v-add-category">
+              <option value="">AMZ Highlights (chỉ video tại sân AMZ)</option>
+              <option value="featured" selected>Trận Đấu Đỉnh Cao (tay vợt nổi tiếng)</option>
+            </select>
           </div>
           <div class="form-group">
             <label class="form-label">Badge</label>
@@ -1331,18 +1347,21 @@ function saveVideoData() {
 }
 
 function updateVideoStats() {
-  var pending = 0, approved = 0, rejected = 0;
+  var pending = 0, approved = 0, featured = 0, rejected = 0;
   videoData.videos.forEach(function(v) {
     if (v.status === 'pending') pending++;
+    else if (v.status === 'approved' && v.category === 'featured') featured++;
     else if (v.status === 'approved') approved++;
     else if (v.status === 'rejected') rejected++;
   });
   var pe = document.getElementById('vs-pending');
   var ae = document.getElementById('vs-approved');
+  var fe = document.getElementById('vs-featured');
   var re = document.getElementById('vs-rejected');
   var badge = document.getElementById('videoPendingCount');
   if (pe) pe.textContent = pending;
   if (ae) ae.textContent = approved;
+  if (fe) fe.textContent = featured;
   if (re) re.textContent = rejected;
   if (badge) { badge.textContent = pending; badge.style.display = pending ? '' : 'none'; }
 }
@@ -1384,6 +1403,7 @@ function videoCardHTML(v, actions) {
 function renderVideos() {
   renderPendingVideos();
   renderApprovedVideos();
+  renderFeaturedVideos();
   renderRejectedVideos();
   updateVideoStats();
 }
@@ -1405,7 +1425,8 @@ function renderPendingVideos() {
         '<option value="Tin tức"' + (v.badge === 'Tin tức' ? ' selected' : '') + '>Tin tức</option>' +
         '<option value="Review"' + (v.badge === 'Review' ? ' selected' : '') + '>Review</option>' +
       '</select>' +
-      '<button class="btn btn-sm" style="background:var(--green);color:#fff;" onclick="approveVideo(\'' + v.id + '\')">✓ Duyệt</button>' +
+      '<button class="btn btn-sm" style="background:var(--green);color:#fff;" onclick="approveVideo(\'' + v.id + '\')">✓ AMZ</button>' +
+      '<button class="btn btn-sm" style="background:#6366f1;color:#fff;" onclick="approveVideoFeatured(\'' + v.id + '\')">★ Đỉnh Cao</button>' +
       '<button class="btn btn-sm" style="background:var(--red);color:#fff;" onclick="rejectVideo(\'' + v.id + '\')">✗ Bỏ</button>';
     html += videoCardHTML(v, actions);
   });
@@ -1413,10 +1434,10 @@ function renderPendingVideos() {
 }
 
 function renderApprovedVideos() {
-  var list = videoData.videos.filter(function(v) { return v.status === 'approved'; });
+  var list = videoData.videos.filter(function(v) { return v.status === 'approved' && v.category !== 'featured'; });
   var container = document.getElementById('approved-videos');
   if (!list.length) {
-    container.innerHTML = '<div class="video-empty"><p>Chưa có video nào được duyệt</p></div>';
+    container.innerHTML = '<div class="video-empty"><p>Chưa có video AMZ nào — chỉ duyệt video quay tại sân AMZ vào đây</p></div>';
     return;
   }
   var html = '';
@@ -1428,6 +1449,37 @@ function renderApprovedVideos() {
     html += videoCardHTML(v, actions);
   });
   container.innerHTML = html;
+}
+
+function renderFeaturedVideos() {
+  var list = videoData.videos.filter(function(v) { return v.status === 'approved' && v.category === 'featured'; });
+  var container = document.getElementById('featured-videos');
+  if (!list.length) {
+    container.innerHTML = '<div class="video-empty"><p>Chưa có video đỉnh cao — thêm trận đấu hay của tay vợt nổi tiếng vào đây</p></div>';
+    return;
+  }
+  var html = '';
+  list.sort(function(a, b) { return (b.approvedAt || '').localeCompare(a.approvedAt || ''); });
+  list.forEach(function(v) {
+    var actions =
+      '<span class="v-badge-tag ' + badgeClass(v.badge) + '">' + esc(v.badge || '') + '</span>' +
+      '<span style="font-size:11px;color:#6366f1;">★ Đỉnh Cao</span>' +
+      '<button class="btn btn-sm btn-outline" onclick="unapproveVideo(\'' + v.id + '\')" style="margin-left:auto">Gỡ khỏi web</button>';
+    html += videoCardHTML(v, actions);
+  });
+  container.innerHTML = html;
+}
+
+function approveVideoFeatured(id) {
+  var v = videoData.videos.find(function(x) { return x.id === id; });
+  if (!v) return;
+  v.status = 'approved';
+  v.category = 'featured';
+  v.badge = v.badge || 'Thi đấu';
+  v.approvedAt = new Date().toISOString();
+  saveVideoData(); renderVideos();
+  toast('Đã thêm vào Trận Đấu Đỉnh Cao: ' + v.title.substring(0, 40));
+  schedulePush();
 }
 
 function renderRejectedVideos() {
@@ -1530,8 +1582,9 @@ function addManualVideo() {
   var existing = videoData.videos.find(function(v) { return v.platformId === ytId; });
   if (existing) { alert('Video này đã có trong danh sách (status: ' + existing.status + ')'); return; }
   var badge = document.getElementById('v-add-badge').value;
+  var category = document.getElementById('v-add-category').value;
   var now = new Date().toISOString();
-  videoData.videos.unshift({
+  var newVideo = {
     id: 'yt_' + ytId,
     platform: 'youtube',
     platformId: ytId,
@@ -1547,13 +1600,16 @@ function addManualVideo() {
     status: 'approved',
     addedAt: now,
     approvedAt: now
-  });
+  };
+  if (category) newVideo.category = category;
+  videoData.videos.unshift(newVideo);
   saveVideoData(); renderVideos();
   document.getElementById('v-add-url').value = '';
   document.getElementById('v-add-preview').classList.remove('show');
-  toast('Đã thêm & duyệt video');
+  var label = category === 'featured' ? 'Trận Đấu Đỉnh Cao' : 'AMZ Highlights';
+  toast('Đã thêm vào ' + label);
   schedulePush();
-  document.querySelector('[data-vtab="approved"]').click();
+  document.querySelector('[data-vtab="' + (category === 'featured' ? 'featured' : 'approved') + '"]').click();
 }
 
 // Video tab switching
@@ -1562,7 +1618,7 @@ document.querySelectorAll('[data-vtab]').forEach(function(btn) {
     document.querySelectorAll('[data-vtab]').forEach(function(b) { b.classList.remove('active'); });
     btn.classList.add('active');
     var tab = btn.dataset.vtab;
-    ['pending', 'approved', 'rejected', 'add'].forEach(function(t) {
+    ['pending', 'approved', 'featured', 'rejected', 'add'].forEach(function(t) {
       var el = document.getElementById('vtab-' + t);
       if (el) el.style.display = t === tab ? '' : 'none';
     });

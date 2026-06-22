@@ -1365,6 +1365,34 @@
       text-align: center; padding: 60px 0; color: var(--muted);
     }
 
+    /* ─── FEATURED MATCHES (Trận Đấu Đỉnh Cao) ─── */
+    .featured-matches { border-top: 1px solid var(--border); }
+    .featured-hero {
+      position: relative; aspect-ratio: 16/9; background: #111; border-radius: var(--r);
+      overflow: hidden; cursor: pointer; margin-top: 48px;
+    }
+    .featured-hero img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s; }
+    .featured-hero:hover img { transform: scale(1.03); }
+    .featured-hero .video-play-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.35); transition: background 0.3s; }
+    .featured-hero:hover .video-play-overlay { background: rgba(0,0,0,0.15); }
+    .featured-hero .video-play-btn { width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.9); display: flex; align-items: center; justify-content: center; transition: transform 0.3s, background 0.3s; }
+    .featured-hero:hover .video-play-btn { transform: scale(1.1); background: var(--accent); }
+    .featured-hero .video-play-btn svg { width: 32px; height: 32px; fill: #000; margin-left: 4px; }
+    .featured-hero .featured-hero-info { position: absolute; bottom: 0; left: 0; right: 0; padding: 32px; background: linear-gradient(transparent, rgba(0,0,0,0.85)); }
+    .featured-hero .featured-hero-info h4 { font-size: clamp(18px, 2.5vw, 28px); font-weight: 800; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .featured-hero .featured-hero-info p { font-size: 14px; color: rgba(255,255,255,0.6); }
+    .featured-hero .video-duration { position: absolute; top: 16px; right: 16px; background: rgba(0,0,0,0.8); color: #fff; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 4px; }
+    .featured-hero .featured-live-badge { position: absolute; top: 16px; left: 16px; background: #e53e3e; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 12px; border-radius: 4px; animation: pulse-live 1.5s infinite; }
+    @keyframes pulse-live { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    .featured-hero-embed { aspect-ratio: 16/9; border-radius: var(--r); overflow: hidden; margin-top: 48px; }
+    .featured-hero-embed iframe { width: 100%; height: 100%; border: 0; }
+    .featured-grid { margin-top: 24px; }
+    @media (max-width: 768px) {
+      .featured-hero .video-play-btn { width: 60px; height: 60px; }
+      .featured-hero .video-play-btn svg { width: 24px; height: 24px; }
+      .featured-hero .featured-hero-info { padding: 20px; }
+    }
+
     /* ─── SPONSORS / PARTNERS ─── */
     .partners-section { border-top: 1px solid var(--border); }
     .partners-grid {
@@ -1456,6 +1484,7 @@
         <li><a href="#courts">Sân Chơi</a></li>
         <li><a href="#training">Huấn Luyện</a></li>
         <li><a href="#bang-gia">Bảng Giá</a></li>
+        <li><a href="#tran-dau">Trận Đấu</a></li>
         <li><a href="#events">Sự Kiện</a></li>
         <li><a href="#faq">FAQ</a></li>
         <li><a href="blog/">Blog</a></li>
@@ -1477,6 +1506,7 @@
     <a href="#courts" class="mobile-link">Sân Chơi</a>
     <a href="#training" class="mobile-link">Huấn Luyện</a>
     <a href="#bang-gia" class="mobile-link">Bảng Giá</a>
+    <a href="#tran-dau" class="mobile-link">Trận Đấu</a>
     <a href="#events" class="mobile-link">Sự Kiện</a>
     <a href="blog/" class="mobile-link">Blog</a>
     <a href="#faq" class="mobile-link">FAQ</a>
@@ -1635,6 +1665,22 @@
         </div>
 
         <div class="video-grid" id="videoGrid"></div>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ─── FEATURED MATCHES ─── -->
+    <section class="featured-matches" id="tran-dau">
+      <div class="container">
+        <div class="section-header">
+          <span class="label reveal">Live & Replay</span>
+          <h2 class="reveal reveal-delay-1">Trận Đấu<br><span class="dim">Đỉnh Cao</span></h2>
+          <p class="reveal reveal-delay-2">Theo dõi trực tiếp và xem lại những trận đấu hay nhất của các tay vợt hàng đầu.</p>
+        </div>
+
+        <div id="featuredHero"></div>
+        <div class="video-grid featured-grid" id="featuredGrid"></div>
       </div>
     </section>
 
@@ -3233,7 +3279,7 @@
 
       function renderVideoCards(videos) {
         if (!videos.length) {
-          grid.innerHTML = '<div class="video-empty">Chưa có video nào. Hãy quay lại sau!</div>';
+          grid.closest('section').style.display = 'none';
           return;
         }
         grid.innerHTML = videos.map(function(v, i) {
@@ -3299,13 +3345,114 @@
         .then(function(r) { return r.json(); })
         .then(function(data) {
           var approved = data.videos
-            .filter(function(v) { return v.status === 'approved'; })
+            .filter(function(v) { return v.status === 'approved' && v.category !== 'featured'; })
             .sort(function(a, b) { return new Date(b.approvedAt || b.addedAt) - new Date(a.approvedAt || a.addedAt); })
             .slice(0, 6);
           renderVideoCards(approved);
         })
         .catch(function() {
-          grid.innerHTML = '<div class="video-empty">Không thể tải video. Vui lòng thử lại sau.</div>';
+          grid.closest('section').style.display = 'none';
+        });
+    })();
+
+    // ═══ FEATURED MATCHES ═══
+    (function() {
+      var heroWrap = document.getElementById('featuredHero');
+      var featGrid = document.getElementById('featuredGrid');
+      if (!heroWrap || !featGrid) return;
+
+      function embedIframe(container, platform, videoId) {
+        if (platform === 'youtube' && videoId) {
+          container.innerHTML = '<div class="featured-hero-embed"><iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>';
+        }
+      }
+
+      function renderFeatured(videos) {
+        if (!videos.length) {
+          heroWrap.closest('section').style.display = 'none';
+          return;
+        }
+
+        var hero = videos[0];
+        var rest = videos.slice(1, 7);
+        var thumb = hero.thumbnail || '';
+        if (hero.platform === 'youtube' && hero.platformId) {
+          thumb = 'https://i.ytimg.com/vi/' + hero.platformId + '/hqdefault.jpg';
+        }
+
+        heroWrap.innerHTML =
+          '<div class="featured-hero reveal" data-platform="' + escapeHTML(hero.platform) + '" data-video-id="' + escapeHTML(hero.platformId || '') + '">' +
+          '<img src="' + escapeHTML(thumb) + '" alt="' + escapeHTML(hero.title) + '" loading="lazy">' +
+          '<div class="video-play-overlay"><div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div></div>' +
+          (hero.isLive ? '<span class="featured-live-badge">LIVE</span>' : '') +
+          (hero.duration ? '<span class="video-duration">' + escapeHTML(hero.duration) + '</span>' : '') +
+          '<div class="featured-hero-info">' +
+          (hero.badge ? '<span class="video-badge">' + escapeHTML(hero.badge) + '</span>' : '') +
+          '<h4>' + escapeHTML(hero.title) + '</h4>' +
+          '<p>' + escapeHTML(hero.channelTitle || '') + (hero.viewCount ? ' · ' + Number(hero.viewCount).toLocaleString('vi-VN') + ' lượt xem' : '') + '</p>' +
+          '</div></div>';
+
+        heroWrap.querySelector('.featured-hero').addEventListener('click', function() {
+          embedIframe(heroWrap, hero.platform, hero.platformId);
+        });
+
+        if (rest.length) {
+          featGrid.innerHTML = rest.map(function(v, i) {
+            var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
+            var t = v.thumbnail || '';
+            if (v.platform === 'youtube' && v.platformId) t = 'https://i.ytimg.com/vi/' + v.platformId + '/mqdefault.jpg';
+            return '<div class="video-card reveal' + delay + '" data-platform="' + escapeHTML(v.platform) + '" data-video-id="' + escapeHTML(v.platformId || '') + '">' +
+              '<div class="video-thumb">' +
+              '<img src="' + escapeHTML(t) + '" alt="' + escapeHTML(v.title) + '" loading="lazy">' +
+              '<div class="video-play-overlay"><div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div></div>' +
+              (v.isLive ? '<span class="featured-live-badge" style="position:absolute;top:8px;left:8px;">LIVE</span>' : '') +
+              (v.duration ? '<span class="video-duration">' + escapeHTML(v.duration) + '</span>' : '') +
+              '</div>' +
+              '<div class="video-info">' +
+              (v.badge ? '<span class="video-badge">' + escapeHTML(v.badge) + '</span>' : '') +
+              '<h4>' + escapeHTML(v.title) + '</h4>' +
+              '<div class="video-meta">' +
+              (v.channelTitle ? '<span class="video-channel">' + escapeHTML(v.channelTitle) + '</span>' : '') +
+              (v.viewCount ? '<span class="video-views">' + Number(v.viewCount).toLocaleString('vi-VN') + ' lượt xem</span>' : '') +
+              '</div></div></div>';
+          }).join('');
+
+          featGrid.querySelectorAll('.video-card').forEach(function(card) {
+            card.addEventListener('click', function() {
+              if (card.classList.contains('video-embed-active')) return;
+              var platform = card.dataset.platform;
+              var videoId = card.dataset.videoId;
+              var thumb = card.querySelector('.video-thumb');
+              if (platform === 'youtube' && videoId) {
+                var iframe = document.createElement('iframe');
+                iframe.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
+                iframe.allow = 'autoplay; encrypted-media';
+                iframe.allowFullscreen = true;
+                thumb.appendChild(iframe);
+                card.classList.add('video-embed-active');
+              }
+            });
+          });
+        }
+
+        var obs = new IntersectionObserver(function(entries) {
+          entries.forEach(function(e) {
+            if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }
+          });
+        }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+        heroWrap.closest('section').querySelectorAll('.reveal:not(.visible)').forEach(function(el) { obs.observe(el); });
+      }
+
+      fetch('data/videos.json')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var featured = data.videos
+            .filter(function(v) { return v.status === 'approved' && v.category === 'featured'; })
+            .sort(function(a, b) { return new Date(b.approvedAt || b.addedAt) - new Date(a.approvedAt || a.addedAt); });
+          renderFeatured(featured);
+        })
+        .catch(function() {
+          heroWrap.closest('section').style.display = 'none';
         });
     })();
 
