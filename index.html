@@ -50,6 +50,10 @@
       --nav:       72px;
       --r:         12px;
       --footer-bg: #000000;
+      --accent-alt: #00bfa5;
+      --gold: #ffd700;
+      --silver: #c0c0c0;
+      --bronze: #cd7f32;
     }
 
     html { scroll-behavior: smooth; font-size: 16px; }
@@ -203,10 +207,10 @@
     .btn-lg { padding: 14px 32px; font-size: 15px; border-radius: var(--r); }
 
     /* Buttons trên nền navy (hero, cta, training box) */
-    .hero .btn-outline, .cta-banner .btn-outline {
+    .hero .btn-outline {
       border-color: rgba(255,255,255,0.3); color: white;
     }
-    .hero .btn-outline:hover, .cta-banner .btn-outline:hover {
+    .hero .btn-outline:hover {
       border-color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.08); color: white;
     }
 
@@ -557,87 +561,54 @@
     .section-header p { color: var(--muted); font-size: 15px; font-weight: 400; margin-top: 20px; max-width: 440px; line-height: 1.75; }
     .section-divider { border: none; border-top: 1px solid var(--border); margin: 0; }
 
-    /* ─── SERVICES ─── */
-    .services-list { display: flex; flex-direction: column; }
-    .service-row {
-      display: grid; grid-template-columns: 48px 1fr 1fr auto;
-      gap: 32px; align-items: start;
-      padding: 40px 0; border-top: 1px solid var(--border);
-      transition: padding-left 0.3s;
-      cursor: default;
+    /* ─── NAV DROPDOWN ─── */
+    .nav-item { position: relative; }
+    .nav-item > a { display: flex; align-items: center; gap: 4px; }
+    .nav-dropdown {
+      position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+      min-width: 180px; padding: 8px 0; margin-top: 12px;
+      background: rgba(13,13,13,0.98); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px; opacity: 0; visibility: hidden;
+      transition: opacity 0.2s, visibility 0.2s; z-index: 110;
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     }
-    .service-row:last-child { border-bottom: 1px solid var(--border); }
-    .service-row:hover, .service-row:active { padding-left: 12px; }
-    .service-num {
-      font-size: 11px; font-weight: 500; color: var(--muted2);
-      letter-spacing: 0.08em; padding-top: 4px;
+    .nav-item:hover .nav-dropdown { opacity: 1; visibility: visible; }
+    .nav-dropdown a {
+      display: block; padding: 10px 20px; font-size: 13px; font-weight: 500;
+      letter-spacing: 0.02em; text-transform: none; color: rgba(255,255,255,0.6);
+      transition: color 0.2s, background 0.2s;
     }
-    .service-row h3 {
-      font-size: clamp(20px, 2.5vw, 28px); font-weight: 800;
-      letter-spacing: -0.03em; line-height: 1.1;
-    }
-    .service-row p { font-size: 14px; color: var(--muted); line-height: 1.7; }
-    .service-row-arrow {
-      font-size: 18px; color: var(--muted2); padding-top: 4px;
-      transition: color 0.2s, transform 0.2s;
-    }
-    .service-row:hover .service-row-arrow, .service-row:active .service-row-arrow { color: var(--accent); transform: translateX(4px); }
+    .nav-dropdown a:hover { color: white; background: rgba(255,255,255,0.06); }
 
-    /* ─── ABOUT ─── */
-    #about { background: var(--surface); }
-    .about-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+    /* ─── HERO EVENT (UP NEXT) ─── */
+    .hero-event-meta {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+      flex-wrap: wrap;
     }
-    .about-number {
-      font-size: clamp(80px, 15vw, 160px); font-weight: 400;
-      font-family: var(--font-display);
-      letter-spacing: 0.02em; line-height: 0.9; color: var(--text);
+    .hero-event-date {
+      font-size: 15px; color: rgba(255,255,255,0.6); font-weight: 400;
     }
-    .about-number span { color: var(--accent); }
-    .about-number-label {
-      font-size: 13px; font-weight: 600; color: var(--muted);
-      letter-spacing: 0.12em; text-transform: uppercase; margin-top: 12px;
+    .hero-event-location {
+      font-size: 13px; color: rgba(255,255,255,0.4);
     }
-    .about-stat { margin-top: 32px; display: flex; flex-direction: column; gap: 20px; }
-    .about-stat .about-number { font-size: clamp(40px, 7vw, 72px); }
-
-    .about-right h2 {
-      font-size: clamp(28px, 4vw, 44px); font-weight: 400;
-      font-family: var(--font-display);
-      letter-spacing: 0.02em; line-height: 1.1; margin-bottom: 20px;
-      text-transform: uppercase;
+    #heroCountdown {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 24px;
     }
-    .about-right p { color: var(--muted); line-height: 1.75; margin-bottom: 16px; }
-    .about-features { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-top: 28px; }
-    .about-features li {
-      display: flex; align-items: center; gap: 12px;
-      font-size: 14px; font-weight: 500; color: var(--muted);
+    #heroCountdown .cd-item {
+      text-align: center; display: flex; flex-direction: column; align-items: center;
     }
-    .about-features li::before {
-      content: '✓'; flex-shrink: 0;
-      color: var(--accent); font-size: 13px; font-weight: 700;
+    #heroCountdown .cd-item strong {
+      font-size: clamp(24px, 4vw, 40px); font-weight: 900; color: white;
+      font-family: var(--font-display); letter-spacing: 0.02em; display: block;
     }
-
-    /* ─── STATS ─── */
-    .stats { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-    .stats-grid {
-      display: grid; grid-template-columns: repeat(4, 1fr);
-      gap: 0;
+    #heroCountdown .cd-item span {
+      font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase;
+      letter-spacing: 0.1em;
     }
-    .stat-item {
-      padding: 56px 40px;
-      display: flex; flex-direction: column; gap: 10px;
-      border-right: 1px solid rgba(255,255,255,0.08);
-      transition: background 0.3s;
+    #heroCountdown .cd-sep {
+      font-size: clamp(20px, 3vw, 32px); color: rgba(255,255,255,0.2);
+      font-weight: 300; margin: 0 2px; align-self: flex-start; padding-top: 2px;
     }
-    .stat-item:last-child { border-right: none; }
-    .stat-item:hover { background: rgba(255,255,255,0.04); }
-    .stat-item strong {
-      font-size: clamp(44px, 7vw, 80px); font-weight: 400;
-      font-family: var(--font-display);
-      letter-spacing: 0.02em; line-height: 1; color: var(--accent);
-    }
-    .stat-item span { font-size: 12px; color: rgba(255,255,255,0.45); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
 
     /* ─── COURTS ─── */
     .courts-intro {
@@ -773,50 +744,94 @@
     .pricing-cta .btn { width: 100%; justify-content: center; }
     .pricing-note { text-align: center; margin-top: 40px; font-size: 13px; color: var(--muted); }
 
-    .testimonials { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-    .testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
-    .testimonial-card {
-      background: transparent; border: none;
-      border-right: 1px solid var(--border);
-      padding: 48px 40px;
+    /* ─── LEADERBOARD TABS ─── */
+    .leaderboard-tabs {
+      display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+      margin-bottom: 32px; overflow-x: auto; -webkit-overflow-scrolling: touch;
     }
-    .testimonial-card:last-child { border-right: none; }
-    .testimonial-stars { display: flex; gap: 3px; margin-bottom: 18px; }
-    .testimonial-stars span { color: var(--accent); font-size: 14px; }
-    .testimonial-card blockquote {
-      font-size: 15px; line-height: 1.7; color: var(--text);
-      font-style: italic; margin-bottom: 24px;
+    .lb-tab {
+      padding: 12px 20px; background: none; border: none; border-bottom: 2px solid transparent;
+      color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 600;
+      letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer;
+      white-space: nowrap; transition: color 0.2s, border-color 0.2s;
     }
-    .testimonial-author { display: flex; align-items: center; gap: 12px; }
-    .author-avatar {
-      width: 40px; height: 40px; border-radius: 50%;
-      background: var(--surface2);
-      border: 1px solid var(--border); flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 14px; color: white;
+    .lb-tab:hover { color: var(--text); }
+    .lb-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .lb-row { transition: background 0.2s; }
+    .lb-row:hover { background: rgba(255,255,255,0.03); }
+    .lb-rank-1 .lb-rank { color: var(--gold); font-weight: 800; }
+    .lb-rank-2 .lb-rank { color: var(--silver); font-weight: 800; }
+    .lb-rank-3 .lb-rank { color: var(--bronze); font-weight: 800; }
+    .lb-player { display: flex; align-items: center; gap: 12px; }
+    .lb-avatar {
+      width: 36px; height: 36px; border-radius: 50%; background: var(--surface2);
+      border: 1px solid var(--border); display: flex; align-items: center;
+      justify-content: center; font-size: 12px; font-weight: 700; color: var(--muted);
+      flex-shrink: 0;
     }
-    .author-info strong { font-size: 14px; font-weight: 600; display: block; }
-    .author-info span { font-size: 12px; color: var(--muted); }
+    .lb-rank-1 .lb-avatar { border-color: var(--gold); }
+    .lb-rank-2 .lb-avatar { border-color: var(--silver); }
+    .lb-rank-3 .lb-avatar { border-color: var(--bronze); }
+    .lb-points { font-weight: 700; color: var(--accent); }
+
+    /* ─── EVENTS GRID ─── */
+    .events-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+    }
+    .event-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+      overflow: hidden; transition: border-color 0.3s, transform 0.3s; display: flex;
+      flex-direction: column;
+    }
+    .event-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-4px); }
+    .event-card-img {
+      aspect-ratio: 16/9; background: linear-gradient(135deg, #0d0d0d, #1a1a2e);
+      overflow: hidden; position: relative;
+    }
+    .event-card-img img { width: 100%; height: 100%; object-fit: cover; }
+    .event-card-badge {
+      position: absolute; top: 12px; left: 12px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 4px 10px; border-radius: 4px;
+    }
+    .event-card-body { padding: 20px; flex: 1; display: flex; flex-direction: column; }
+    .event-card-date {
+      font-size: 12px; color: var(--muted); margin-bottom: 8px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .event-card-body h4 { font-size: 16px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.01em; }
+    .event-card-body p { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 16px; flex: 1; }
+    .event-card-footer { display: flex; gap: 8px; margin-top: auto; }
+    .event-card-level {
+      font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.06em;
+      margin-bottom: 12px;
+    }
+
+    /* ─── NEWS GRID ─── */
+    .news-section { border-top: 1px solid var(--border); }
+    .news-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+    }
+    .news-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+      overflow: hidden; transition: border-color 0.3s, transform 0.3s;
+      display: block;
+    }
+    .news-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-4px); }
+    .news-thumb { aspect-ratio: 16/9; background: #111; overflow: hidden; }
+    .news-thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s; }
+    .news-card:hover .news-thumb img { transform: scale(1.05); }
+    .news-body { padding: 20px; }
+    .news-tag {
+      display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--accent); margin-bottom: 8px;
+    }
+    .news-body h4 { font-size: 16px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.01em; line-height: 1.4; }
+    .news-body p { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
+    .news-date { font-size: 11px; color: var(--muted2); }
 
     /* ─── EVENTS ─── */
     #events { background: var(--surface); }
-    .events-list { display: flex; flex-direction: column; gap: 2px; }
-    .event-item {
-      display: grid; grid-template-columns: 72px 1fr auto;
-      gap: 24px; align-items: center;
-      padding: 28px 0; border-bottom: 1px solid var(--border);
-      transition: padding-left 0.2s;
-    }
-    .event-item:hover { padding-left: 8px; }
-    .event-item:first-child { border-top: 1px solid var(--border); }
-    .event-date {
-      text-align: center; display: flex; flex-direction: column;
-      align-items: center; gap: 2px;
-    }
-    .event-date strong { font-size: 28px; font-weight: 400; font-family: var(--font-display); letter-spacing: 0.02em; line-height: 1; color: var(--accent); }
-    .event-date span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
-    .event-info h4 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 4px; }
-    .event-info p { font-size: 13px; color: var(--muted); }
     .event-badge {
       font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
       text-transform: uppercase; padding: 5px 12px;
@@ -880,18 +895,6 @@
     .reg-success h4 { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
     .reg-success p { font-size: 14px; color: var(--muted); line-height: 1.6; }
 
-    /* ─── CTA BANNER ─── */
-    .cta-banner {
-      background: var(--surface); border-top: 1px solid var(--border); padding: 60px 0;
-    }
-    .cta-banner .container {
-      display: flex; align-items: center;
-      justify-content: space-between; flex-wrap: wrap; gap: 20px;
-    }
-    .cta-banner .label { color: rgba(255,255,255,0.45); margin-bottom: 8px; }
-    .cta-banner .cta-desc { color: rgba(255,255,255,0.6); font-size: 14px; }
-    .cta-banner .cta-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-
     /* ─── FOOTER ─── */
     footer { padding: 64px 0 32px; background: var(--footer-bg); border-top: none; }
     .footer-grid {
@@ -937,22 +940,20 @@
       .pricing-grid-4 { grid-template-columns: repeat(2, 1fr); max-width: 700px; margin-left: auto; margin-right: auto; }
     }
     @media (max-width: 1024px) {
-      .about-grid { grid-template-columns: 1fr; gap: 48px; }
       .training-grid { grid-template-columns: 1fr; }
       .training-cta-box { position: static; }
       .pricing-grid, .pricing-grid-4 { grid-template-columns: 1fr; max-width: 400px; margin-left: auto; margin-right: auto; }
       .pricing-card.featured { order: -1; }
       .footer-grid { grid-template-columns: 1fr 1fr; gap: 40px; }
       .footer-brand { grid-column: span 2; }
-      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .events-grid { grid-template-columns: repeat(2, 1fr); }
+      .news-grid { grid-template-columns: repeat(2, 1fr); }
     }
 
     @media (max-width: 768px) {
       section { padding: 88px 0; }
       .nav-links, .nav-cta { display: none; }
       .hamburger { display: flex; }
-      .service-row { grid-template-columns: 32px 1fr; gap: 16px; }
-      .service-row p, .service-row-arrow { display: none; }
       .courts-gallery {
         grid-template-columns: 1fr 1fr;
         grid-template-rows: 260px 260px 260px 280px;
@@ -965,15 +966,17 @@
       .court-card:nth-child(6) { grid-column: 1 / -1;  grid-row: auto; }
       .court-card:nth-child(7) { grid-column: 1 / -1; grid-row: auto; }
       .court-card:nth-child(7) .court-card-overlay { max-width: 60%; }
-      .testimonials-grid { grid-template-columns: 1fr; }
       .footer-grid { grid-template-columns: 1fr; }
       .footer-brand { grid-column: span 1; }
       .footer-bottom { flex-direction: column; align-items: flex-start; }
       .hero h1 { font-size: clamp(44px, 12vw, 80px); }
-      .event-item { grid-template-columns: 56px 1fr; }
-      .event-actions { flex-direction: column; gap: 4px; }
-      .event-badge { display: none; }
       .courts-intro { grid-template-columns: 1fr; }
+      .events-grid { grid-template-columns: 1fr; }
+      .news-grid { grid-template-columns: 1fr; }
+      .leaderboard-table th:nth-child(4),
+      .leaderboard-table td:nth-child(4) { display: none; }
+      .footer-partners { flex-wrap: wrap; gap: 20px; }
+      .section-intro { grid-template-columns: 1fr; gap: 16px; }
     }
 
     @media (max-width: 480px) {
@@ -981,9 +984,6 @@
       .hero { padding-bottom: 60px; }
       .hero-actions { flex-direction: column; }
       .btn-lg { width: 100%; }
-      .about-number { font-size: 80px; }
-      .stats-grid { grid-template-columns: repeat(2, 1fr); }
-      .stat-item { padding: 32px 20px; }
       .courts-gallery {
         grid-template-columns: 1fr;
         grid-template-rows: repeat(7, 240px);
@@ -1000,6 +1000,9 @@
       .court-card:nth-child(7) .court-card-overlay {
         background: linear-gradient(transparent 0%, rgba(0,0,0,0.92) 60%);
       }
+      .leaderboard-tabs { gap: 0; }
+      .lb-tab { padding: 10px 14px; font-size: 11px; }
+      #heroCountdown .cd-item strong { font-size: 24px; }
     }
 
     /* ─── CONTACT FORM ─── */
@@ -1393,58 +1396,19 @@
       .featured-hero .featured-hero-info { padding: 20px; }
     }
 
-    /* ─── SPONSORS / PARTNERS ─── */
-    .partners-section { border-top: 1px solid var(--border); }
-    .partners-grid {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 48px;
+    /* ─── FOOTER PARTNERS ROW ─── */
+    .footer-partners {
+      display: flex; align-items: center; justify-content: center;
+      gap: 32px; padding: 24px 0; margin-bottom: 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
     }
-    .partner-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
-      padding: 32px; display: flex; align-items: center; justify-content: center;
-      min-height: 100px; transition: border-color 0.3s;
+    .footer-partners span {
+      font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.2);
+      letter-spacing: 0.06em; text-transform: uppercase;
     }
-    .partner-card:hover { border-color: rgba(255,255,255,0.15); }
-    .partner-card span {
-      font-size: 14px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-    @media (max-width: 768px) { .partners-grid { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 480px) { .partners-grid { grid-template-columns: 1fr; } }
 
     /* ─── LEADERBOARD ─── */
     .leaderboard-section { border-top: 1px solid var(--border); }
-    .leaderboard-top3 {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 48px;
-    }
-    .leader-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
-      padding: 32px; text-align: center; transition: border-color 0.3s, transform 0.3s;
-    }
-    .leader-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-4px); }
-    .leader-card:first-child { border-color: rgba(200,240,58,0.3); }
-    .leader-rank {
-      font-size: 48px; font-family: var(--font-display); color: var(--accent);
-      line-height: 1; margin-bottom: 16px;
-    }
-    .leader-avatar {
-      width: 72px; height: 72px; border-radius: 50%; background: var(--surface2);
-      border: 2px solid var(--border); margin: 0 auto 16px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 24px; font-weight: 800; color: var(--muted);
-    }
-    .leader-card:first-child .leader-avatar { border-color: var(--accent); }
-    .leader-name { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-    .leader-level {
-      display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
-      text-transform: uppercase; padding: 4px 12px; border-radius: 100px;
-      background: var(--accent2); color: var(--accent);
-    }
-    .leader-stats-row {
-      display: flex; justify-content: center; gap: 20px; margin-top: 12px;
-    }
-    .leader-stat { text-align: center; }
-    .leader-stat strong { font-size: 18px; font-weight: 800; color: var(--text); display: block; }
-    .leader-stat span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
     .leaderboard-table {
       margin-top: 32px; width: 100%; border-collapse: collapse;
     }
@@ -1462,7 +1426,6 @@
     .lb-name { font-weight: 600; }
     .lb-level { color: var(--accent); font-weight: 600; }
     @media (max-width: 768px) {
-      .leaderboard-top3 { grid-template-columns: 1fr; }
       .leaderboard-table { font-size: 13px; }
     }
   </style>
@@ -1480,15 +1443,24 @@
     <div class="nav-inner">
       <a href="#" class="nav-logo"><picture><source srcset="logo.webp" type="image/webp"><img src="logo.jpg" alt="AMZ Pickleball" width="200" height="200"></picture></a>
       <ul class="nav-links">
-        <li><a href="#services">Dịch Vụ</a></li>
-        <li><a href="#courts">Sân Chơi</a></li>
-        <li><a href="#training">Huấn Luyện</a></li>
-        <li><a href="#bang-gia">Bảng Giá</a></li>
-        <li><a href="#tran-dau">Trận Đấu</a></li>
-        <li><a href="#events">Sự Kiện</a></li>
-        <li><a href="#faq">FAQ</a></li>
-        <li><a href="blog/">Blog</a></li>
-        <li><a href="#lien-he">Liên Hệ</a></li>
+        <li class="nav-item"><a href="#events">Lịch Thi Đấu <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></a>
+          <div class="nav-dropdown">
+            <a href="#events">Giải đấu sắp tới</a>
+            <a href="#tran-dau">Trận đấu đỉnh cao</a>
+          </div>
+        </li>
+        <li><a href="#bang-xep-hang">Bảng Xếp Hạng</a></li>
+        <li><a href="#tin-tuc">Tin Tức</a></li>
+        <li class="nav-item"><a href="#courts">Về AMZ <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></a>
+          <div class="nav-dropdown">
+            <a href="#courts">Sân Chơi</a>
+            <a href="#training">Huấn Luyện</a>
+            <a href="#bang-gia">Bảng Giá</a>
+            <a href="#faq">FAQ</a>
+            <a href="blog/">Blog</a>
+            <a href="#lien-he">Liên Hệ</a>
+          </div>
+        </li>
       </ul>
       <div class="nav-cta" style="display:flex;gap:8px;align-items:center;">
         <a href="admin.html" class="btn btn-outline" style="padding:8px 14px;font-size:11px;letter-spacing:0.06em;">Admin</a>
@@ -1502,14 +1474,15 @@
 
   <!-- ─── MOBILE MENU ─── -->
   <div class="mobile-menu" id="mobileMenu">
-    <a href="#services" class="mobile-link">Dịch Vụ</a>
+    <a href="#events" class="mobile-link">Lịch Thi Đấu</a>
+    <a href="#bang-xep-hang" class="mobile-link">Bảng Xếp Hạng</a>
+    <a href="#tran-dau" class="mobile-link">Trận Đấu</a>
+    <a href="#tin-tuc" class="mobile-link">Tin Tức</a>
     <a href="#courts" class="mobile-link">Sân Chơi</a>
     <a href="#training" class="mobile-link">Huấn Luyện</a>
     <a href="#bang-gia" class="mobile-link">Bảng Giá</a>
-    <a href="#tran-dau" class="mobile-link">Trận Đấu</a>
-    <a href="#events" class="mobile-link">Sự Kiện</a>
-    <a href="blog/" class="mobile-link">Blog</a>
     <a href="#faq" class="mobile-link">FAQ</a>
+    <a href="blog/" class="mobile-link">Blog</a>
     <a href="#lien-he" class="mobile-link">Liên Hệ</a>
     <a href="#lien-he" class="btn btn-primary btn-lg">Đặt Sân Ngay</a>
     <a href="admin.html" class="mobile-link" style="margin-top:8px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);font-size:12px;color:var(--muted);">Admin</a>
@@ -1538,23 +1511,30 @@
       <div class="container hero-content">
         <div class="hero-badge reveal">
           <div class="hero-badge-dot"></div>
-          <span class="label">Social Club Pickleball · Vũng Tàu, TP.HCM</span>
+          <span class="label" id="heroBadgeText">UP NEXT</span>
         </div>
 
-        <h1 class="reveal reveal-delay-1">
-          ĐỈNH CAO<br>
-          <em>PICKLEBALL</em>
+        <h1 class="reveal reveal-delay-1" id="heroEventName">
+          ĐỈNH CAO<br><em>PICKLEBALL</em>
         </h1>
 
-        <p class="hero-sub reveal reveal-delay-2">
+        <div class="hero-event-meta reveal reveal-delay-2">
+          <span class="hero-event-date" id="heroEventDate"></span>
+          <span class="hero-event-location">179 Thống Nhất, Vũng Tàu</span>
+        </div>
+
+        <div id="heroCountdown" class="reveal reveal-delay-2"></div>
+
+        <p class="hero-sub reveal reveal-delay-2" id="heroSub">
           Chơi. Cafe. Kết Nối. — 8 sân tiêu chuẩn thi đấu,<br>
           huấn luyện chuyên nghiệp, cộng đồng Pickleball<br>
           sôi động nhất Vũng Tàu.
         </p>
 
         <div class="hero-actions reveal reveal-delay-3">
-          <a href="#lien-he" class="btn btn-primary btn-lg">Đặt Sân Ngay</a>
-          <a href="#services" class="btn btn-outline btn-lg">Xem Dịch Vụ</a>
+          <button class="btn btn-primary btn-lg" id="heroRegBtn" onclick="openRegModal(this)" data-event-name="" data-event-type="" data-event-date="" data-max-slots="">Đăng Ký</button>
+          <a href="#events" class="btn btn-outline btn-lg">Xem Lịch</a>
+          <a href="#lien-he" class="btn btn-outline btn-lg">Liên Hệ</a>
         </div>
 
         <div class="hero-meta reveal reveal-delay-4">
@@ -1605,66 +1585,36 @@
       </div>
     </div>
 
-    <!-- ─── SERVICES ─── -->
-    <section id="services">
+    <!-- ─── LEADERBOARD (TABBED) ─── -->
+    <section class="leaderboard-section" id="bang-xep-hang">
       <div class="container">
         <div class="section-header">
-          <span class="label reveal">Dịch Vụ</span>
-          <h2 class="reveal reveal-delay-1">Tất cả trong<br><span class="dim">một địa điểm</span></h2>
-          <p class="reveal reveal-delay-2">AMZ không chỉ là sân Pickleball — đây là điểm đến thể thao và kết nối xã hội hàng đầu Vũng Tàu.</p>
+          <span class="label reveal">Bảng Xếp Hạng</span>
+          <h2 class="reveal reveal-delay-1">Rankings<br><span class="dim">AMZ Club</span></h2>
+          <p class="reveal reveal-delay-2">Xếp hạng dựa trên trình độ và thành tích thi đấu.</p>
         </div>
-
-        <div class="services-list">
-          <div class="service-row reveal">
-            <span class="service-num">01</span>
-            <h3>Cho Thuê Sân</h3>
-            <p>8 sân tiêu chuẩn thi đấu, mặt sân chuyên biệt, đèn LED 500 lux. Đặt sân theo giờ hoặc gói tháng — mở cửa từ 5 giờ sáng để phục vụ buổi sáng sớm trước giờ làm.</p>
-            <span class="service-row-arrow">→</span>
-          </div>
-          <div class="service-row reveal reveal-delay-1">
-            <span class="service-num">02</span>
-            <h3>Tập Luyện Nhóm</h3>
-            <p>Lớp học có cấu trúc từ người mới đến nâng cao. HLV chuyên nghiệp, lịch học sáng–chiều–tối linh hoạt — phù hợp mọi lịch làm việc.</p>
-            <span class="service-row-arrow">→</span>
-          </div>
-          <div class="service-row reveal reveal-delay-2">
-            <span class="service-num">03</span>
-            <h3>Huấn Luyện 1-on-1</h3>
-            <p>Chương trình cá nhân hóa theo trình độ và mục tiêu riêng của bạn với HLV chuyên nghiệp.</p>
-            <span class="service-row-arrow">→</span>
-          </div>
-          <div class="service-row reveal reveal-delay-3">
-            <span class="service-num">04</span>
-            <h3>Tổ Chức Giải Đấu & Sự Kiện</h3>
-            <p>Giải đấu nội bộ hàng tháng, giao hữu liên CLB, và "Dink &amp; Drink Friday" — sự kiện tối thứ 6 kết hợp mini-tournament và giao lưu cộng đồng.</p>
-            <span class="service-row-arrow">→</span>
-          </div>
-          <div class="service-row reveal reveal-delay-4">
-            <span class="service-num">05</span>
-            <h3>Gói Membership</h3>
-            <p>3 tầng thành viên — Basic, Pro, Elite. Ưu đãi giờ đặt sân, giảm học phí, ưu tiên đăng ký sự kiện và tournament seeding cho thành viên cao cấp.</p>
-            <span class="service-row-arrow">→</span>
-          </div>
-          <div class="service-row reveal reveal-delay-5">
-            <span class="service-num">06</span>
-            <h3>Thuê Thiết Bị</h3>
-            <p>Vợt Pickleball, bóng và phụ kiện đa dạng. Thuê theo buổi, không cần mang theo đồ.</p>
-            <span class="service-row-arrow">→</span>
-          </div>
+        <div class="leaderboard-tabs reveal" id="leaderboardTabs">
+          <button class="lb-tab active" data-cat="Đơn nam">Đơn Nam</button>
+          <button class="lb-tab" data-cat="Đơn nữ">Đơn Nữ</button>
+          <button class="lb-tab" data-cat="Đôi nam">Đôi Nam</button>
+          <button class="lb-tab" data-cat="Đôi nữ">Đôi Nữ</button>
+          <button class="lb-tab" data-cat="Đôi nam nữ">Mixed</button>
         </div>
+        <div class="leaderboard-content reveal reveal-delay-1" id="leaderboardContent"></div>
       </div>
     </section>
 
-    <!-- ─── VIDEO HIGHLIGHTS ─── -->
-    <section class="video-section" id="videos">
+    <!-- ─── EVENTS (CARD GRID) ─── -->
+    <section id="events">
       <div class="container">
-        <div class="section-header">
-          <span class="label reveal">Video</span>
-          <h2 class="reveal reveal-delay-1">Highlights &<br><span class="dim">Replay</span></h2>
-          <p class="reveal reveal-delay-2">Xem lại những trận đấu hấp dẫn và khoảnh khắc đáng nhớ tại AMZ.</p>
+        <div class="section-intro">
+          <div>
+            <span class="label reveal">Lịch Thi Đấu</span>
+            <h2 class="reveal reveal-delay-1 section-h2-md">Giải đấu &<br><span class="dim">Sự kiện</span></h2>
+          </div>
+          <a href="#lien-he" class="btn btn-outline reveal reveal-delay-2">Xem tất cả</a>
         </div>
-
-        <div class="video-grid" id="videoGrid"></div>
+        <div class="events-grid" id="eventsGrid"></div>
       </div>
     </section>
 
@@ -1684,68 +1634,21 @@
       </div>
     </section>
 
+    <!-- ─── NEWS ─── -->
+    <section class="news-section" id="tin-tuc">
+      <div class="container">
+        <div class="section-intro">
+          <div>
+            <span class="label reveal">Tin Tức</span>
+            <h2 class="reveal reveal-delay-1 section-h2-md">Tin mới nhất<br><span class="dim">từ AMZ</span></h2>
+          </div>
+          <a href="blog/" class="btn btn-outline reveal">Xem tất cả</a>
+        </div>
+        <div class="news-grid" id="newsGrid"></div>
+      </div>
+    </section>
+
     <hr class="section-divider">
-
-    <!-- ─── ABOUT ─── -->
-    <section id="about">
-      <div class="container">
-        <div class="about-grid">
-          <div class="reveal-left">
-            <div class="about-number">8<span>.</span></div>
-            <div class="about-number-label">Sân Pickleball Chuyên Nghiệp</div>
-            <div class="about-stat">
-              <div>
-                <div class="about-number">1000<span class="dim">+</span></div>
-                <div class="about-number-label">Thành Viên Đang Hoạt Động</div>
-              </div>
-              <div>
-                <div class="about-number">5<span class="dim">+</span></div>
-                <div class="about-number-label">Huấn Luyện Viên Chuyên Nghiệp</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="reveal-right">
-            <span class="label" style="margin-bottom: 16px; display: block;">Về Chúng Tôi</span>
-            <h2>Pickleball Social Club<br><span class="dim">đầu tiên tại</span><br>Vũng Tàu</h2>
-            <p style="margin-top: 20px;">AMZ Pickle Ball Club không chỉ là sân cho thuê — đây là điểm đến thể thao và kết nối xã hội. Chúng tôi xây dựng cộng đồng Pickleball thực thụ, nơi bạn vừa rèn luyện thể chất, vừa gặp gỡ những người cùng đam mê.</p>
-            <p>Tọa lạc ngay trên đường Thống Nhất, Vũng Tàu — với 8 sân lớn nhất khu vực, đội ngũ HLV chuyên nghiệp, và lịch sự kiện phong phú hàng tuần — AMZ là lựa chọn số 1 cho người chơi Pickleball tại TP.HCM.</p>
-            <ul class="about-features">
-              <li>8 sân — quy mô lớn nhất khu vực Vũng Tàu</li>
-              <li>Mở cửa từ 05:00 mỗi ngày — linh hoạt mọi lịch trình</li>
-              <li>HLV chuyên nghiệp, chương trình học bài bản từng cấp độ</li>
-              <li>Giải đấu và sự kiện cộng đồng mỗi tuần</li>
-              <li>Cộng đồng thân thiện — từ người mới đến vận động viên</li>
-            </ul>
-            <a href="#lien-he" class="btn btn-primary" style="margin-top: 36px;">Liên Hệ Chúng Tôi</a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ─── STATS ─── -->
-    <section class="stats">
-      <div class="container">
-        <div class="stats-grid">
-          <div class="stat-item reveal">
-            <strong><span data-count="8" data-suffix="">8</span></strong>
-            <span>Sân tiêu chuẩn thi đấu</span>
-          </div>
-          <div class="stat-item reveal reveal-delay-1">
-            <strong><span data-count="5" data-suffix="+">5+</span></strong>
-            <span>Huấn luyện viên chuyên nghiệp</span>
-          </div>
-          <div class="stat-item reveal reveal-delay-2">
-            <strong><span data-count="1000" data-suffix="+">1000+</span></strong>
-            <span>Thành viên đang hoạt động</span>
-          </div>
-          <div class="stat-item reveal reveal-delay-3">
-            <strong><span data-count="50" data-suffix="+">50+</span></strong>
-            <span>Giải đấu đã tổ chức</span>
-          </div>
-        </div>
-      </div>
-    </section>
 
     <!-- ─── COURTS ─── -->
     <section id="courts">
@@ -2033,170 +1936,6 @@
         </div>
 
         <p class="pricing-note reveal">Giá có thể thay đổi theo chương trình khuyến mãi. Liên hệ <a href="tel:0914859927" style="color:var(--text);">0914 859 927</a> để được tư vấn chi tiết. Thanh toán chuyển khoản hoặc tiền mặt tại sân.</p>
-      </div>
-    </section>
-
-    <!-- ─── TESTIMONIALS ─── -->
-    <section class="testimonials" id="testimonials">
-      <div class="container">
-        <div class="section-header">
-          <span class="label reveal">Thành Viên Nói Gì</span>
-          <h2 class="reveal reveal-delay-1">Thành viên<br><span class="dim">nói về AMZ</span></h2>
-        </div>
-
-        <div class="testimonials-grid">
-          <div class="testimonial-card reveal">
-            <div class="testimonial-stars">
-              <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
-            </div>
-            <blockquote>Chơi ở AMZ khác hẳn các sân khác — cộng đồng ở đây thực sự thân thiện. Mới đến lần đầu đã có người hỏi thăm và rủ chơi cùng. Sân rộng, đèn sáng, mặt sân êm tay. Tôi đã giới thiệu cả nhóm đồng nghiệp đến đây.</blockquote>
-            <div class="testimonial-author">
-              <div class="author-avatar">TN</div>
-              <div class="author-info">
-                <strong>Trần Ngọc Anh</strong>
-                <span>Thành viên · 6 tháng</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="testimonial-card reveal reveal-delay-1">
-            <div class="testimonial-stars">
-              <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
-            </div>
-            <blockquote>Trước khi đến AMZ tôi nghĩ Pickleball chỉ dành cho người trẻ. Sau 3 tháng học với HLV ở đây, tôi đã có thể đánh cơ bản và tham gia giải đấu nội bộ. Được dạy từng kỹ thuật, rất kiên nhẫn và không bỏ ai lại phía sau.</blockquote>
-            <div class="testimonial-author">
-              <div class="author-avatar">PH</div>
-              <div class="author-info">
-                <strong>Phạm Hữu Tài</strong>
-                <span>Thành viên · 3 tháng</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="testimonial-card reveal reveal-delay-2">
-            <div class="testimonial-stars">
-              <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
-            </div>
-            <blockquote>Sự kiện Dink &amp; Drink tối thứ 6 là lý do tôi giữ membership dài hạn. Đánh giải mini xong ngồi lại tán chuyện cùng nhau — vui hơn nhiều so với chỉ thuê sân rồi về. AMZ đã tạo ra thứ gì đó thực sự khác biệt ở Vũng Tàu.</blockquote>
-            <div class="testimonial-author">
-              <div class="author-avatar">LM</div>
-              <div class="author-info">
-                <strong>Lê Minh Châu</strong>
-                <span>Thành viên · 1 năm</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ─── SPONSORS / PARTNERS ─── -->
-    <section class="partners-section" id="doi-tac">
-      <div class="container">
-        <div class="section-header">
-          <span class="label reveal">Đối Tác</span>
-          <h2 class="reveal reveal-delay-1">Đối tác &<br><span class="dim">nhà tài trợ</span></h2>
-        </div>
-
-        <div class="partners-grid">
-          <div class="partner-card reveal"><span>AMZ Coffee</span></div>
-          <div class="partner-card reveal reveal-delay-1"><span>Joola</span></div>
-          <div class="partner-card reveal reveal-delay-2"><span>Selkirk</span></div>
-          <div class="partner-card reveal reveal-delay-3"><span>DUPR</span></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ─── EVENTS ─── -->
-    <section id="events">
-      <div class="container">
-        <div class="section-intro">
-          <div>
-            <span class="label reveal">Sự Kiện</span>
-            <h2 class="reveal reveal-delay-1 section-h2-md">
-              Giải đấu &<br><span class="dim">sự kiện sắp tới</span>
-            </h2>
-          </div>
-          <a href="#lien-he" class="btn btn-outline reveal reveal-delay-2">Xem tất cả →</a>
-        </div>
-
-        <div class="events-list" id="eventsList"></div>
-      </div>
-    </section>
-
-    <!-- ─── LEADERBOARD ─── -->
-    <section class="leaderboard-section" id="bang-xep-hang">
-      <div class="container">
-        <div class="section-header">
-          <span class="label reveal">Bảng Xếp Hạng</span>
-          <h2 class="reveal reveal-delay-1">Top thành viên<br><span class="dim">AMZ Club</span></h2>
-          <p class="reveal reveal-delay-2">Xếp hạng dựa trên trình độ và số giải đấu tham gia.</p>
-        </div>
-
-        <div class="leaderboard-top3" id="leaderboardTop3">
-          <div class="leader-card reveal">
-            <div class="leader-rank">#1</div>
-            <div class="leader-avatar">PH</div>
-            <div class="leader-name">Phạm Hữu Tài</div>
-            <span class="leader-level">Level 4.5</span>
-            <div class="leader-stats-row">
-              <div class="leader-stat"><strong>12</strong><span>Giải đấu</span></div>
-              <div class="leader-stat"><strong>8</strong><span>Huy chương</span></div>
-            </div>
-          </div>
-          <div class="leader-card reveal reveal-delay-1">
-            <div class="leader-rank">#2</div>
-            <div class="leader-avatar">TN</div>
-            <div class="leader-name">Trần Ngọc Anh</div>
-            <span class="leader-level">Level 4.0</span>
-            <div class="leader-stats-row">
-              <div class="leader-stat"><strong>9</strong><span>Giải đấu</span></div>
-              <div class="leader-stat"><strong>5</strong><span>Huy chương</span></div>
-            </div>
-          </div>
-          <div class="leader-card reveal reveal-delay-2">
-            <div class="leader-rank">#3</div>
-            <div class="leader-avatar">LM</div>
-            <div class="leader-name">Lê Minh Châu</div>
-            <span class="leader-level">Level 3.5</span>
-            <div class="leader-stats-row">
-              <div class="leader-stat"><strong>7</strong><span>Giải đấu</span></div>
-              <div class="leader-stat"><strong>3</strong><span>Huy chương</span></div>
-            </div>
-          </div>
-        </div>
-
-        <table class="leaderboard-table reveal">
-          <thead>
-            <tr><th>#</th><th>Thành viên</th><th>Level</th><th>Giải đấu</th><th>Thắng</th></tr>
-          </thead>
-          <tbody>
-            <tr><td class="lb-rank">4</td><td class="lb-name">Nguyễn Văn Dũng</td><td class="lb-level">3.5</td><td>6</td><td>4</td></tr>
-            <tr><td class="lb-rank">5</td><td class="lb-name">Hoàng Thị Mai</td><td class="lb-level">3.0</td><td>5</td><td>3</td></tr>
-            <tr><td class="lb-rank">6</td><td class="lb-name">Đặng Quốc Bảo</td><td class="lb-level">3.0</td><td>4</td><td>2</td></tr>
-            <tr><td class="lb-rank">7</td><td class="lb-name">Vũ Thanh Hằng</td><td class="lb-level">2.5</td><td>3</td><td>2</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- ─── CTA BANNER ─── -->
-    <section class="cta-banner" id="contact">
-      <div class="container">
-        <div>
-          <p class="label">Sẵn sàng lên sân chưa?</p>
-          <p class="cta-desc">179 Thống Nhất, P. Vũng Tàu, TP.HCM · Mở từ 05:00 mỗi ngày · 8 sân chờ bạn</p>
-        </div>
-        <div class="cta-actions">
-          <a href="tel:0914859927" class="btn btn-primary btn-cta">
-            <span class="btn-cta-text">Gọi Ngay 0914 859 927</span>
-            <span class="btn-cta-arrow" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
-          </a>
-          <a href="#lien-he" class="btn btn-outline btn-cta-outline">
-            <span class="btn-cta-text">Đăng Ký Online</span>
-            <span class="btn-cta-arrow" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
-          </a>
-        </div>
       </div>
     </section>
 
@@ -2556,26 +2295,23 @@
         </div>
 
         <div class="footer-col">
-          <h5>Dịch Vụ</h5>
+          <h5>Lịch Thi Đấu</h5>
           <ul class="footer-links">
-            <li><a href="#services">Cho Thuê Sân</a></li>
-            <li><a href="#services">Tập Luyện Nhóm</a></li>
-            <li><a href="#training">Huấn Luyện 1-on-1</a></li>
-            <li><a href="#services">Tổ Chức Giải Đấu</a></li>
-            <li><a href="#bang-gia">Gói Membership</a></li>
-            <li><a href="#services">Thuê Thiết Bị</a></li>
+            <li><a href="#events">Giải đấu sắp tới</a></li>
+            <li><a href="#bang-xep-hang">Bảng xếp hạng</a></li>
+            <li><a href="#tran-dau">Trận đấu đỉnh cao</a></li>
+            <li><a href="#tin-tuc">Tin tức</a></li>
           </ul>
         </div>
 
         <div class="footer-col">
-          <h5>Câu Lạc Bộ</h5>
+          <h5>CLB</h5>
           <ul class="footer-links">
-            <li><a href="#about">Về Chúng Tôi</a></li>
-            <li><a href="#courts">Cơ Sở Vật Chất</a></li>
+            <li><a href="#courts">Sân Chơi</a></li>
+            <li><a href="#training">Huấn Luyện</a></li>
             <li><a href="#bang-gia">Bảng Giá</a></li>
-            <li><a href="#events">Lịch Sự Kiện</a></li>
+            <li><a href="#faq">FAQ</a></li>
             <li><a href="blog/">Blog</a></li>
-            <li><a href="#faq">Câu Hỏi Thường Gặp</a></li>
             <li><a href="#lien-he">Liên Hệ</a></li>
           </ul>
         </div>
@@ -2597,6 +2333,13 @@
             </li>
           </ul>
         </div>
+      </div>
+
+      <div class="footer-partners">
+        <span>AMZ Coffee</span>
+        <span>Joola</span>
+        <span>Selkirk</span>
+        <span>DUPR</span>
       </div>
 
       <div class="footer-bottom">
@@ -2655,33 +2398,6 @@
       observer.observe(el);
     });
 
-
-    // Count-up animation for stat numbers
-    function countUp(el, target, suffix, duration) {
-      const start = performance.now();
-      const update = (now) => {
-        const progress = Math.min((now - start) / duration, 1);
-        const ease = 1 - Math.pow(1 - progress, 3);
-        el.textContent = Math.round(ease * target).toLocaleString() + suffix;
-        if (progress < 1) requestAnimationFrame(update);
-      };
-      requestAnimationFrame(update);
-    }
-
-    const statsObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
-        entry.target.querySelectorAll('[data-count]').forEach(el => {
-          const target = parseInt(el.dataset.count);
-          const suffix = el.dataset.suffix || '';
-          countUp(el, target, suffix, 1400);
-        });
-        statsObserver.unobserve(entry.target);
-      });
-    }, { threshold: 0.3 });
-
-    const statsGrid = document.querySelector('.stats-grid');
-    if (statsGrid) statsObserver.observe(statsGrid);
 
     const sections = document.querySelectorAll('section[id]');
     const navLinks = document.querySelectorAll('.nav-links a');
@@ -2847,8 +2563,8 @@
       });
 
       window.openRegModal = function(btn) {
-        var item = btn.closest('.event-item');
-        var name = item.dataset.eventName;
+        var item = btn.closest('.event-card') || btn.closest('.event-item') || btn;
+        var name = item.dataset.eventName || '';
         document.getElementById('regTitle').textContent = 'Đăng ký giải';
         document.getElementById('regSubtitle').textContent = name;
         document.getElementById('reg-event-name').value = name;
@@ -3037,117 +2753,87 @@
       });
     })();
 
-    // ─── DYNAMIC EVENTS FROM LOCALSTORAGE ───
+    // ─── DYNAMIC EVENTS (CARD GRID) ───
     (function() {
-      var DEFAULT_TOURNAMENTS = [
-        { id: 'default1', name: 'AMZ Open Tournament — Vòng Tháng 7', date: '2026-07-05', type: 'Nội bộ', status: 'Mở đăng ký', maxTeams: 16, levels: '3.0-4.5', prize: '', note: 'Đôi nam + Đôi nữ + Đôi hỗn hợp' },
-        { id: 'default2', name: 'Buổi Tập Thử Miễn Phí — Người Mới', date: '2026-07-12', type: 'Nội bộ', status: 'Mở đăng ký', maxTeams: 20, levels: '2.0-3.0', prize: '', note: 'Trải nghiệm Pickleball lần đầu · HLV hướng dẫn' },
-        { id: 'default3', name: 'AMZ vs Các CLB TP.HCM — Giao Hữu', date: '2026-07-19', type: 'Liên CLB', status: 'Đã đóng', maxTeams: 12, levels: '3.5-5.0', prize: '', note: 'Giao hữu liên câu lạc bộ · Dành cho thành viên' },
-        { id: 'default4', name: 'Dink & Drink Friday — Cuối Tháng 6', date: '2026-06-27', type: 'Nội bộ', status: 'Mở đăng ký', maxTeams: 24, levels: 'Mọi trình độ', prize: '', note: 'Mini-tournament tối thứ 6 · Giao lưu cộng đồng' }
-      ];
+      var grid = document.getElementById('eventsGrid');
+      if (!grid) return;
+      var months = ['Th1','Th2','Th3','Th4','Th5','Th6','Th7','Th8','Th9','Th10','Th11','Th12'];
+      var fullMonths = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
 
-      var db = JSON.parse(localStorage.getItem('amz_admin')) || { players: [], tournaments: [], registrations: [], history: [] };
-      if (!db.tournaments.length) {
-        db.tournaments = DEFAULT_TOURNAMENTS;
-        localStorage.setItem('amz_admin', JSON.stringify(db));
+      async function loadEvents() {
+        var events = [];
+        try {
+          var res = await fetch('data/events.json');
+          var data = await res.json();
+          events = data.events || [];
+        } catch(e) {
+          var db = JSON.parse(localStorage.getItem('amz_admin')) || { tournaments: [] };
+          events = db.tournaments || [];
+        }
+        renderEvents(events);
       }
 
-      var months = ['Th1','Th2','Th3','Th4','Th5','Th6','Th7','Th8','Th9','Th10','Th11','Th12'];
-      var list = document.getElementById('eventsList');
-
-      function renderEvents() {
-        var db = JSON.parse(localStorage.getItem('amz_admin')) || { tournaments: [], registrations: [] };
-        var tournaments = db.tournaments.filter(function(t) { return t.status !== 'Đã kết thúc'; });
+      function renderEvents(tournaments) {
+        tournaments = tournaments.filter(function(t) { return t.status !== 'Đã kết thúc'; });
         tournaments.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
 
         if (!tournaments.length) {
-          list.innerHTML = '<div style="text-align:center;padding:60px 0;">' +
+          grid.innerHTML = '<div style="text-align:center;padding:60px 0;grid-column:1/-1;">' +
             '<p style="color:var(--text);font-size:18px;font-weight:600;margin-bottom:12px;">Giải đấu đang được chuẩn bị</p>' +
-            '<p style="color:var(--muted);font-size:15px;line-height:1.7;max-width:480px;margin:0 auto 24px;">Đăng ký nhận thông báo để không bỏ lỡ giải đấu tiếp theo tại AMZ Pickleball. Chúng tôi tổ chức giải đấu hàng tháng cho mọi trình độ.</p>' +
-            '<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">' +
-            '<a href="#lien-he" class="btn btn-primary" style="font-size:13px;">Đăng ký nhận thông báo</a>' +
-            '<a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="font-size:13px;">Theo dõi Facebook</a>' +
-            '</div>' +
-            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:500px;margin:40px auto 0;padding-top:32px;border-top:1px solid var(--border);">' +
-            '<div style="text-align:center;"><strong style="font-size:20px;color:var(--text);display:block;">Hàng tháng</strong><span style="font-size:12px;color:var(--muted);">Giải nội bộ</span></div>' +
-            '<div style="text-align:center;"><strong style="font-size:20px;color:var(--text);display:block;">Mọi level</strong><span style="font-size:12px;color:var(--muted);">2.0 đến 5.0+</span></div>' +
-            '<div style="text-align:center;"><strong style="font-size:20px;color:var(--text);display:block;">Giải thưởng</strong><span style="font-size:12px;color:var(--muted);">Tiền mặt & quà</span></div>' +
-            '</div></div>';
+            '<p style="color:var(--muted);font-size:15px;line-height:1.7;max-width:480px;margin:0 auto 24px;">Đăng ký nhận thông báo để không bỏ lỡ giải đấu tiếp theo.</p>' +
+            '<a href="#lien-he" class="btn btn-primary" style="font-size:13px;">Đăng ký nhận thông báo</a></div>';
           return;
         }
 
         var html = '';
         tournaments.forEach(function(t, i) {
           var d = t.date ? new Date(t.date + 'T00:00:00') : null;
-          var day = d ? String(d.getDate()).padStart(2, '0') : '—';
-          var mon = d ? months[d.getMonth()] : '';
+          var dateStr = d ? d.getDate() + ' ' + fullMonths[d.getMonth()] + ', ' + d.getFullYear() : '';
           var isOpen = t.status === 'Mở đăng ký';
-          var regCount = db.registrations.filter(function(r) { return r.tournamentId === t.id; }).length;
-          var slotsLeft = t.maxTeams ? t.maxTeams - regCount : 999;
-          var isFull = t.maxTeams && slotsLeft <= 0;
           var badgeClass = isOpen ? 'badge-open' : 'badge-soon';
           var badgeText = isOpen ? 'Mở đăng ký' : t.status;
           var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
+          var img = t.image || '';
 
-          var safeName = escapeHTML(t.name);
-          var safeNote = escapeHTML(t.note || t.type);
-          var safeStatus = escapeHTML(badgeText);
-
-          html += '<div class="event-item reveal' + delay + '" data-event-name="' + t.name.replace(/"/g, '&quot;') + '" data-event-type="' + escapeHTML(t.type) + '" data-event-date="' + (t.date || '') + '" data-max-slots="' + (t.maxTeams || 0) + '">' +
-            '<div class="event-date"><strong>' + day + '</strong><span>' + mon + '</span></div>' +
-            '<div class="event-info"><h4>' + safeName + '</h4><p>' + safeNote + '</p>' +
-            (d ? '<div class="event-countdown" data-date="' + t.date + 'T08:00:00+07:00"></div>' : '') +
+          html += '<div class="event-card reveal' + delay + '" data-event-name="' + (t.name || '').replace(/"/g, '&quot;') + '" data-event-type="' + escapeHTML(t.type || '') + '" data-event-date="' + (t.date || '') + '" data-max-slots="' + (t.maxTeams || 0) + '">' +
+            '<div class="event-card-img">' +
+            (img ? '<img src="' + escapeHTML(img) + '" alt="" loading="lazy">' : '') +
+            '<span class="event-card-badge ' + badgeClass + '">' + escapeHTML(badgeText) + '</span>' +
             '</div>' +
-            '<div class="event-actions">' +
-            '<span class="event-badge ' + badgeClass + '">' + safeStatus + '</span>' +
-            (isOpen && !isFull ? '<button class="btn-reg" onclick="openRegModal(this)">Đăng ký</button>' :
-             isFull ? '<button class="btn-reg" disabled>Hết chỗ</button>' :
-             '<button class="btn-reg" disabled>Chưa mở</button>') +
-            '</div></div>';
+            '<div class="event-card-body">' +
+            '<div class="event-card-date"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' + escapeHTML(dateStr) + '</div>' +
+            '<h4>' + escapeHTML(t.name) + '</h4>' +
+            '<div class="event-card-level">Level: ' + escapeHTML(t.levels || 'Mọi trình độ') + '</div>' +
+            '<p>' + escapeHTML(t.note || t.type) + '</p>' +
+            '<div class="event-card-footer">' +
+            (isOpen ? '<button class="btn btn-primary" style="font-size:12px;padding:8px 16px;" onclick="openRegModal(this)">Đăng Ký</button>' :
+             '<button class="btn btn-outline" style="font-size:12px;padding:8px 16px;" disabled>' + escapeHTML(badgeText) + '</button>') +
+            '</div></div></div>';
         });
-        list.innerHTML = html;
+        grid.innerHTML = html;
 
-        initScrollReveal();
-        initCountdowns();
-        updateRegCounts();
-      }
-
-      function initScrollReveal() {
         var obs = new IntersectionObserver(function(entries) {
           entries.forEach(function(e) { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
-        }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
-        list.querySelectorAll('.reveal:not(.visible)').forEach(function(el) { obs.observe(el); });
+        }, { threshold: 0.1 });
+        grid.querySelectorAll('.reveal:not(.visible)').forEach(function(el) { obs.observe(el); });
       }
 
-      function initCountdowns() {
-        list.querySelectorAll('.event-countdown[data-date]').forEach(function(el) {
-          var target = new Date(el.dataset.date).getTime();
-          function update() {
-            var diff = target - Date.now();
-            if (diff <= 0) { el.innerHTML = '<span style="color:var(--accent);font-size:12px;font-weight:600;">Đang diễn ra</span>'; return; }
-            var d = Math.floor(diff / 86400000), h = Math.floor((diff % 86400000) / 3600000), m = Math.floor((diff % 3600000) / 60000);
-            el.innerHTML = '<span style="font-size:12px;color:var(--muted);">Còn <strong style="color:var(--text)">' + d + '</strong> ngày <strong style="color:var(--text)">' + h + '</strong> giờ <strong style="color:var(--text)">' + m + '</strong> phút</span>';
-          }
-          update();
-          setInterval(update, 60000);
-        });
-      }
-
-      window.renderEvents = renderEvents;
-      renderEvents();
+      window.renderEvents = loadEvents;
+      loadEvents();
     })();
 
     // ─── REGISTRATION COUNTS & SLOTS ───
     function updateRegCounts() {
       try {
         var db = JSON.parse(localStorage.getItem('amz_admin')) || { registrations: [], tournaments: [] };
-        document.querySelectorAll('.event-item[data-event-name]').forEach(function(item) {
+        document.querySelectorAll('.event-card[data-event-name], .event-item[data-event-name]').forEach(function(item) {
           var eName = item.dataset.eventName;
           var maxSlots = parseInt(item.dataset.maxSlots) || 0;
           var tournament = db.tournaments.find(function(t) { return t.name === eName; });
           var count = tournament ? db.registrations.filter(function(r) { return r.tournamentId === tournament.id; }).length : 0;
 
-          var info = item.querySelector('.event-info');
+          var info = item.querySelector('.event-info') || item.querySelector('.event-card-body');
+          if (!info) return;
           var existing = info.querySelector('.reg-count');
           if (!existing) { existing = document.createElement('span'); existing.className = 'reg-count'; info.appendChild(existing); }
 
@@ -3454,6 +3140,169 @@
         .catch(function() {
           heroWrap.closest('section').style.display = 'none';
         });
+    })();
+
+    // ═══ HERO EVENT (UP NEXT) ═══
+    (function() {
+      async function loadHeroEvent() {
+        var events = [];
+        try {
+          var res = await fetch('data/events.json');
+          var data = await res.json();
+          events = data.events || [];
+        } catch(e) {
+          var db = JSON.parse(localStorage.getItem('amz_admin')) || { tournaments: [] };
+          events = db.tournaments || [];
+        }
+        var now = new Date();
+        var upcoming = events
+          .filter(function(e) { return new Date(e.date) > now && (e.status === 'Mở đăng ký' || e.status === 'Sắp mở'); })
+          .sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
+        if (upcoming.length) {
+          renderHeroEvent(upcoming[0]);
+        }
+      }
+      function renderHeroEvent(evt) {
+        var nameEl = document.getElementById('heroEventName');
+        var dateEl = document.getElementById('heroEventDate');
+        var countdownEl = document.getElementById('heroCountdown');
+        var regBtn = document.getElementById('heroRegBtn');
+        var badgeEl = document.getElementById('heroBadgeText');
+        var subEl = document.getElementById('heroSub');
+        if (nameEl) {
+          nameEl.innerHTML = escapeHTML(evt.name);
+          nameEl.style.fontSize = 'clamp(36px, 8vw, 90px)';
+        }
+        if (badgeEl) badgeEl.textContent = 'UP NEXT';
+        if (subEl) subEl.style.display = 'none';
+        if (dateEl) {
+          var d = new Date(evt.date + 'T08:00:00+07:00');
+          var opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+          dateEl.textContent = d.toLocaleDateString('vi-VN', opts);
+        }
+        if (countdownEl) startCountdown(countdownEl, evt.date);
+        if (regBtn) {
+          regBtn.dataset.eventName = evt.name;
+          regBtn.dataset.eventType = evt.type || '';
+          regBtn.dataset.eventDate = evt.date || '';
+          regBtn.dataset.maxSlots = evt.maxTeams || 0;
+          if (evt.status !== 'Mở đăng ký') {
+            regBtn.textContent = 'Sắp mở';
+            regBtn.disabled = true;
+          }
+        }
+      }
+      function startCountdown(el, dateStr) {
+        var target = new Date(dateStr + 'T08:00:00+07:00').getTime();
+        function update() {
+          var now = Date.now();
+          var diff = target - now;
+          if (diff <= 0) { el.innerHTML = '<span class="countdown-label" style="font-size:16px;color:var(--accent);font-weight:700;">Đang diễn ra!</span>'; return; }
+          var days = Math.floor(diff / 86400000);
+          var hours = Math.floor((diff % 86400000) / 3600000);
+          var mins = Math.floor((diff % 3600000) / 60000);
+          var secs = Math.floor((diff % 60000) / 1000);
+          el.innerHTML = '<div class="cd-item"><strong>' + days + '</strong><span>Ngày</span></div>' +
+            '<div class="cd-sep">:</div>' +
+            '<div class="cd-item"><strong>' + String(hours).padStart(2,'0') + '</strong><span>Giờ</span></div>' +
+            '<div class="cd-sep">:</div>' +
+            '<div class="cd-item"><strong>' + String(mins).padStart(2,'0') + '</strong><span>Phút</span></div>' +
+            '<div class="cd-sep">:</div>' +
+            '<div class="cd-item"><strong>' + String(secs).padStart(2,'0') + '</strong><span>Giây</span></div>';
+        }
+        update();
+        setInterval(update, 1000);
+      }
+      loadHeroEvent();
+    })();
+
+    // ═══ LEADERBOARD TABS ═══
+    (function() {
+      var tabsWrap = document.getElementById('leaderboardTabs');
+      var content = document.getElementById('leaderboardContent');
+      if (!tabsWrap || !content) return;
+      var playersData = [];
+
+      async function loadPlayers() {
+        try {
+          var res = await fetch('data/players.json');
+          var data = await res.json();
+          playersData = data.players || [];
+        } catch(e) {
+          playersData = [];
+        }
+        renderLeaderboard('Đơn nam');
+      }
+
+      function renderLeaderboard(cat) {
+        var filtered = playersData.filter(function(p) {
+          return p.categories && p.categories.indexOf(cat) !== -1;
+        }).sort(function(a, b) { return (b.stats.points || 0) - (a.stats.points || 0); });
+
+        if (!filtered.length) {
+          content.innerHTML = '<div style="text-align:center;padding:48px 0;color:var(--muted);">Chưa có dữ liệu cho hạng mục này</div>';
+          return;
+        }
+
+        var html = '<table class="leaderboard-table"><thead><tr>' +
+          '<th style="width:60px">#</th><th>Thành viên</th><th>Level</th><th>Giải đấu</th><th>Thắng</th><th>Điểm</th></tr></thead><tbody>';
+        filtered.forEach(function(p, i) {
+          var rank = i + 1;
+          var rankClass = rank <= 3 ? ' lb-rank-' + rank : '';
+          var initials = p.initials || p.name.split(' ').map(function(w) { return w[0]; }).join('').substring(0, 2);
+          html += '<tr class="lb-row' + rankClass + '">' +
+            '<td class="lb-rank">' + String(rank).padStart(2, '0') + '</td>' +
+            '<td class="lb-name"><div class="lb-player"><div class="lb-avatar">' + escapeHTML(initials) + '</div><span>' + escapeHTML(p.name) + '</span></div></td>' +
+            '<td class="lb-level">' + p.level + '</td>' +
+            '<td>' + (p.stats.tournaments || 0) + '</td>' +
+            '<td>' + (p.stats.wins || 0) + '</td>' +
+            '<td class="lb-points">' + (p.stats.points || 0) + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table>';
+        content.innerHTML = html;
+      }
+
+      tabsWrap.addEventListener('click', function(e) {
+        var tab = e.target.closest('.lb-tab');
+        if (!tab) return;
+        tabsWrap.querySelectorAll('.lb-tab').forEach(function(t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        renderLeaderboard(tab.dataset.cat);
+      });
+
+      loadPlayers();
+    })();
+
+    // ═══ NEWS / BLOG ═══
+    (function() {
+      var grid = document.getElementById('newsGrid');
+      if (!grid) return;
+      fetch('data/blog-posts.json')
+        .then(function(r) { return r.json(); })
+        .then(function(posts) {
+          var published = posts.filter(function(p) { return !p.draft; }).slice(0, 3);
+          if (!published.length) { grid.closest('section').style.display = 'none'; return; }
+          grid.innerHTML = published.map(function(post, i) {
+            var delay = i > 0 ? ' reveal-delay-' + i : '';
+            var img = post.image || 'images/san/san-toan-canh.jpg';
+            return '<a href="blog/posts/' + post.slug + '.html" class="news-card reveal' + delay + '">' +
+              '<div class="news-thumb"><img src="' + img + '" alt="" loading="lazy"></div>' +
+              '<div class="news-body">' +
+              '<span class="news-tag">' + escapeHTML(post.tag) + '</span>' +
+              '<h4>' + escapeHTML(post.title) + '</h4>' +
+              '<p>' + escapeHTML(post.excerpt) + '</p>' +
+              '<span class="news-date">' + post.date + '</span>' +
+              '</div></a>';
+          }).join('');
+          var obs = new IntersectionObserver(function(entries) {
+            entries.forEach(function(e) {
+              if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }
+            });
+          }, { threshold: 0.1 });
+          grid.querySelectorAll('.reveal').forEach(function(el) { obs.observe(el); });
+        })
+        .catch(function() { grid.closest('section').style.display = 'none'; });
     })();
 
     // FAQ accordion

@@ -1,0 +1,28 @@
+[
+  {
+    "slug": "pickleball-la-gi",
+    "title": "Pickleball là gì? Hướng dẫn toàn diện cho người mới",
+    "excerpt": "Tìm hiểu luật chơi, kỹ thuật cơ bản, và tại sao Pickleball đang bùng nổ tại Việt Nam.",
+    "tag": "Hướng dẫn",
+    "date": "2026-06-21",
+    "image": "images/blog/pickleball-la-gi-cover.jpg"
+  },
+  {
+    "slug": "ky-thuat-dink",
+    "title": "5 kỹ thuật Dink giúp bạn thắng mọi trận đấu",
+    "excerpt": "Dink là vũ khí bí mật của pro player. Học cách kiểm soát nhịp trận đấu với 5 kỹ thuật này.",
+    "tag": "Kỹ thuật",
+    "date": "2026-06-28",
+    "image": "",
+    "draft": true
+  },
+  {
+    "slug": "chon-vot-pickleball",
+    "title": "Cách chọn vợt Pickleball phù hợp với trình độ",
+    "excerpt": "Paddle nào cho người mới? Power hay Control? Hướng dẫn chọn vợt chi tiết từ HLV AMZ.",
+    "tag": "Review",
+    "date": "2026-07-05",
+    "image": "",
+    "draft": true
+  }
+]
