@@ -21,6 +21,8 @@
   <meta name="twitter:description" content="8 sân Pickleball tiêu chuẩn tại 179 Thống Nhất, TP.HCM. Huấn luyện chuyên nghiệp, cộng đồng thân thiện.">
   <meta name="twitter:image"       content="https://amzpickleball.vn/logo.jpg">
   <link rel="icon" href="logo.jpg" type="image/jpeg">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="keywords" content="sân pickleball TPHCM, sân pickleball Bình Dương, học pickleball, giải pickleball, AMZ Pickleball, pickleball Việt Nam, thuê sân pickleball">
 
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SportsActivityLocation","name":"AMZ Pickle Ball Club","url":"https://amzpickleball.vn","address":{"@type":"PostalAddress","streetAddress":"179 Thống Nhất, Phường Vũng Tàu","addressLocality":"TP. Hồ Chí Minh","addressCountry":"VN"},"telephone":"0914859927","openingHours":["Mo-Fr 05:00-22:00","Sa-Su 05:00-23:00"],"sameAs":["https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/"]}
@@ -807,6 +809,16 @@
       font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.06em;
       margin-bottom: 12px;
     }
+    .event-card-footer { align-items: center; flex-wrap: wrap; }
+    .btn-share-event {
+      margin-left: auto; display: flex; align-items: center; gap: 6px;
+      background: none; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--muted); cursor: pointer; padding: 7px 10px; font-size: 11px;
+      font-family: var(--font); letter-spacing: 0.04em; white-space: nowrap;
+      transition: border-color .2s, color .2s;
+    }
+    .btn-share-event:hover { border-color: rgba(255,255,255,.3); color: var(--text); }
+    .btn-share-event svg { flex-shrink: 0; }
 
     /* ─── NEWS GRID ─── */
     .news-section { border-top: 1px solid var(--border); }
@@ -2362,6 +2374,19 @@
       return d.innerHTML;
     }
 
+    function shareEvent(btn) {
+      var title = btn.dataset.title || 'AMZ Pickleball';
+      var dateStr = btn.dataset.date ? ' — ' + btn.dataset.date : '';
+      var text = title + dateStr + ' | AMZ Pickle Ball Club';
+      var url = 'https://amzpickleball.vn/#events';
+      if (navigator.share) {
+        navigator.share({ title: title, text: text, url: url }).catch(function() {});
+      } else {
+        var fbUrl = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url) + '&quote=' + encodeURIComponent(text);
+        window.open(fbUrl, '_blank', 'width=600,height=400');
+      }
+    }
+
     // ═══ NAVIGATION ═══
     const nav = document.getElementById('nav');
     const backToTop = document.getElementById('backToTop');
@@ -2810,6 +2835,9 @@
             '<div class="event-card-footer">' +
             (isOpen ? '<button class="btn btn-primary" style="font-size:12px;padding:8px 16px;" onclick="openRegModal(this)">Đăng Ký</button>' :
              '<button class="btn btn-outline" style="font-size:12px;padding:8px 16px;" disabled>' + escapeHTML(badgeText) + '</button>') +
+            '<button class="btn-share-event" onclick="shareEvent(this)" data-title="' + (t.name || '').replace(/"/g, '&quot;') + '" data-date="' + (t.date || '') + '" aria-label="Chia sẻ giải đấu">' +
+            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
+            'Chia sẻ</button>' +
             '</div></div></div>';
         });
         grid.innerHTML = html;
@@ -3360,5 +3388,12 @@
     </a>
   </div>
 
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js').catch(function() {});
+      });
+    }
+  </script>
 </body>
 </html>

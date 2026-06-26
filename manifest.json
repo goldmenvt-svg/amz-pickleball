@@ -1,0 +1,45 @@
+{
+  "name": "AMZ Pickleball",
+  "short_name": "AMZ PB",
+  "description": "Sân Pickleball chuyên nghiệp tại TP.HCM — đặt sân, xem lịch giải đấu, bảng xếp hạng",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "lang": "vi",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Đặt sân ngay",
+      "url": "/#lien-he",
+      "description": "Liên hệ đặt sân Pickleball"
+    },
+    {
+      "name": "Xem lịch giải đấu",
+      "url": "/#events",
+      "description": "Lịch thi đấu và sự kiện AMZ"
+    },
+    {
+      "name": "Bảng xếp hạng",
+      "url": "/#bang-xep-hang",
+      "description": "Bảng xếp hạng VĐV AMZ Pickleball"
+    }
+  ],
+  "categories": ["sports", "fitness"],
+  "screenshots": []
+}
