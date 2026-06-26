@@ -1,4 +1,4 @@
-const CACHE = 'amz-v1';
+const CACHE = 'amz-v2';
 const OFFLINE_ASSETS = [
   '/',
   '/index.html',
