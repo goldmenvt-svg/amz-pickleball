@@ -1024,7 +1024,7 @@
       #heroCountdown .cd-item strong { font-size: 24px; }
     }
 
-    /* ─── CONTACT FORM ─── */
+    /* ─── CONTACT / BOOKING WIZARD ─── */
     .contact-grid {
       display: grid; grid-template-columns: 1fr 1.6fr;
       gap: 80px; align-items: start; overflow: hidden; max-width: 100%;
@@ -1043,13 +1043,7 @@
     .contact-hours { display: flex; flex-direction: column; gap: 4px; }
     .contact-hours span { font-size: 14px; color: var(--muted); }
 
-    .form-group { margin-bottom: 20px; }
-    .form-label {
-      display: block; font-size: 11px; font-weight: 600;
-      letter-spacing: 0.1em; text-transform: uppercase;
-      color: var(--muted); margin-bottom: 8px;
-    }
-    .form-label .required { color: var(--accent); margin-left: 2px; }
+    /* Shared form controls */
     .form-control {
       width: 100%; background: rgba(255,255,255,0.04);
       border: 1px solid var(--border); border-radius: var(--r);
@@ -1059,25 +1053,14 @@
       -webkit-appearance: none; appearance: none;
     }
     .form-control::placeholder { color: var(--muted2); }
-    .form-control:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent2);
-    }
+    .form-control:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent2); }
     .form-control.is-error { border-color: #ef4444; }
     .form-control.is-error:focus { box-shadow: 0 0 0 3px rgba(239,68,68,0.12); }
-    .field-error {
-      font-size: 12px; color: #ef4444; margin-top: 6px;
-      display: none; align-items: center; gap: 4px;
-    }
+    textarea.form-control { min-height: 90px; resize: vertical; }
+    .field-error { font-size: 12px; color: #ef4444; margin-top: 6px; display: none; align-items: center; gap: 4px; }
     .field-error.show { display: flex; }
-    select.form-control {
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-      background-repeat: no-repeat; background-position: right 14px center;
-      padding-right: 40px; cursor: pointer;
-    }
-    select.form-control option { background: #141414; color: var(--text); }
-    textarea.form-control { min-height: 130px; resize: vertical; }
+    .form-error-msg { font-size: 13px; color: #ef4444; margin-top: 12px; text-align: center; line-height: 1.5; }
+    .form-error-msg a { color: #ef4444; font-weight: 600; text-decoration: underline; }
     .redirect-toast {
       position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px);
       background: var(--accent); color: #000; padding: 12px 24px; border-radius: var(--r);
@@ -1085,28 +1068,153 @@
       transition: all 0.3s ease; pointer-events: none; white-space: nowrap;
     }
     .redirect-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .booking-fields { display: none; }
-    .booking-fields.active { display: block; animation: bfadeIn 0.3s ease; }
-    @keyframes bfadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
-    input[type="date"].form-control { color-scheme: dark; }
-    input[type="date"].form-control::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
 
-    .contact-submit-wrap { margin-top: 8px; }
-    .form-error-msg {
-      font-size: 13px; color: #ef4444; margin-top: 12px;
-      text-align: center; line-height: 1.5;
+    /* Progress stepper */
+    .bw-stepper {
+      display: flex; align-items: flex-start; margin-bottom: 36px;
+      position: relative;
     }
-    .form-error-msg a { color: #ef4444; font-weight: 600; text-decoration: underline; }
-    .btn-submit {
-      width: 100%; justify-content: center;
-      position: relative; overflow: hidden;
+    .bw-stepper::before {
+      content: ''; position: absolute; top: 13px; left: 13px; right: 13px;
+      height: 1px; background: var(--border); z-index: 0;
     }
-    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .bw-step {
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      flex: 1; position: relative; z-index: 1;
+    }
+    .bw-step-dot {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 1px solid var(--border); background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: var(--muted2);
+      transition: all 0.25s ease;
+    }
+    .bw-step.active .bw-step-dot { background: var(--accent); border-color: var(--accent); color: #000; }
+    .bw-step.done .bw-step-dot { background: rgba(200,240,58,0.12); border-color: var(--accent); color: var(--accent); }
+    .bw-step-label {
+      font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted2); transition: color 0.25s; text-align: center;
+    }
+    .bw-step.active .bw-step-label { color: var(--text); }
+    .bw-step.done .bw-step-label { color: var(--muted); }
 
+    /* Step panels */
+    .bw-panel { display: none; }
+    .bw-panel.active { display: block; animation: bwIn 0.28s ease; }
+    @keyframes bwIn { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
+    .bw-panel.bw-back { animation-name: bwBack; }
+    @keyframes bwBack { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: translateX(0); } }
+    .bw-panel-title { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 20px; color: var(--text); }
+
+    /* Service cards */
+    .bw-service-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .bw-service-card {
+      border: 1px solid var(--border); border-radius: var(--r); padding: 16px 14px;
+      cursor: pointer; background: transparent; color: inherit; font-family: var(--font);
+      text-align: left; display: flex; flex-direction: column; gap: 5px;
+      transition: border-color 0.2s, background 0.2s, transform 0.15s;
+      position: relative; overflow: hidden; -webkit-tap-highlight-color: transparent;
+    }
+    .bw-service-card:hover { border-color: rgba(200,240,58,0.4); background: rgba(200,240,58,0.04); transform: translateY(-1px); }
+    .bw-service-card.selected { border-color: var(--accent); background: rgba(200,240,58,0.08); }
+    .bw-service-card.selected::after { content: '✓'; position: absolute; top: 10px; right: 12px; font-size: 11px; font-weight: 700; color: var(--accent); }
+    .bw-service-icon { font-size: 20px; line-height: 1; }
+    .bw-service-name { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.2; }
+    .bw-service-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+
+    /* Date strip */
+    .bw-section-title {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    }
+    .bw-date-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 24px; scrollbar-width: none; }
+    .bw-date-strip::-webkit-scrollbar { display: none; }
+    .bw-date-btn {
+      flex-shrink: 0; min-width: 54px; padding: 10px 6px;
+      border: 1px solid var(--border); border-radius: var(--r); background: transparent;
+      color: var(--text); cursor: pointer; text-align: center; font-family: var(--font);
+      transition: border-color 0.2s, background 0.2s; display: flex; flex-direction: column; gap: 2px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .bw-date-btn:hover { border-color: rgba(200,240,58,0.4); background: rgba(200,240,58,0.04); }
+    .bw-date-btn.selected { border-color: var(--accent); background: rgba(200,240,58,0.1); }
+    .bw-date-btn.selected .bw-date-day { color: var(--accent); }
+    .bw-date-day { font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .bw-date-num { font-size: 20px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+    .bw-date-mon { font-size: 9px; color: var(--muted); }
+    .bw-date-btn.weekend .bw-date-day { color: rgba(200,240,58,0.5); }
+
+    /* Time slots */
+    .bw-slot-section { margin-bottom: 20px; }
+    .bw-slot-label { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .bw-slot-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+    .bw-slot-btn {
+      padding: 9px 13px; border: 1px solid var(--border); border-radius: 6px;
+      background: transparent; color: var(--text); font-size: 13px; font-weight: 600;
+      cursor: pointer; font-family: var(--font); display: flex; align-items: center; gap: 5px;
+      transition: border-color 0.2s, background 0.2s; -webkit-tap-highlight-color: transparent;
+    }
+    .bw-slot-btn:hover { border-color: rgba(200,240,58,0.4); background: rgba(200,240,58,0.04); }
+    .bw-slot-btn.selected { border-color: var(--accent); background: rgba(200,240,58,0.1); color: var(--accent); }
+    .bw-slot-btn.disabled { opacity: 0.28; cursor: not-allowed; pointer-events: none; }
+    .bw-slot-badge { font-size: 9px; font-weight: 700; padding: 2px 4px; border-radius: 3px; background: rgba(200,240,58,0.15); color: var(--accent); }
+
+    /* Players */
+    .bw-players-grid { display: flex; gap: 8px; }
+    .bw-players-btn {
+      flex: 1; padding: 12px 8px; border: 1px solid var(--border); border-radius: var(--r);
+      background: transparent; color: var(--text); cursor: pointer; font-family: var(--font);
+      text-align: center; transition: border-color 0.2s, background 0.2s; -webkit-tap-highlight-color: transparent;
+    }
+    .bw-players-btn:hover { border-color: rgba(200,240,58,0.4); background: rgba(200,240,58,0.04); }
+    .bw-players-btn.selected { border-color: var(--accent); background: rgba(200,240,58,0.1); }
+    .bw-players-num { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+    .bw-players-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* Step 3 form */
+    .bw-form-group { margin-bottom: 16px; }
+    .bw-form-label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .bw-form-label .required { color: var(--accent); margin-left: 2px; }
+    .bw-row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* Summary */
+    .bw-summary {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 20px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 0;
+    }
+    .bw-summary-row {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding: 11px 0;
+    }
+    .bw-summary-row:not(:last-child) { border-bottom: 1px solid var(--border); }
+    .bw-summary-key { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); flex-shrink: 0; }
+    .bw-summary-val { font-size: 13px; color: var(--text); font-weight: 600; }
+    .bw-summary-edit { background: none; border: none; color: var(--muted2); cursor: pointer; font-size: 11px; text-decoration: underline; padding: 0; font-family: var(--font); transition: color 0.2s; }
+    .bw-summary-edit:hover { color: var(--text); }
+
+    /* Nav buttons */
+    .bw-nav { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+    .bw-btn-back {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      padding: 12px 18px; border-radius: var(--r); cursor: pointer;
+      font-size: 13px; font-weight: 600; font-family: var(--font); transition: border-color 0.2s, color 0.2s;
+      white-space: nowrap;
+    }
+    .bw-btn-back:hover { border-color: var(--text); color: var(--text); }
+    .bw-btn-next {
+      flex: 1; background: var(--accent); color: #000; border: none;
+      padding: 14px 24px; border-radius: var(--r); font-size: 14px; font-weight: 700;
+      cursor: pointer; font-family: var(--font); transition: opacity 0.2s, transform 0.15s;
+    }
+    .bw-btn-next:hover { opacity: 0.88; transform: translateY(-1px); }
+    .bw-btn-next:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .bw-required-hint { font-size: 12px; color: #ef4444; margin-top: 8px; display: none; }
+    .bw-required-hint.show { display: block; }
+
+    /* Success state */
     .contact-success {
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--r); padding: 56px 40px;
-      text-align: center;
+      border-radius: var(--r); padding: 56px 40px; text-align: center;
     }
     .success-icon {
       width: 60px; height: 60px; border-radius: 50%;
@@ -1115,14 +1223,9 @@
       margin: 0 auto 24px; font-size: 26px;
       animation: pop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
-    @keyframes pop {
-      0% { transform: scale(0.4); opacity: 0; }
-      100% { transform: scale(1); opacity: 1; }
-    }
+    @keyframes pop { 0% { transform: scale(0.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     .success-name { color: var(--accent); font-weight: 700; }
-    .contact-success h3 {
-      font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px;
-    }
+    .contact-success h3 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; }
     .contact-success p { color: var(--muted); font-size: 15px; line-height: 1.7; margin-bottom: 28px; }
 
     @media (max-width: 1024px) {
@@ -1132,9 +1235,12 @@
     @media (max-width: 768px) {
       .contact-grid { grid-template-columns: 1fr; gap: 40px; }
       .form-control { font-size: 16px; }
+      .bw-service-grid { grid-template-columns: 1fr 1fr; }
     }
-    .contact-row-2col {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    @media (max-width: 480px) {
+      .bw-row-2col { grid-template-columns: 1fr; }
+      .bw-players-grid { flex-wrap: wrap; }
+      .bw-players-btn { min-width: calc(50% - 4px); }
     }
 
     /* ─── PAGE LOADER ─── */
@@ -1326,7 +1432,6 @@
 
     @media (max-width: 480px) {
       .contact-success { padding: 40px 24px; }
-      .contact-row-2col { grid-template-columns: 1fr; }
       .newsletter-form { flex-direction: column; }
       .lightbox-prev, .lightbox-next { display: none; }
     }
@@ -2043,7 +2148,7 @@
         <div class="section-header">
           <span class="label reveal">Liên Hệ</span>
           <h2 class="reveal reveal-delay-1">Đặt sân hoặc<br><em style="font-style:italic;color:var(--accent);">đăng ký ngay</em></h2>
-          <p class="reveal reveal-delay-2">Điền form bên dưới — chúng tôi phản hồi trong vòng 2 giờ trong giờ hoạt động.</p>
+          <p class="reveal reveal-delay-2">Chọn dịch vụ → chọn ngày & giờ → điền thông tin — xong trong 60 giây. Phản hồi trong vòng 2 giờ.</p>
         </div>
 
         <div class="contact-grid">
@@ -2079,141 +2184,201 @@
             </div>
           </div>
 
-          <!-- Cột phải: form -->
+          <!-- Cột phải: booking wizard -->
           <div class="contact-form-wrap reveal-right">
 
-            <form id="contactForm" novalidate>
-              <div class="form-group">
-                <label class="form-label" for="cf-name">Họ và tên <span class="required">*</span></label>
-                <input id="cf-name" name="name" type="text" class="form-control"
-                  placeholder="Nguyễn Văn A" autocomplete="name"
-                  data-field="name" data-min="2">
-                <span class="field-error" id="err-name">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  Vui lòng nhập họ và tên (tối thiểu 2 ký tự)
-                </span>
-              </div>
+            <div id="bookingWizard">
 
-              <div class="contact-row-2col">
-                <div class="form-group">
-                  <label class="form-label" for="cf-phone">Số điện thoại <span class="required">*</span></label>
-                  <input id="cf-phone" name="phone" type="tel" class="form-control"
-                    placeholder="0914 859 927" autocomplete="tel"
-                    data-field="phone">
-                  <span class="field-error" id="err-phone">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Số điện thoại không hợp lệ
-                  </span>
+              <!-- Progress stepper -->
+              <div class="bw-stepper">
+                <div class="bw-step active" data-step="1">
+                  <div class="bw-step-dot">1</div>
+                  <span class="bw-step-label">Dịch vụ</span>
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="cf-email">Email</label>
-                  <input id="cf-email" name="email" type="email" class="form-control"
-                    placeholder="email@example.com" autocomplete="email"
-                    data-field="email">
-                  <span class="field-error" id="err-email">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Địa chỉ email không hợp lệ
-                  </span>
+                <div class="bw-step" data-step="2">
+                  <div class="bw-step-dot">2</div>
+                  <span class="bw-step-label">Ngày & Giờ</span>
+                </div>
+                <div class="bw-step" data-step="3">
+                  <div class="bw-step-dot">3</div>
+                  <span class="bw-step-label">Thông tin</span>
+                </div>
+                <div class="bw-step" data-step="4">
+                  <div class="bw-step-dot">4</div>
+                  <span class="bw-step-label">Xác nhận</span>
                 </div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label" for="cf-type">Loại yêu cầu <span class="required">*</span></label>
-                <select id="cf-type" name="type" class="form-control" data-field="type">
-                  <option value="">— Chọn loại yêu cầu —</option>
-                  <option value="dat-san">Đặt sân</option>
-                  <option value="dang-ky-hoc">Đăng ký học Pickleball</option>
-                  <option value="dang-ky-giai">Đăng ký thi đấu</option>
-                  <option value="tham-gia-social">Tham gia Social</option>
-                  <option value="to-chuc-giai">Tổ chức giải đấu</option>
-                  <option value="hop-tac">Hợp tác kinh doanh</option>
-                  <option value="khac">Khác</option>
-                </select>
-                <span class="field-error" id="err-type">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  Vui lòng chọn loại yêu cầu
-                </span>
+              <!-- Step 1: Chọn dịch vụ -->
+              <div class="bw-panel active" id="bw-panel-1">
+                <p class="bw-panel-title">Bạn muốn làm gì hôm nay?</p>
+                <div class="bw-service-grid">
+                  <button class="bw-service-card" data-service="dat-san">
+                    <span class="bw-service-icon">🏓</span>
+                    <span class="bw-service-name">Thuê Sân</span>
+                    <span class="bw-service-desc">Đặt sân theo giờ, linh hoạt</span>
+                  </button>
+                  <button class="bw-service-card" data-service="dang-ky-hoc">
+                    <span class="bw-service-icon">📚</span>
+                    <span class="bw-service-name">Tập Nhóm</span>
+                    <span class="bw-service-desc">Lớp học mọi trình độ</span>
+                  </button>
+                  <button class="bw-service-card" data-service="coaching">
+                    <span class="bw-service-icon">👤</span>
+                    <span class="bw-service-name">Coaching 1-on-1</span>
+                    <span class="bw-service-desc">HLV riêng, lịch linh hoạt</span>
+                  </button>
+                  <button class="bw-service-card" data-service="dang-ky-giai">
+                    <span class="bw-service-icon">🏆</span>
+                    <span class="bw-service-name">Thi Đấu</span>
+                    <span class="bw-service-desc">Đăng ký giải đấu</span>
+                  </button>
+                  <button class="bw-service-card" data-service="membership">
+                    <span class="bw-service-icon">💳</span>
+                    <span class="bw-service-name">Thành Viên</span>
+                    <span class="bw-service-desc">Gói membership ưu đãi</span>
+                  </button>
+                  <button class="bw-service-card" data-service="khac">
+                    <span class="bw-service-icon">💬</span>
+                    <span class="bw-service-name">Hỏi Thêm</span>
+                    <span class="bw-service-desc">Câu hỏi và yêu cầu khác</span>
+                  </button>
+                </div>
               </div>
 
-              <!-- Booking fields — shown when "Đặt sân" selected -->
-              <div class="booking-fields" id="bookingFields">
-                <div class="contact-row-2col">
-                  <div class="form-group">
-                    <label class="form-label" for="cf-date">Ngày đặt sân <span class="required">*</span></label>
-                    <input id="cf-date" name="booking_date" type="date" class="form-control" data-booking>
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label" for="cf-time">Khung giờ mong muốn <span class="required">*</span></label>
-                    <select id="cf-time" name="booking_time" class="form-control" data-booking>
-                      <option value="">— Chọn khung giờ —</option>
-                      <optgroup label="Sáng sớm">
-                        <option value="05:00-06:00">05:00 – 06:00</option>
-                        <option value="06:00-07:00">06:00 – 07:00</option>
-                        <option value="07:00-08:00">07:00 – 08:00</option>
-                        <option value="08:00-09:00">08:00 – 09:00</option>
-                      </optgroup>
-                      <optgroup label="Buổi sáng (giảm 15%)">
-                        <option value="09:00-10:00">09:00 – 10:00 🏷️</option>
-                        <option value="10:00-11:00">10:00 – 11:00 🏷️</option>
-                        <option value="11:00-12:00">11:00 – 12:00 🏷️</option>
-                      </optgroup>
-                      <optgroup label="Buổi chiều (giảm 15%)">
-                        <option value="13:00-14:00">13:00 – 14:00 🏷️</option>
-                        <option value="14:00-15:00">14:00 – 15:00 🏷️</option>
-                        <option value="15:00-16:00">15:00 – 16:00 🏷️</option>
-                      </optgroup>
-                      <optgroup label="Chiều tối">
-                        <option value="16:00-17:00">16:00 – 17:00</option>
-                        <option value="17:00-18:00">17:00 – 18:00</option>
-                        <option value="18:00-19:00">18:00 – 19:00</option>
-                        <option value="19:00-20:00">19:00 – 20:00</option>
-                        <option value="20:00-21:00">20:00 – 21:00</option>
-                        <option value="21:00-22:00">21:00 – 22:00</option>
-                      </optgroup>
-                    </select>
+              <!-- Step 2: Ngày & Giờ (chỉ cho Thuê Sân) -->
+              <div class="bw-panel" id="bw-panel-2">
+                <p class="bw-panel-title">Chọn ngày và giờ bạn muốn đến</p>
+
+                <p class="bw-section-title">Ngày</p>
+                <div class="bw-date-strip" id="bwDateStrip"></div>
+
+                <p class="bw-section-title">Khung giờ</p>
+                <div class="bw-slot-section">
+                  <div class="bw-slot-label">🌅 Sáng sớm</div>
+                  <div class="bw-slot-grid">
+                    <button class="bw-slot-btn" data-time="05:00">05:00</button>
+                    <button class="bw-slot-btn" data-time="06:00">06:00</button>
+                    <button class="bw-slot-btn" data-time="07:00">07:00</button>
+                    <button class="bw-slot-btn" data-time="08:00">08:00</button>
                   </div>
                 </div>
-                <div class="form-group">
-                  <label class="form-label" for="cf-players">Số người chơi</label>
-                  <select id="cf-players" name="players_count" class="form-control">
-                    <option value="">— Chọn số người —</option>
-                    <option value="2">2 người (1 sân)</option>
-                    <option value="4">4 người (1 sân)</option>
-                    <option value="6-8">6–8 người (2 sân)</option>
-                    <option value="8+">8+ người (nhiều sân)</option>
-                  </select>
+                <div class="bw-slot-section">
+                  <div class="bw-slot-label">☀️ Buổi sáng</div>
+                  <div class="bw-slot-grid">
+                    <button class="bw-slot-btn" data-time="09:00">09:00 <span class="bw-slot-badge">–15%</span></button>
+                    <button class="bw-slot-btn" data-time="10:00">10:00 <span class="bw-slot-badge">–15%</span></button>
+                    <button class="bw-slot-btn" data-time="11:00">11:00 <span class="bw-slot-badge">–15%</span></button>
+                  </div>
+                </div>
+                <div class="bw-slot-section">
+                  <div class="bw-slot-label">🌤 Buổi chiều</div>
+                  <div class="bw-slot-grid">
+                    <button class="bw-slot-btn" data-time="13:00">13:00 <span class="bw-slot-badge">–15%</span></button>
+                    <button class="bw-slot-btn" data-time="14:00">14:00 <span class="bw-slot-badge">–15%</span></button>
+                    <button class="bw-slot-btn" data-time="15:00">15:00 <span class="bw-slot-badge">–15%</span></button>
+                  </div>
+                </div>
+                <div class="bw-slot-section">
+                  <div class="bw-slot-label">🌆 Chiều tối</div>
+                  <div class="bw-slot-grid">
+                    <button class="bw-slot-btn" data-time="16:00">16:00</button>
+                    <button class="bw-slot-btn" data-time="17:00">17:00</button>
+                    <button class="bw-slot-btn" data-time="18:00">18:00</button>
+                    <button class="bw-slot-btn" data-time="19:00">19:00</button>
+                    <button class="bw-slot-btn" data-time="20:00">20:00</button>
+                    <button class="bw-slot-btn" data-time="21:00">21:00</button>
+                  </div>
+                </div>
+                <p class="bw-required-hint" id="bwTimeError">Vui lòng chọn ngày và khung giờ trước khi tiếp tục</p>
+
+                <div style="margin-top:20px;">
+                  <p class="bw-section-title">Số người chơi</p>
+                  <div class="bw-players-grid">
+                    <button class="bw-players-btn" data-players="2">
+                      <div class="bw-players-num">2</div>
+                      <div class="bw-players-sub">1 sân</div>
+                    </button>
+                    <button class="bw-players-btn" data-players="4">
+                      <div class="bw-players-num">4</div>
+                      <div class="bw-players-sub">1 sân</div>
+                    </button>
+                    <button class="bw-players-btn" data-players="6-8">
+                      <div class="bw-players-num">6–8</div>
+                      <div class="bw-players-sub">2 sân</div>
+                    </button>
+                    <button class="bw-players-btn" data-players="8+">
+                      <div class="bw-players-num">8+</div>
+                      <div class="bw-players-sub">nhiều sân</div>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="bw-nav">
+                  <button class="bw-btn-back" id="bwBack2">← Quay lại</button>
+                  <button class="bw-btn-next" id="bwNext2">Tiếp tục →</button>
                 </div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label" for="cf-message">Nội dung <span class="required">*</span></label>
-                <textarea id="cf-message" name="message" class="form-control"
-                  placeholder="Mô tả chi tiết yêu cầu của bạn..." rows="5"
-                  data-field="message" data-min="10"></textarea>
-                <span class="field-error" id="err-message">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  Nội dung quá ngắn (tối thiểu 10 ký tự)
-                </span>
+              <!-- Step 3: Thông tin cá nhân -->
+              <div class="bw-panel" id="bw-panel-3">
+                <p class="bw-panel-title">Thông tin của bạn</p>
+                <div class="bw-form-group">
+                  <label class="bw-form-label" for="bw-name">Họ và tên <span class="required">*</span></label>
+                  <input id="bw-name" type="text" class="form-control" placeholder="Nguyễn Văn A" autocomplete="name">
+                  <span class="field-error" id="bw-err-name">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Vui lòng nhập họ và tên (tối thiểu 2 ký tự)
+                  </span>
+                </div>
+                <div class="bw-row-2col">
+                  <div class="bw-form-group">
+                    <label class="bw-form-label" for="bw-phone">Số điện thoại <span class="required">*</span></label>
+                    <input id="bw-phone" type="tel" class="form-control" placeholder="0914 859 927" autocomplete="tel">
+                    <span class="field-error" id="bw-err-phone">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      Số điện thoại không hợp lệ
+                    </span>
+                  </div>
+                  <div class="bw-form-group">
+                    <label class="bw-form-label" for="bw-email">Email</label>
+                    <input id="bw-email" type="email" class="form-control" placeholder="email@example.com" autocomplete="email">
+                    <span class="field-error" id="bw-err-email">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      Email không hợp lệ
+                    </span>
+                  </div>
+                </div>
+                <div class="bw-form-group">
+                  <label class="bw-form-label" for="bw-notes">Ghi chú thêm</label>
+                  <textarea id="bw-notes" class="form-control" rows="3" placeholder="VD: Cần mượn vợt, muốn sân trong nhà, đến trễ 15 phút..."></textarea>
+                </div>
+                <div class="bw-nav">
+                  <button class="bw-btn-back" id="bwBack3">← Quay lại</button>
+                  <button class="bw-btn-next" id="bwNext3">Xem xác nhận →</button>
+                </div>
               </div>
 
-              <div class="contact-submit-wrap">
-                <button type="submit" id="contactSubmit" class="btn btn-primary btn-lg btn-submit">
-                  Gửi Liên Hệ
-                </button>
-                <p id="formError" class="form-error-msg" hidden>
+              <!-- Step 4: Xác nhận -->
+              <div class="bw-panel" id="bw-panel-4">
+                <p class="bw-panel-title">Kiểm tra và xác nhận</p>
+                <div class="bw-summary" id="bwSummary"></div>
+                <button class="bw-btn-next" id="bwSubmit" style="width:100%">Xác nhận đặt chỗ</button>
+                <p id="bwFormError" class="form-error-msg" hidden>
                   Có lỗi xảy ra. Vui lòng thử lại hoặc gọi <a href="tel:0914859927">0914 859 927</a>.
                 </p>
-                <p style="font-size:12px;color:var(--muted2);margin-top:12px;text-align:center;">
-                  Phản hồi trong vòng 24 giờ · <a href="tel:0914859927" style="color:var(--muted);">0914 859 927</a>
-                </p>
+                <div class="bw-nav" style="justify-content:flex-start;margin-top:10px;">
+                  <button class="bw-btn-back" id="bwBack4">← Sửa thông tin</button>
+                </div>
               </div>
-            </form>
+
+            </div>
 
             <!-- Success state -->
-            <div id="contactSuccess" class="contact-success" hidden>
+            <div id="bookingSuccess" class="contact-success" hidden>
               <div class="success-icon">✓</div>
               <h3>Cảm ơn <span class="success-name" id="successName"></span>!</h3>
-              <p>Chúng tôi đã nhận được thông tin và sẽ liên hệ lại trong vòng <strong style="color:var(--text);">2 giờ</strong> (trong giờ hoạt động).<br>
+              <p>Chúng tôi đã nhận được yêu cầu và sẽ liên hệ lại trong vòng <strong style="color:var(--text);">2 giờ</strong> (trong giờ hoạt động).<br>
               Muốn xác nhận nhanh hơn — nhắn Zalo hoặc Facebook ngay bây giờ.</p>
               <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
                 <a href="https://zalo.me/0914859927" target="_blank" rel="noopener noreferrer" class="btn btn-primary" id="successZaloBtn">
@@ -2221,7 +2386,7 @@
                   Nhắn Zalo ngay
                 </a>
                 <a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Nhắn tin Facebook</a>
-                <button id="resetForm" class="btn btn-outline">Gửi thêm liên hệ</button>
+                <button id="bwReset" class="btn btn-outline">Đặt chỗ mới</button>
               </div>
             </div>
 
@@ -2524,141 +2689,251 @@
       }
     }, { passive: true });
 
-    // ─── CONTACT FORM ───
+    // ─── SMART BOOKING WIZARD ───
     (function () {
-      const form = document.getElementById('contactForm');
-      if (!form) return;
-
-      const successEl  = document.getElementById('contactSuccess');
-      const submitBtn  = document.getElementById('contactSubmit');
-      const successName = document.getElementById('successName');
-      const resetBtn   = document.getElementById('resetForm');
-      const formError  = document.getElementById('formError');
-
-      const validators = {
-        name:    v => v.trim().length >= 2,
-        phone:   v => /(03|05|07|08|09)\d{8}/.test(v.replace(/\s/g, '')),
-        email:   v => !v.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()),
-        type:    v => v !== '',
-        message: v => v.trim().length >= 10,
+      var bd = { type: '', date: '', time: '', players: '', name: '', phone: '', email: '', notes: '' };
+      var step = 1;
+      var DAYS = ['CN','T.2','T.3','T.4','T.5','T.6','T.7'];
+      var MONTHS = ['Th1','Th2','Th3','Th4','Th5','Th6','Th7','Th8','Th9','Th10','Th11','Th12'];
+      var SVC_LABEL = {
+        'dat-san': '🏓 Thuê sân', 'dang-ky-hoc': '📚 Tập nhóm',
+        'coaching': '👤 Coaching 1-on-1', 'dang-ky-giai': '🏆 Thi đấu',
+        'membership': '💳 Thành viên', 'khac': '💬 Hỏi thêm'
       };
 
-      var redirectToast = document.createElement('div');
-      redirectToast.className = 'redirect-toast';
-      redirectToast.textContent = 'Chọn giải đấu bên dưới để đăng ký ↓';
-      document.body.appendChild(redirectToast);
+      function goTo(n, dir) {
+        var prev = document.getElementById('bw-panel-' + step);
+        var next = document.getElementById('bw-panel-' + n);
+        if (!next) return;
+        if (prev) prev.classList.remove('active', 'bw-back');
+        next.classList.remove('bw-back');
+        if (dir === 'back') next.classList.add('bw-back');
+        next.classList.add('active');
+        step = n;
+        updateStepper();
+        var wiz = document.getElementById('bookingWizard');
+        if (wiz) { var r = wiz.getBoundingClientRect(); if (r.top < 80) wiz.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      }
 
-      var typeSelect = document.getElementById('cf-type');
-      typeSelect && typeSelect.addEventListener('change', function() {
-        if (this.value === 'dang-ky-giai') {
-          this.value = '';
-          document.getElementById('events').scrollIntoView({ behavior: 'smooth' });
-          redirectToast.classList.add('show');
-          setTimeout(function() { redirectToast.classList.remove('show'); }, 3000);
-        }
+      function updateStepper() {
+        document.querySelectorAll('.bw-step').forEach(function(el) {
+          var s = parseInt(el.dataset.step);
+          el.classList.remove('active', 'done');
+          if (s === step) el.classList.add('active');
+          else if (s < step) el.classList.add('done');
+          el.querySelector('.bw-step-dot').textContent = s < step ? '✓' : String(s);
+        });
+      }
+
+      // Step 1: service cards — click auto-advances
+      document.querySelectorAll('.bw-service-card').forEach(function(card) {
+        card.addEventListener('click', function() {
+          bd.type = this.dataset.service;
+          if (bd.type === 'dang-ky-giai') {
+            bd.type = '';
+            var ev = document.getElementById('events');
+            if (ev) ev.scrollIntoView({ behavior: 'smooth' });
+            showToast('Chọn giải đấu bên dưới để đăng ký ↓');
+            return;
+          }
+          document.querySelectorAll('.bw-service-card').forEach(function(c) { c.classList.remove('selected'); });
+          this.classList.add('selected');
+          var self = this;
+          setTimeout(function() { goTo(bd.type === 'dat-san' ? 2 : 3); }, 200);
+        });
       });
 
-      function setError(field, show) {
-        const el = form.querySelector('[data-field="' + field + '"]');
-        const err = document.getElementById('err-' + field);
-        if (!el || !err) return;
-        el.classList.toggle('is-error', show);
-        err.classList.toggle('show', show);
-      }
-
-      function validateField(field) {
-        const el = form.querySelector('[data-field="' + field + '"]');
-        if (!el) return true;
-        const valid = validators[field](el.value);
-        setError(field, !valid);
-        return valid;
-      }
-
-      function validateAll() {
-        var fields = ['name', 'phone', 'email', 'type', 'message'];
-        return fields.map(f => validateField(f)).every(Boolean);
-      }
-
-      function scrollToFirstError() {
-        const first = form.querySelector('.is-error');
-        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-
-      // Booking fields toggle
-      const typeSelect = document.getElementById('cf-type');
-      const bookingFields = document.getElementById('bookingFields');
-      const msgTextarea = document.getElementById('cf-message');
-      const dateInput = document.getElementById('cf-date');
-      if (dateInput) {
-        const today = new Date();
-        const yyyy = today.getFullYear(), mm = String(today.getMonth()+1).padStart(2,'0'), dd = String(today.getDate()).padStart(2,'0');
-        dateInput.min = `${yyyy}-${mm}-${dd}`;
-      }
-      typeSelect && typeSelect.addEventListener('change', function() {
-        const isBooking = this.value === 'dat-san';
-        bookingFields.classList.toggle('active', isBooking);
-        bookingFields.querySelectorAll('[data-booking]').forEach(el => { el.required = isBooking; });
-        if (isBooking && msgTextarea && !msgTextarea.value) {
-          msgTextarea.placeholder = 'VD: Cần đặt 1 sân, 4 người chơi. Linh hoạt về giờ nếu slot trên đã hết...';
-        } else if (!isBooking && msgTextarea) {
-          msgTextarea.placeholder = 'Mô tả chi tiết yêu cầu của bạn...';
-        }
-      });
-
-      // Real-time validation on blur
-      form.querySelectorAll('[data-field]').forEach(el => {
-        el.addEventListener('blur', () => validateField(el.dataset.field));
-      });
-
-      // Submit
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        if (!validateAll()) { scrollToFirstError(); return; }
-
-        const nameVal = form.querySelector('[data-field="name"]').value.trim();
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Đang gửi...';
-
-        if (formError) formError.hidden = true;
-        try {
-          const res = await fetch('https://formspree.io/f/xeebjkrz', {
-            method: 'POST',
-            body: new FormData(form),
-            headers: { Accept: 'application/json' }
+      // Step 2: date strip
+      function buildDates() {
+        var strip = document.getElementById('bwDateStrip');
+        if (!strip) return;
+        strip.innerHTML = '';
+        var now = new Date();
+        for (var i = 0; i < 14; i++) {
+          var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+          var dow = d.getDay();
+          var isWE = dow === 0 || dow === 6;
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'bw-date-btn' + (isWE ? ' weekend' : '');
+          btn.dataset.date = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+          btn.innerHTML = '<span class="bw-date-day">' + (i === 0 ? 'Hôm nay' : DAYS[dow]) + '</span>' +
+                          '<span class="bw-date-num">' + d.getDate() + '</span>' +
+                          '<span class="bw-date-mon">' + MONTHS[d.getMonth()] + '</span>';
+          btn.addEventListener('click', function() {
+            document.querySelectorAll('.bw-date-btn').forEach(function(b) { b.classList.remove('selected'); });
+            this.classList.add('selected');
+            bd.date = this.dataset.date;
+            refreshSlots();
           });
+          strip.appendChild(btn);
+        }
+      }
+
+      function refreshSlots() {
+        var now = new Date();
+        var today = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+        document.querySelectorAll('.bw-slot-btn').forEach(function(btn) {
+          btn.classList.remove('disabled');
+          if (bd.date === today && parseInt(btn.dataset.time) <= now.getHours()) {
+            btn.classList.add('disabled');
+            if (btn.classList.contains('selected')) { btn.classList.remove('selected'); bd.time = ''; }
+          }
+        });
+      }
+
+      document.querySelectorAll('.bw-slot-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          if (this.classList.contains('disabled')) return;
+          document.querySelectorAll('.bw-slot-btn').forEach(function(b) { b.classList.remove('selected'); });
+          this.classList.add('selected');
+          bd.time = this.dataset.time;
+        });
+      });
+
+      document.querySelectorAll('.bw-players-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('.bw-players-btn').forEach(function(b) { b.classList.remove('selected'); });
+          this.classList.add('selected');
+          bd.players = this.dataset.players;
+        });
+      });
+
+      var bwBack2 = document.getElementById('bwBack2');
+      var bwNext2 = document.getElementById('bwNext2');
+      bwBack2 && bwBack2.addEventListener('click', function() { goTo(1, 'back'); });
+      bwNext2 && bwNext2.addEventListener('click', function() {
+        var hint = document.getElementById('bwTimeError');
+        if (!bd.date || !bd.time) { if (hint) hint.classList.add('show'); return; }
+        if (hint) hint.classList.remove('show');
+        goTo(3);
+      });
+
+      // Step 3: personal info
+      var bwBack3 = document.getElementById('bwBack3');
+      var bwNext3 = document.getElementById('bwNext3');
+      bwBack3 && bwBack3.addEventListener('click', function() { goTo(bd.type === 'dat-san' ? 2 : 1, 'back'); });
+      bwNext3 && bwNext3.addEventListener('click', function() {
+        if (!validateStep3()) return;
+        bd.name  = document.getElementById('bw-name').value.trim();
+        bd.phone = document.getElementById('bw-phone').value.trim();
+        bd.email = document.getElementById('bw-email').value.trim();
+        bd.notes = document.getElementById('bw-notes').value.trim();
+        buildSummary();
+        goTo(4);
+      });
+
+      function validateStep3() {
+        var name  = document.getElementById('bw-name').value.trim();
+        var phone = document.getElementById('bw-phone').value.replace(/\s/g,'');
+        var email = document.getElementById('bw-email').value.trim();
+        var ok = true;
+        function setErr(id, errId, bad) {
+          var el = document.getElementById(id), er = document.getElementById(errId);
+          if (!el || !er) return;
+          el.classList.toggle('is-error', bad); er.classList.toggle('show', bad);
+        }
+        if (name.length < 2)   { setErr('bw-name','bw-err-name',true);  ok=false; } else setErr('bw-name','bw-err-name',false);
+        if (!/(03|05|07|08|09)\d{8}/.test(phone)) { setErr('bw-phone','bw-err-phone',true); ok=false; } else setErr('bw-phone','bw-err-phone',false);
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setErr('bw-email','bw-err-email',true); ok=false; } else setErr('bw-email','bw-err-email',false);
+        if (!ok) { var first = document.querySelector('#bw-panel-3 .is-error'); if (first) first.scrollIntoView({ behavior:'smooth', block:'center' }); }
+        return ok;
+      }
+
+      ['bw-name','bw-phone','bw-email'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('blur', validateStep3);
+      });
+
+      // Step 4: summary
+      function buildSummary() {
+        var c = document.getElementById('bwSummary');
+        if (!c) return;
+        var rows = [];
+        rows.push({ k: 'Dịch vụ', v: SVC_LABEL[bd.type] || bd.type, s: 1 });
+        if (bd.type === 'dat-san') {
+          if (bd.date) {
+            var d = new Date(bd.date + 'T12:00:00');
+            rows.push({ k: 'Ngày', v: DAYS[d.getDay()] + ', ' + d.getDate() + '/' + (d.getMonth()+1) + '/' + d.getFullYear(), s: 2 });
+          }
+          if (bd.time) rows.push({ k: 'Giờ', v: bd.time + ':00 → ' + (String(parseInt(bd.time)+1).padStart(2,'0')) + ':00', s: 2 });
+          if (bd.players) rows.push({ k: 'Số người', v: bd.players + ' người', s: 2 });
+        }
+        rows.push({ k: 'Họ tên', v: bd.name, s: 3 });
+        rows.push({ k: 'Điện thoại', v: bd.phone, s: 3 });
+        if (bd.email) rows.push({ k: 'Email', v: bd.email, s: 3 });
+        if (bd.notes) rows.push({ k: 'Ghi chú', v: bd.notes, s: 3 });
+        c.innerHTML = rows.map(function(r) {
+          return '<div class="bw-summary-row">' +
+            '<span class="bw-summary-key">' + r.k + '</span>' +
+            '<span class="bw-summary-val">' + r.v + '</span>' +
+            '<button class="bw-summary-edit" data-s="' + r.s + '">Sửa</button>' +
+          '</div>';
+        }).join('');
+        c.querySelectorAll('.bw-summary-edit').forEach(function(btn) {
+          btn.addEventListener('click', function() { goTo(parseInt(this.dataset.s), 'back'); });
+        });
+      }
+
+      var bwBack4 = document.getElementById('bwBack4');
+      var bwSubmit = document.getElementById('bwSubmit');
+      bwBack4 && bwBack4.addEventListener('click', function() { goTo(3, 'back'); });
+
+      bwSubmit && bwSubmit.addEventListener('click', async function() {
+        this.disabled = true; this.textContent = 'Đang gửi...';
+        var errEl = document.getElementById('bwFormError');
+        if (errEl) errEl.hidden = true;
+        var fd = new FormData();
+        fd.append('_subject', 'Đặt chỗ mới — AMZ Pickleball');
+        fd.append('type', SVC_LABEL[bd.type] || bd.type);
+        fd.append('name', bd.name); fd.append('phone', bd.phone);
+        if (bd.email) fd.append('email', bd.email);
+        if (bd.date)  fd.append('booking_date', bd.date);
+        if (bd.time)  fd.append('booking_time', bd.time + ':00');
+        if (bd.players) fd.append('players_count', bd.players);
+        if (bd.notes) fd.append('message', bd.notes);
+        try {
+          var res = await fetch('https://formspree.io/f/xeebjkrz', { method:'POST', body:fd, headers:{Accept:'application/json'} });
           if (!res.ok) throw new Error('server');
-        } catch {
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Gửi Liên Hệ';
-          if (formError) formError.hidden = false;
-          return;
+        } catch(e) {
+          this.disabled = false; this.textContent = 'Xác nhận đặt chỗ';
+          if (errEl) errEl.hidden = false; return;
         }
-
-        form.hidden = true;
-        successName.textContent = nameVal.split(' ').pop();
-        // Build Zalo pre-filled context in success button
-        const zaloBtn = document.getElementById('successZaloBtn');
-        if (zaloBtn && typeSelect && typeSelect.value === 'dat-san') {
-          const bookDate = (document.getElementById('cf-date') || {}).value || '';
-          const bookTime = (document.getElementById('cf-time') || {}).value || '';
-          const info = [bookDate && `ngày ${bookDate}`, bookTime && `giờ ${bookTime}`].filter(Boolean).join(', ');
-          if (info) zaloBtn.title = `Nhắn Zalo về đặt sân ${info}`;
+        var wiz = document.getElementById('bookingWizard');
+        var suc = document.getElementById('bookingSuccess');
+        var snEl = document.getElementById('successName');
+        if (wiz) wiz.hidden = true;
+        if (snEl) snEl.textContent = bd.name.split(' ').pop();
+        if (bd.type === 'dat-san' && bd.date && bd.time) {
+          var zBtn = document.getElementById('successZaloBtn');
+          if (zBtn) zBtn.title = 'Nhắn Zalo về đặt sân ' + bd.date + ' ' + bd.time;
         }
-        successEl.hidden = false;
-        successEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (suc) { suc.hidden = false; suc.scrollIntoView({ behavior:'smooth', block:'center' }); }
       });
 
-      // Reset form
-      resetBtn && resetBtn.addEventListener('click', () => {
-        form.reset();
-        form.querySelectorAll('[data-field]').forEach(el => el.classList.remove('is-error'));
-        form.querySelectorAll('.field-error').forEach(el => el.classList.remove('show'));
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Gửi Liên Hệ';
-        successEl.hidden = true;
-        form.hidden = false;
-        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Reset
+      var bwReset = document.getElementById('bwReset');
+      bwReset && bwReset.addEventListener('click', function() {
+        bd = { type:'', date:'', time:'', players:'', name:'', phone:'', email:'', notes:'' };
+        document.querySelectorAll('.bw-service-card,.bw-date-btn,.bw-slot-btn,.bw-players-btn').forEach(function(el) { el.classList.remove('selected'); });
+        ['bw-name','bw-phone','bw-email','bw-notes'].forEach(function(id) {
+          var el = document.getElementById(id); if (el) { el.value=''; el.classList.remove('is-error'); }
+        });
+        document.querySelectorAll('.field-error').forEach(function(el) { el.classList.remove('show'); });
+        var wiz = document.getElementById('bookingWizard'); var suc = document.getElementById('bookingSuccess');
+        if (suc) suc.hidden = true; if (wiz) wiz.hidden = false;
+        step = 1; goTo(1);
+        if (wiz) wiz.scrollIntoView({ behavior:'smooth', block:'start' });
       });
+
+      function showToast(msg) {
+        var t = document.getElementById('bwToast');
+        if (!t) { t = document.createElement('div'); t.id='bwToast'; t.className='redirect-toast'; document.body.appendChild(t); }
+        t.textContent = msg; t.classList.add('show');
+        setTimeout(function() { t.classList.remove('show'); }, 3000);
+      }
+
+      buildDates();
     })();
 
     document.querySelectorAll('.btn-cta, .btn-cta-outline').forEach(btn => {
