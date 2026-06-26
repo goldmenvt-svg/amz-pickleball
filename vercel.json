@@ -21,6 +21,24 @@
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=300, s-maxage=60" }
       ]
+    },
+    {
+      "source": "/data/events.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=300, s-maxage=60" }
+      ]
+    },
+    {
+      "source": "/data/players.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=300, s-maxage=60" }
+      ]
+    },
+    {
+      "source": "/data/blog-posts.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=300, s-maxage=60" }
+      ]
     }
   ]
 }
