@@ -4,25 +4,42 @@
 
   <url>
     <loc>https://amzpickleball.vn/</loc>
-    <lastmod>2026-06-23</lastmod>
+    <lastmod>2026-06-26</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/"/>
   </url>
 
   <url>
-    <loc>https://amzpickleball.vn/admin.html</loc>
-    <lastmod>2026-06-23</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.1</priority>
+    <loc>https://amzpickleball.vn/blog/</loc>
+    <lastmod>2026-06-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/"/>
   </url>
 
   <url>
-    <loc>https://amzpickleball.vn/blog/pickleball-la-gi.html</loc>
-    <lastmod>2026-06-21</lastmod>
+    <loc>https://amzpickleball.vn/blog/posts/pickleball-la-gi.html</loc>
+    <lastmod>2026-06-26</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
-    <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/pickleball-la-gi.html"/>
+    <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/posts/pickleball-la-gi.html"/>
+  </url>
+
+  <url>
+    <loc>https://amzpickleball.vn/blog/posts/san-pickleball-tphcm.html</loc>
+    <lastmod>2026-06-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/posts/san-pickleball-tphcm.html"/>
+  </url>
+
+  <url>
+    <loc>https://amzpickleball.vn/blog/posts/hoc-pickleball-tu-dau.html</loc>
+    <lastmod>2026-06-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/posts/hoc-pickleball-tu-dau.html"/>
   </url>
 
 </urlset>
