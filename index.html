@@ -2068,7 +2068,7 @@
               </p>
             </div>
             <div style="margin-top:16px;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
-              <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3919.5!2d106.63!3d10.78!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2s179+Th%E1%BB%91ng+Nh%E1%BA%A5t%2C+Ph%C6%B0%E1%BB%9Dng+V%C5%A9ng+T%C3%A0u%2C+TP.HCM!5e0!3m2!1svi!2svn" width="100%" height="200" style="border:0;display:block;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="AMZ Pickleball - 179 Thống Nhất, TP.HCM"></iframe>
+              <iframe id="mapsIframe" data-src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3919.5!2d106.63!3d10.78!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2s179+Th%E1%BB%91ng+Nh%E1%BA%A5t%2C+Ph%C6%B0%E1%BB%9Dng+V%C5%A9ng+T%C3%A0u%2C+TP.HCM!5e0!3m2!1svi!2svn" width="100%" height="200" style="border:0;display:block;" allowfullscreen="" referrerpolicy="no-referrer-when-downgrade" title="AMZ Pickleball - 179 Thống Nhất, TP.HCM"></iframe>
             </div>
           </div>
 
@@ -2973,11 +2973,20 @@
     }
     updateRegCounts();
 
-    // Page loader
-    window.addEventListener('load', () => {
-      const loader = document.getElementById('pageLoader');
-      if (loader) setTimeout(() => loader.classList.add('loaded'), 400);
-    });
+    // Page loader — hide on load or after 3s fallback (prevents Maps iframe blocking)
+    (function() {
+      var loaderHidden = false;
+      function hideLoader() {
+        if (loaderHidden) return;
+        loaderHidden = true;
+        var loader = document.getElementById('pageLoader');
+        if (loader) loader.classList.add('loaded');
+        var maps = document.getElementById('mapsIframe');
+        if (maps && maps.dataset.src) maps.src = maps.dataset.src;
+      }
+      window.addEventListener('load', function() { setTimeout(hideLoader, 400); });
+      setTimeout(hideLoader, 3000);
+    })();
 
     // ═══ GALLERY & LIGHTBOX ═══
     (function() {
