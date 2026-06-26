@@ -1,5 +1,7 @@
 {
-  "lastScan": "2026-06-22T15:27:26.830Z",
+  "lastScan": "2026-06-26T00:00:00.000Z",
+  "amzChannelId": "UCm3-CYZbJmFxet5cn10ULXA",
+  "amzChannelUrl": "https://www.youtube.com/channel/UCm3-CYZbJmFxet5cn10ULXA",
   "videos": [
     {
       "id": "yt_F_dz_IBYtXA",
@@ -14,10 +16,10 @@
       "viewCount": 0,
       "priority": 1,
       "badge": "Thi đấu",
-      "status": "approved",
-      "category": "featured",
+      "status": "rejected",
       "addedAt": "2026-06-22T18:00:00.000Z",
-      "approvedAt": "2026-06-22T18:00:00.000Z"
+      "approvedAt": null,
+      "rejectReason": "Không phải video tại sân AMZ"
     },
     {
       "id": "yt_6Y_3vPmp94s",
@@ -32,10 +34,10 @@
       "viewCount": 0,
       "priority": 1,
       "badge": "Thi đấu",
-      "status": "approved",
-      "category": "featured",
+      "status": "rejected",
       "addedAt": "2026-06-22T18:00:00.000Z",
-      "approvedAt": "2026-06-22T18:00:00.000Z"
+      "approvedAt": null,
+      "rejectReason": "Không phải video tại sân AMZ"
     },
     {
       "id": "yt_M-eiBxwXuAI",
@@ -50,10 +52,10 @@
       "viewCount": 0,
       "priority": 1,
       "badge": "Thi đấu",
-      "status": "approved",
-      "category": "featured",
+      "status": "rejected",
       "addedAt": "2026-06-22T18:00:00.000Z",
-      "approvedAt": "2026-06-22T18:00:00.000Z"
+      "approvedAt": null,
+      "rejectReason": "Không phải video tại sân AMZ"
     },
     {
       "id": "yt_N9oZXNpVb1U",
@@ -68,10 +70,10 @@
       "viewCount": 0,
       "priority": 1,
       "badge": "Thi đấu",
-      "status": "approved",
-      "category": "featured",
+      "status": "rejected",
       "addedAt": "2026-06-22T18:00:00.000Z",
-      "approvedAt": "2026-06-22T18:00:00.000Z"
+      "approvedAt": null,
+      "rejectReason": "Không phải video tại sân AMZ"
     },
     {
       "id": "yt_YaNeB8Gmn4E",
@@ -86,10 +88,10 @@
       "viewCount": 0,
       "priority": 1,
       "badge": "Thi đấu",
-      "status": "approved",
-      "category": "featured",
+      "status": "rejected",
       "addedAt": "2026-06-22T18:00:00.000Z",
-      "approvedAt": "2026-06-22T18:00:00.000Z"
+      "approvedAt": null,
+      "rejectReason": "Không phải video tại sân AMZ"
     },
     {
       "id": "yt_4rAWujikstU",
@@ -104,10 +106,10 @@
       "viewCount": 0,
       "priority": 1,
       "badge": "Thi đấu",
-      "status": "approved",
-      "category": "featured",
+      "status": "rejected",
       "addedAt": "2026-06-22T18:00:00.000Z",
-      "approvedAt": "2026-06-22T18:00:00.000Z"
+      "approvedAt": null,
+      "rejectReason": "Không phải video tại sân AMZ"
     },
     {
       "id": "yt_zJBUyq5MF7U",
@@ -122,10 +124,10 @@
       "viewCount": 0,
       "priority": 1,
       "badge": "Thi đấu",
-      "status": "approved",
-      "category": "featured",
+      "status": "rejected",
       "addedAt": "2026-06-22T18:00:00.000Z",
-      "approvedAt": "2026-06-22T18:00:00.000Z"
+      "approvedAt": null,
+      "rejectReason": "Không phải video tại sân AMZ"
     },
     {
       "id": "yt_q2C6btjBDFo",
@@ -140,10 +142,10 @@
       "viewCount": 0,
       "priority": 1,
       "badge": "Thi đấu",
-      "status": "approved",
-      "category": "featured",
+      "status": "rejected",
       "addedAt": "2026-06-22T18:00:00.000Z",
-      "approvedAt": "2026-06-22T18:00:00.000Z"
+      "approvedAt": null,
+      "rejectReason": "Không phải video tại sân AMZ"
     },
     {
       "id": "yt_GMhd4WP721A",
@@ -158,10 +160,10 @@
       "viewCount": 0,
       "priority": 1,
       "badge": "Thi đấu",
-      "status": "approved",
-      "category": "featured",
+      "status": "rejected",
       "addedAt": "2026-06-22T18:00:00.000Z",
-      "approvedAt": "2026-06-22T18:00:00.000Z"
+      "approvedAt": null,
+      "rejectReason": "Không phải video tại sân AMZ"
     },
     {
       "id": "yt_q3z-_pg5ptY",
