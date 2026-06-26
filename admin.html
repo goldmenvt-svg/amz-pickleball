@@ -1596,7 +1596,8 @@ function renderApprovedVideos() {
   list.forEach(function(v) {
     var actions =
       '<span class="v-badge-tag ' + badgeClass(v.badge) + '">' + esc(v.badge || '') + '</span>' +
-      '<button class="btn btn-sm btn-outline" onclick="unapproveVideo(\'' + v.id + '\')" style="margin-left:auto">Gỡ khỏi web</button>';
+      '<button class="btn btn-sm btn-outline" onclick="unapproveVideo(\'' + v.id + '\')" style="margin-left:auto">Gỡ khỏi web</button>' +
+      '<button class="btn btn-sm" style="background:var(--red);color:#fff;" onclick="deleteVideo(\'' + v.id + '\')">Xóa hẳn</button>';
     html += videoCardHTML(v, actions);
   });
   container.innerHTML = html;
@@ -1615,7 +1616,8 @@ function renderFeaturedVideos() {
     var actions =
       '<span class="v-badge-tag ' + badgeClass(v.badge) + '">' + esc(v.badge || '') + '</span>' +
       '<span style="font-size:11px;color:#6366f1;">★ Đỉnh Cao</span>' +
-      '<button class="btn btn-sm btn-outline" onclick="unapproveVideo(\'' + v.id + '\')" style="margin-left:auto">Gỡ khỏi web</button>';
+      '<button class="btn btn-sm btn-outline" onclick="unapproveVideo(\'' + v.id + '\')" style="margin-left:auto">Gỡ khỏi web</button>' +
+      '<button class="btn btn-sm" style="background:var(--red);color:#fff;" onclick="deleteVideo(\'' + v.id + '\')">Xóa hẳn</button>';
     html += videoCardHTML(v, actions);
   });
   container.innerHTML = html;
