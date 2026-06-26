@@ -2973,7 +2973,7 @@
     }
     updateRegCounts();
 
-    // Page loader — hide on load or after 3s fallback (prevents Maps iframe blocking)
+    // Page loader: hide on DOMContentLoaded (not window.load — avoids Maps/font blocking)
     (function() {
       var loaderHidden = false;
       function hideLoader() {
@@ -2984,8 +2984,12 @@
         var maps = document.getElementById('mapsIframe');
         if (maps && maps.dataset.src) maps.src = maps.dataset.src;
       }
-      window.addEventListener('load', function() { setTimeout(hideLoader, 400); });
-      setTimeout(hideLoader, 3000);
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(hideLoader, 600); });
+      } else {
+        setTimeout(hideLoader, 600);
+      }
+      setTimeout(hideLoader, 2000);
     })();
 
     // ═══ GALLERY & LIGHTBOX ═══
