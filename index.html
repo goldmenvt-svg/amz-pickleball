@@ -119,6 +119,9 @@
       .hero-bg-image { animation: none; transform: scale(1.05); }
       .page-loader { display: none; }
     }
+    html:not(.js) .reveal,
+    html:not(.js) .reveal-left,
+    html:not(.js) .reveal-right { opacity: 1; transform: none; transition: none; }
 
     /* ─── SHARED HEADING VARIANT ─── */
     .section-h2-md {
@@ -1454,6 +1457,7 @@
 </head>
 
 <body>
+  <script>document.documentElement.classList.add('js')</script>
 
   <div class="page-loader" id="pageLoader">
     <picture><source srcset="logo.webp" type="image/webp"><img src="logo.jpg" alt="AMZ Pickleball" width="80" height="80"></picture>
@@ -1536,7 +1540,7 @@
           <span class="label" id="heroBadgeText">UP NEXT</span>
         </div>
 
-        <h1 class="reveal reveal-delay-1" id="heroEventName">
+        <h1 id="heroEventName">
           ĐỈNH CAO<br><em>PICKLEBALL</em>
         </h1>
 
@@ -1547,13 +1551,13 @@
 
         <div id="heroCountdown" class="reveal reveal-delay-2"></div>
 
-        <p class="hero-sub reveal reveal-delay-2" id="heroSub">
+        <p class="hero-sub" id="heroSub">
           Chơi. Cafe. Kết Nối. — 8 sân tiêu chuẩn thi đấu,<br>
           huấn luyện chuyên nghiệp, cộng đồng Pickleball<br>
           sôi động nhất Vũng Tàu.
         </p>
 
-        <div class="hero-actions reveal reveal-delay-3">
+        <div class="hero-actions">
           <button class="btn btn-primary btn-lg" id="heroRegBtn" onclick="openRegModal(this)" data-event-name="" data-event-type="" data-event-date="" data-max-slots="">Đăng Ký</button>
           <a href="#events" class="btn btn-outline btn-lg">Xem Lịch</a>
           <a href="#lien-he" class="btn btn-outline btn-lg">Liên Hệ</a>
