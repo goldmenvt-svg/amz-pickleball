@@ -1,0 +1,43 @@
+name: Sync AMZ YouTube Videos
+
+on:
+  schedule:
+    # 8:00 AM Vietnam time (UTC+7) = 1:00 AM UTC, every day
+    - cron: '3 1 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no commit)'
+        required: false
+        default: 'false'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run YouTube sync script
+        run: node scripts/sync-youtube.js
+
+      - name: Commit and push if videos added
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          git config user.name  "AMZ YouTube Bot"
+          git config user.email "bot@amzpickleball.vn"
+          git add data/videos.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Auto-sync: add new AMZ YouTube videos [skip ci]"
+            git push
+          fi
