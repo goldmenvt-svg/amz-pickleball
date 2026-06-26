@@ -5,6 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AMZ Pickleball — Quản Lý VĐV & Giải Đấu</title>
 <meta name="robots" content="noindex, nofollow">
+<!-- Firebase compat SDK — replace PLACEHOLDER values after creating your Firebase project -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+var FIREBASE_CONFIG = {
+  apiKey:            "REPLACE_API_KEY",
+  authDomain:        "REPLACE_PROJECT_ID.firebaseapp.com",
+  projectId:         "REPLACE_PROJECT_ID",
+  storageBucket:     "REPLACE_PROJECT_ID.appspot.com",
+  messagingSenderId: "REPLACE_SENDER_ID",
+  appId:             "REPLACE_APP_ID"
+};
+firebase.initializeApp(FIREBASE_CONFIG);
+var _auth = firebase.auth();
+var _fsdb = firebase.firestore();
+</script>
 <style>
   :root {
     --bg: #0a0a0a; --surface: #141414; --surface2: #1a1a1a; --border: #252525;
@@ -252,9 +269,10 @@
   .login-box p { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
   .login-box input {
     width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r);
-    color: var(--text); padding: 12px 16px; font-size: 15px; text-align: center;
-    letter-spacing: 0.15em; outline: none; margin-bottom: 16px;
+    color: var(--text); padding: 12px 16px; font-size: 15px; text-align: left;
+    outline: none; margin-bottom: 12px;
   }
+  .login-box input[type="password"] { letter-spacing: 0.12em; margin-bottom: 16px; }
   .login-box input:focus { border-color: var(--accent); }
   .login-box .btn { width: 100%; justify-content: center; padding: 12px; font-size: 14px; }
   .login-error { color: var(--red); font-size: 13px; margin-top: 12px; display: none; }
@@ -266,10 +284,11 @@
 <div class="login-screen" id="loginScreen">
   <div class="login-box">
     <h2>AMZ<span>.</span> Admin</h2>
-    <p>Nhập mật khẩu để truy cập quản lý</p>
-    <input type="password" id="loginPass" placeholder="••••••" autofocus>
+    <p>Đăng nhập bằng tài khoản Firebase</p>
+    <input type="email" id="loginEmail" placeholder="Email" autocomplete="email" autofocus>
+    <input type="password" id="loginPass" placeholder="Mật khẩu">
     <button class="btn btn-primary" id="loginBtn">Đăng nhập</button>
-    <p class="login-error" id="loginError">Sai mật khẩu. Vui lòng thử lại.</p>
+    <p class="login-error" id="loginError">Sai email hoặc mật khẩu.</p>
   </div>
 </div>
 
@@ -742,60 +761,101 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// Auth
-var PASS_HASH = '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8';
-var AUTH_KEY = 'amz_admin_auth';
-
-async function hashPass(pw) {
-  var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
-  return Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
-}
-
-function checkAuth() {
-  if (sessionStorage.getItem(AUTH_KEY) === '1') { showApp(); return; }
-  document.getElementById('loginScreen').classList.remove('hidden');
-}
-
+// === AUTH (Firebase) ===
 function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('appMain').style.display = 'flex';
 }
+function showLoginScreen() {
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('appMain').style.display = 'none';
+}
+
+_auth.onAuthStateChanged(function(user) {
+  if (user) {
+    showApp();
+    loadFromFirestore();
+    loadGHTokenFromFirestore();
+  } else {
+    showLoginScreen();
+    db = defaultDB();
+  }
+});
 
 document.getElementById('loginBtn').addEventListener('click', tryLogin);
 document.getElementById('loginPass').addEventListener('keydown', function(e) { if (e.key === 'Enter') tryLogin(); });
+document.getElementById('loginEmail').addEventListener('keydown', function(e) { if (e.key === 'Enter') document.getElementById('loginPass').focus(); });
 
 async function tryLogin() {
-  var pw = document.getElementById('loginPass').value;
-  var hash = await hashPass(pw);
-  if (hash === PASS_HASH) {
-    sessionStorage.setItem(AUTH_KEY, '1');
-    showApp();
-  } else {
-    document.getElementById('loginError').classList.add('show');
+  var email = document.getElementById('loginEmail').value.trim();
+  var pw    = document.getElementById('loginPass').value;
+  var errEl = document.getElementById('loginError');
+  var btn   = document.getElementById('loginBtn');
+  errEl.classList.remove('show');
+  if (!email || !pw) { errEl.textContent = 'Vui lòng nhập email và mật khẩu.'; errEl.classList.add('show'); return; }
+  btn.textContent = 'Đang đăng nhập...'; btn.disabled = true;
+  try {
+    await _auth.signInWithEmailAndPassword(email, pw);
+  } catch (e) {
+    var msg = (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found')
+      ? 'Sai email hoặc mật khẩu.' : 'Lỗi: ' + e.message;
+    errEl.textContent = msg; errEl.classList.add('show');
     document.getElementById('loginPass').value = '';
     document.getElementById('loginPass').focus();
+  } finally {
+    btn.textContent = 'Đăng nhập'; btn.disabled = false;
   }
 }
 
-checkAuth();
-
 const DB_KEY = 'amz_admin';
+const FS_DOC  = 'settings/adminData';
 
-function loadDB() {
-  try { return JSON.parse(localStorage.getItem(DB_KEY)) || defaultDB(); }
-  catch { return defaultDB(); }
-}
 function defaultDB() { return { players: [], tournaments: [], registrations: [], history: [] }; }
-function saveDB(db) { localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+
+function loadDBLocal() {
+  try { return JSON.parse(localStorage.getItem(DB_KEY)) || defaultDB(); }
+  catch(e) { return defaultDB(); }
+}
+function saveDB(db) {
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  bgSyncToFirestore(db);
+}
+function bgSyncToFirestore(data) {
+  _fsdb.collection('settings').doc('adminData').set(data).catch(function(e) {
+    console.warn('Firestore sync failed:', e);
+  });
+}
+async function loadFromFirestore() {
+  try {
+    var doc = await _fsdb.collection('settings').doc('adminData').get();
+    if (doc.exists) {
+      var data = doc.data();
+      if (!data.players)       data.players       = [];
+      if (!data.tournaments)   data.tournaments   = [];
+      if (!data.registrations) data.registrations = [];
+      if (!data.history)       data.history       = [];
+      db = data;
+      localStorage.setItem(DB_KEY, JSON.stringify(db));
+    } else {
+      db = loadDBLocal();
+      bgSyncToFirestore(db);
+    }
+  } catch(e) {
+    console.warn('Firestore load failed, using localStorage:', e);
+    db = loadDBLocal();
+  }
+  renderAll();
+}
+
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
-function fmt(d) { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('vi-VN'); }
+function fmt(d) { if (!d) return '—'; var dt = new Date(d); return dt.toLocaleDateString('vi-VN'); }
 function toast(msg) {
   var t = document.getElementById('toast');
   t.textContent = msg; t.className = 'toast show success';
   setTimeout(function() { t.className = 'toast'; }, 2500);
 }
 
-var db = loadDB();
+var db = defaultDB();
 
 // Navigation
 document.querySelectorAll('[data-page]').forEach(function(btn) {
@@ -1115,6 +1175,15 @@ function renderDashboard() {
   document.getElementById('recent-players').innerHTML = html;
 }
 
+function renderAll() {
+  updateCounts();
+  renderPlayers();
+  renderTournaments();
+  renderRegs();
+  renderHistory();
+  renderDashboard();
+}
+
 function updateCounts() {
   document.getElementById('playerCount').textContent = db.players.length;
   document.getElementById('s-total').textContent = db.players.length;
@@ -1223,16 +1292,27 @@ function resendZalo(id) {
   if (reg) sendZalo(reg);
 }
 
-function logout() { sessionStorage.removeItem(AUTH_KEY); location.reload(); }
+function logout() { _auth.signOut(); }
 
 // === GITHUB AUTO-PUSH ===
-var GH_TOKEN_KEY = 'amz_gh_token';
-var GH_REPO = 'goldmenvt-svg/amz-pickleball';
+var GH_REPO      = 'goldmenvt-svg/amz-pickleball';
 var GH_FILE_PATH = 'data/videos.json';
-var GH_BRANCH = 'master';
-var _ghToken = localStorage.getItem(GH_TOKEN_KEY) || '';
-var _ghPushing = false;
+var GH_BRANCH    = 'master';
+var _ghToken     = '';
+var _ghPushing   = false;
 var _ghPushTimer = null;
+
+async function loadGHTokenFromFirestore() {
+  try {
+    var doc = await _fsdb.collection('config').doc('credentials').get();
+    if (doc.exists && doc.data().githubToken) {
+      _ghToken = doc.data().githubToken;
+      updateSyncStatus('ok', 'GitHub đã kết nối — auto-push khi duyệt video');
+    } else {
+      updateSyncStatus('off', 'Chưa kết nối GitHub — video duyệt sẽ lưu local');
+    }
+  } catch(e) { updateSyncStatus('off', 'Chưa kết nối GitHub'); }
+}
 
 function toggleGHSetup() {
   var el = document.getElementById('ghSetup');
@@ -1242,8 +1322,9 @@ function toggleGHSetup() {
 function saveGHToken() {
   var token = document.getElementById('ghTokenInput').value.trim();
   if (!token) return;
-  localStorage.setItem(GH_TOKEN_KEY, token);
   _ghToken = token;
+  _fsdb.collection('config').doc('credentials').set({ githubToken: token }, { merge: true })
+    .catch(function(e) { console.warn('Could not save token to Firestore:', e); });
   document.getElementById('ghTokenInput').value = '';
   document.getElementById('ghSetup').style.display = 'none';
   updateSyncStatus('ok', 'GitHub đã kết nối — sẵn sàng auto-push');
@@ -1251,8 +1332,9 @@ function saveGHToken() {
 }
 
 function clearGHToken() {
-  localStorage.removeItem(GH_TOKEN_KEY);
   _ghToken = '';
+  _fsdb.collection('config').doc('credentials').set({ githubToken: '' }, { merge: true })
+    .catch(function(e) { console.warn('Could not clear token in Firestore:', e); });
   updateSyncStatus('off', 'Chưa kết nối GitHub — video duyệt sẽ lưu local');
   toast('Đã xóa GitHub token');
 }
@@ -1272,6 +1354,7 @@ function initSyncStatus() {
     updateSyncStatus('off', 'Chưa kết nối GitHub — video duyệt sẽ lưu local');
   }
 }
+
 
 function schedulePush() {
   if (!_ghToken) return;
@@ -1351,7 +1434,7 @@ async function exportDataToWeb() {
   if (!_ghToken) { toast('Chưa có GitHub token — vào tab Video → Kết nối GitHub'); return; }
   btn.disabled = true; btn.textContent = 'Đang xuất...';
   try {
-    var db = JSON.parse(localStorage.getItem('amz_admin')) || { players: [], tournaments: [] };
+    var db = window.db || { players: [], tournaments: [] };
     var eventsJSON = JSON.stringify({
       lastUpdated: new Date().toISOString(),
       events: (db.tournaments || []).map(function(t) {
