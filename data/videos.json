@@ -4,6 +4,24 @@
   "amzChannelUrl": "https://www.youtube.com/channel/UCm3-CYZbJmFxet5cn10ULXA",
   "videos": [
     {
+      "id": "yt_6kR24uSYHiw",
+      "platform": "youtube",
+      "platformId": "6kR24uSYHiw",
+      "title": "Trận đấu tại sân AMZ Pickleball",
+      "description": "Video trận đấu Pickleball tại sân AMZ — 179 Thống Nhất, TP.HCM",
+      "channelTitle": "AMZ Pickleball",
+      "thumbnail": "https://i.ytimg.com/vi/6kR24uSYHiw/hqdefault.jpg",
+      "duration": "",
+      "publishedAt": "2025-11-02",
+      "viewCount": 107,
+      "priority": 1,
+      "badge": "Thi đấu",
+      "status": "approved",
+      "category": "featured",
+      "addedAt": "2026-06-26T00:00:00.000Z",
+      "approvedAt": "2026-06-26T00:00:00.000Z"
+    },
+    {
       "id": "yt_F_dz_IBYtXA",
       "platform": "youtube",
       "platformId": "F_dz_IBYtXA",
