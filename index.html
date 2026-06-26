@@ -28,9 +28,13 @@
   {"@context":"https://schema.org","@type":"SportsActivityLocation","name":"AMZ Pickle Ball Club","url":"https://amzpickleball.vn","address":{"@type":"PostalAddress","streetAddress":"179 Thống Nhất, Phường Vũng Tàu","addressLocality":"TP. Hồ Chí Minh","addressCountry":"VN"},"telephone":"0914859927","openingHours":["Mo-Fr 05:00-22:00","Sa-Su 05:00-23:00"],"sameAs":["https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/"]}
   </script>
 
+  <link rel="preload" as="image" href="images/san/san-toan-canh.webp" type="image/webp">
+  <link rel="dns-prefetch" href="https://formspree.io">
+  <link rel="dns-prefetch" href="https://www.youtube.com">
+  <link rel="dns-prefetch" href="https://i.ytimg.com">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,900;1,14..32,400&display=swap" rel="stylesheet">
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -52,7 +56,6 @@
       --nav:       72px;
       --r:         12px;
       --footer-bg: #000000;
-      --accent-alt: #00bfa5;
       --gold: #ffd700;
       --silver: #c0c0c0;
       --bronze: #cd7f32;
@@ -2068,7 +2071,7 @@
               </p>
             </div>
             <div style="margin-top:16px;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
-              <iframe id="mapsIframe" data-src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3919.5!2d106.63!3d10.78!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2s179+Th%E1%BB%91ng+Nh%E1%BA%A5t%2C+Ph%C6%B0%E1%BB%9Dng+V%C5%A9ng+T%C3%A0u%2C+TP.HCM!5e0!3m2!1svi!2svn" width="100%" height="200" style="border:0;display:block;" allowfullscreen="" referrerpolicy="no-referrer-when-downgrade" title="AMZ Pickleball - 179 Thống Nhất, TP.HCM"></iframe>
+              <iframe id="mapsIframe" data-src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3919.5!2d106.63!3d10.78!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2s179+Th%E1%BB%91ng+Nh%E1%BA%A5t%2C+Ph%C6%B0%E1%BB%9Dng+V%C5%A9ng+T%C3%A0u%2C+TP.HCM!5e0!3m2!1svi!2svn" width="100%" height="200" style="border:0;display:block;" allowfullscreen="" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-same-origin allow-scripts allow-popups" title="AMZ Pickleball - 179 Thống Nhất, TP.HCM"></iframe>
             </div>
           </div>
 
@@ -2431,6 +2434,12 @@
       var d = document.createElement('div');
       d.textContent = str;
       return d.innerHTML;
+    }
+
+    function fetchWithTimeout(url, ms) {
+      var ctrl = new AbortController();
+      var timer = setTimeout(function() { ctrl.abort(); }, ms || 5000);
+      return fetch(url, { signal: ctrl.signal }).finally(function() { clearTimeout(timer); });
     }
 
     function shareEvent(btn) {
@@ -2878,7 +2887,7 @@
       async function loadEvents() {
         var events = [];
         try {
-          var res = await fetch('data/events.json');
+          var res = await fetchWithTimeout('data/events.json', 5000);
           var data = await res.json();
           events = data.events || [];
         } catch(e) {
@@ -3094,12 +3103,18 @@
       var grid = document.getElementById('videoGrid');
       if (!grid) return;
 
+      var ALLOWED_VIDEO_PLATFORMS = { youtube: true, facebook: true };
+      function safeVideoId(id) { return typeof id === 'string' && /^[a-zA-Z0-9_\-]{5,100}$/.test(id) ? id : null; }
+
       function renderVideoCards(videos) {
-        if (!videos.length) {
+        var safeVideos = videos.filter(function(v) {
+          return ALLOWED_VIDEO_PLATFORMS[v.platform] && safeVideoId(v.platformId || v.id);
+        });
+        if (!safeVideos.length) {
           grid.closest('section').style.display = 'none';
           return;
         }
-        grid.innerHTML = videos.map(function(v, i) {
+        grid.innerHTML = safeVideos.map(function(v, i) {
           var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
           var isYT = v.platform === 'youtube';
           var thumb = v.thumbnail || '';
@@ -3133,6 +3148,7 @@
               iframe.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
               iframe.allow = 'autoplay; encrypted-media';
               iframe.allowFullscreen = true;
+              iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
               thumb.appendChild(iframe);
               card.classList.add('video-embed-active');
             } else if (platform === 'facebook' && videoId) {
@@ -3140,6 +3156,7 @@
               iframe.src = 'https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(videoId) + '&width=560&show_text=false';
               iframe.allow = 'autoplay; encrypted-media';
               iframe.allowFullscreen = true;
+              iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
               thumb.appendChild(iframe);
               card.classList.add('video-embed-active');
             }
@@ -3158,7 +3175,7 @@
         grid.querySelectorAll('.reveal:not(.visible)').forEach(function(el) { obs.observe(el); });
       }
 
-      fetch('data/videos.json')
+      fetchWithTimeout('data/videos.json', 5000)
         .then(function(r) { return r.json(); })
         .then(function(data) {
           var approved = data.videos
@@ -3178,20 +3195,35 @@
       var featGrid = document.getElementById('featuredGrid');
       if (!heroWrap || !featGrid) return;
 
+      var ALLOWED_FEAT_PLATFORMS = { youtube: true, facebook: true };
+      function safeFeatId(id) { return typeof id === 'string' && /^[a-zA-Z0-9_\-]{5,100}$/.test(id) ? id : null; }
+
       function embedIframe(container, platform, videoId) {
-        if (platform === 'youtube' && videoId) {
-          container.innerHTML = '<div class="featured-hero-embed"><iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>';
+        if (platform === 'youtube' && safeFeatId(videoId)) {
+          var wrap = document.createElement('div');
+          wrap.className = 'featured-hero-embed';
+          var iframe = document.createElement('iframe');
+          iframe.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
+          iframe.allow = 'autoplay; encrypted-media';
+          iframe.allowFullscreen = true;
+          iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
+          wrap.appendChild(iframe);
+          container.innerHTML = '';
+          container.appendChild(wrap);
         }
       }
 
       function renderFeatured(videos) {
-        if (!videos.length) {
+        var safeVids = videos.filter(function(v) {
+          return ALLOWED_FEAT_PLATFORMS[v.platform] && safeFeatId(v.platformId || '');
+        });
+        if (!safeVids.length) {
           heroWrap.closest('section').style.display = 'none';
           return;
         }
 
-        var hero = videos[0];
-        var rest = videos.slice(1, 7);
+        var hero = safeVids[0];
+        var rest = safeVids.slice(1, 7);
         var thumb = hero.thumbnail || '';
         if (hero.platform === 'youtube' && hero.platformId) {
           thumb = 'https://i.ytimg.com/vi/' + hero.platformId + '/hqdefault.jpg';
@@ -3245,6 +3277,7 @@
                 iframe.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
                 iframe.allow = 'autoplay; encrypted-media';
                 iframe.allowFullscreen = true;
+                iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
                 thumb.appendChild(iframe);
                 card.classList.add('video-embed-active');
               }
@@ -3260,7 +3293,7 @@
         heroWrap.closest('section').querySelectorAll('.reveal:not(.visible)').forEach(function(el) { obs.observe(el); });
       }
 
-      fetch('data/videos.json')
+      fetchWithTimeout('data/videos.json', 5000)
         .then(function(r) { return r.json(); })
         .then(function(data) {
           var featured = data.videos
@@ -3278,7 +3311,7 @@
       async function loadHeroEvent() {
         var events = [];
         try {
-          var res = await fetch('data/events.json');
+          var res = await fetchWithTimeout('data/events.json', 5000);
           var data = await res.json();
           events = data.events || [];
         } catch(e) {
@@ -3301,7 +3334,7 @@
         var badgeEl = document.getElementById('heroBadgeText');
         var subEl = document.getElementById('heroSub');
         if (nameEl) {
-          nameEl.innerHTML = escapeHTML(evt.name);
+          nameEl.textContent = evt.name;
           nameEl.style.fontSize = 'clamp(36px, 8vw, 90px)';
         }
         if (badgeEl) badgeEl.textContent = 'UP NEXT';
@@ -3323,23 +3356,34 @@
           }
         }
       }
+      function makeCdUnit(label) {
+        var item = document.createElement('div'); item.className = 'cd-item';
+        var strong = document.createElement('strong');
+        var span = document.createElement('span'); span.textContent = label;
+        item.appendChild(strong); item.appendChild(span);
+        return { item: item, strong: strong };
+      }
       function startCountdown(el, dateStr) {
         var target = new Date(dateStr + 'T08:00:00+07:00').getTime();
+        var d = makeCdUnit('Ngày'), h = makeCdUnit('Giờ'), m = makeCdUnit('Phút'), s = makeCdUnit('Giây');
+        function sep() { var e = document.createElement('div'); e.className = 'cd-sep'; e.textContent = ':'; return e; }
+        el.textContent = '';
+        [d.item, sep(), h.item, sep(), m.item, sep(), s.item].forEach(function(n) { el.appendChild(n); });
         function update() {
-          var now = Date.now();
-          var diff = target - now;
-          if (diff <= 0) { el.innerHTML = '<span class="countdown-label" style="font-size:16px;color:var(--accent);font-weight:700;">Đang diễn ra!</span>'; return; }
-          var days = Math.floor(diff / 86400000);
-          var hours = Math.floor((diff % 86400000) / 3600000);
-          var mins = Math.floor((diff % 3600000) / 60000);
-          var secs = Math.floor((diff % 60000) / 1000);
-          el.innerHTML = '<div class="cd-item"><strong>' + days + '</strong><span>Ngày</span></div>' +
-            '<div class="cd-sep">:</div>' +
-            '<div class="cd-item"><strong>' + String(hours).padStart(2,'0') + '</strong><span>Giờ</span></div>' +
-            '<div class="cd-sep">:</div>' +
-            '<div class="cd-item"><strong>' + String(mins).padStart(2,'0') + '</strong><span>Phút</span></div>' +
-            '<div class="cd-sep">:</div>' +
-            '<div class="cd-item"><strong>' + String(secs).padStart(2,'0') + '</strong><span>Giây</span></div>';
+          var diff = target - Date.now();
+          if (diff <= 0) {
+            el.textContent = '';
+            var span = document.createElement('span');
+            span.className = 'countdown-label';
+            span.style.cssText = 'font-size:16px;color:var(--accent);font-weight:700;';
+            span.textContent = 'Đang diễn ra!';
+            el.appendChild(span);
+            return;
+          }
+          d.strong.textContent = Math.floor(diff / 86400000);
+          h.strong.textContent = String(Math.floor((diff % 86400000) / 3600000)).padStart(2,'0');
+          m.strong.textContent = String(Math.floor((diff % 3600000) / 60000)).padStart(2,'0');
+          s.strong.textContent = String(Math.floor((diff % 60000) / 1000)).padStart(2,'0');
         }
         update();
         setInterval(update, 1000);
@@ -3356,7 +3400,7 @@
 
       async function loadPlayers() {
         try {
-          var res = await fetch('data/players.json');
+          var res = await fetchWithTimeout('data/players.json', 5000);
           var data = await res.json();
           playersData = data.players || [];
         } catch(e) {
@@ -3409,7 +3453,7 @@
     (function() {
       var grid = document.getElementById('newsGrid');
       if (!grid) return;
-      fetch('data/blog-posts.json')
+      fetchWithTimeout('data/blog-posts.json', 5000)
         .then(function(r) { return r.json(); })
         .then(function(posts) {
           var published = posts.filter(function(p) { return !p.draft; }).slice(0, 3);
@@ -3417,7 +3461,8 @@
           grid.innerHTML = published.map(function(post, i) {
             var delay = i > 0 ? ' reveal-delay-' + i : '';
             var img = post.image || 'images/san/san-toan-canh.jpg';
-            return '<a href="blog/posts/' + post.slug + '.html" class="news-card reveal' + delay + '">' +
+            var safeSlug = (post.slug || '').replace(/[^a-zA-Z0-9_-]/g, '');
+            return '<a href="blog/posts/' + safeSlug + '.html" class="news-card reveal' + delay + '">' +
               '<div class="news-thumb"><img src="' + img + '" alt="" loading="lazy"></div>' +
               '<div class="news-body">' +
               '<span class="news-tag">' + escapeHTML(post.tag) + '</span>' +

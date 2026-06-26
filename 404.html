@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>404 — Không tìm thấy trang | AMZ Pickleball</title>
+  <link rel="icon" href="/logo.jpg" type="image/jpeg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #000000; --text: #f0f0f0; --muted: rgba(255,255,255,0.4);
+      --accent: #c8f03a; --border: rgba(255,255,255,0.06);
+    }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 24px;
+      text-align: center;
+    }
+    .logo { width: 64px; height: 64px; border-radius: 50%; margin-bottom: 32px; }
+    .code {
+      font-family: 'Bebas Neue', Impact, sans-serif;
+      font-size: clamp(96px, 20vw, 180px); line-height: 1;
+      color: var(--text); letter-spacing: -0.02em; margin-bottom: 8px;
+    }
+    .code em { color: var(--accent); font-style: normal; }
+    h1 { font-size: clamp(18px, 4vw, 28px); font-weight: 600; margin-bottom: 12px; }
+    p { color: var(--muted); font-size: 15px; line-height: 1.7; max-width: 380px; margin: 0 auto 40px; }
+    .btn {
+      display: inline-block; padding: 14px 32px; border-radius: 8px;
+      background: var(--accent); color: #000;
+      font-weight: 700; font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase;
+      text-decoration: none; transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .divider { width: 40px; height: 1px; background: var(--border); margin: 40px auto 0; }
+    .links { margin-top: 24px; display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+    .links a { color: var(--muted); font-size: 13px; text-decoration: none; transition: color 0.2s; }
+    .links a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <picture>
+    <source srcset="/logo.webp" type="image/webp">
+    <img src="/logo.jpg" alt="AMZ Pickleball" class="logo" width="64" height="64">
+  </picture>
+  <div class="code">4<em>0</em>4</div>
+  <h1>Không tìm thấy trang</h1>
+  <p>Trang bạn tìm kiếm có thể đã bị xóa, đổi địa chỉ, hoặc chưa tồn tại.</p>
+  <a href="/" class="btn">Về trang chủ</a>
+  <div class="divider"></div>
+  <nav class="links">
+    <a href="/#dich-vu">Dịch vụ</a>
+    <a href="/#su-kien">Sự kiện</a>
+    <a href="/#lien-he">Liên hệ</a>
+    <a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener">Facebook</a>
+  </nav>
+</body>
+</html>
