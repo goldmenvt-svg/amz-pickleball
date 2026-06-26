@@ -1079,6 +1079,11 @@
       transition: all 0.3s ease; pointer-events: none; white-space: nowrap;
     }
     .redirect-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .booking-fields { display: none; }
+    .booking-fields.active { display: block; animation: bfadeIn 0.3s ease; }
+    @keyframes bfadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+    input[type="date"].form-control { color-scheme: dark; }
+    input[type="date"].form-control::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
 
     .contact-submit-wrap { margin-top: 8px; }
     .form-error-msg {
@@ -2123,6 +2128,56 @@
                 </span>
               </div>
 
+              <!-- Booking fields — shown when "Đặt sân" selected -->
+              <div class="booking-fields" id="bookingFields">
+                <div class="contact-row-2col">
+                  <div class="form-group">
+                    <label class="form-label" for="cf-date">Ngày đặt sân <span class="required">*</span></label>
+                    <input id="cf-date" name="booking_date" type="date" class="form-control" data-booking>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="cf-time">Khung giờ mong muốn <span class="required">*</span></label>
+                    <select id="cf-time" name="booking_time" class="form-control" data-booking>
+                      <option value="">— Chọn khung giờ —</option>
+                      <optgroup label="Sáng sớm">
+                        <option value="05:00-06:00">05:00 – 06:00</option>
+                        <option value="06:00-07:00">06:00 – 07:00</option>
+                        <option value="07:00-08:00">07:00 – 08:00</option>
+                        <option value="08:00-09:00">08:00 – 09:00</option>
+                      </optgroup>
+                      <optgroup label="Buổi sáng (giảm 15%)">
+                        <option value="09:00-10:00">09:00 – 10:00 🏷️</option>
+                        <option value="10:00-11:00">10:00 – 11:00 🏷️</option>
+                        <option value="11:00-12:00">11:00 – 12:00 🏷️</option>
+                      </optgroup>
+                      <optgroup label="Buổi chiều (giảm 15%)">
+                        <option value="13:00-14:00">13:00 – 14:00 🏷️</option>
+                        <option value="14:00-15:00">14:00 – 15:00 🏷️</option>
+                        <option value="15:00-16:00">15:00 – 16:00 🏷️</option>
+                      </optgroup>
+                      <optgroup label="Chiều tối">
+                        <option value="16:00-17:00">16:00 – 17:00</option>
+                        <option value="17:00-18:00">17:00 – 18:00</option>
+                        <option value="18:00-19:00">18:00 – 19:00</option>
+                        <option value="19:00-20:00">19:00 – 20:00</option>
+                        <option value="20:00-21:00">20:00 – 21:00</option>
+                        <option value="21:00-22:00">21:00 – 22:00</option>
+                      </optgroup>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="cf-players">Số người chơi</label>
+                  <select id="cf-players" name="players_count" class="form-control">
+                    <option value="">— Chọn số người —</option>
+                    <option value="2">2 người (1 sân)</option>
+                    <option value="4">4 người (1 sân)</option>
+                    <option value="6-8">6–8 người (2 sân)</option>
+                    <option value="8+">8+ người (nhiều sân)</option>
+                  </select>
+                </div>
+              </div>
+
               <div class="form-group">
                 <label class="form-label" for="cf-message">Nội dung <span class="required">*</span></label>
                 <textarea id="cf-message" name="message" class="form-control"
@@ -2152,9 +2207,13 @@
               <div class="success-icon">✓</div>
               <h3>Cảm ơn <span class="success-name" id="successName"></span>!</h3>
               <p>Chúng tôi đã nhận được thông tin và sẽ liên hệ lại trong vòng <strong style="color:var(--text);">2 giờ</strong> (trong giờ hoạt động).<br>
-              Hoặc nhắn tin Facebook để được tư vấn ngay lập tức.</p>
+              Muốn xác nhận nhanh hơn — nhắn Zalo hoặc Facebook ngay bây giờ.</p>
               <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
-                <a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Nhắn tin Facebook</a>
+                <a href="https://zalo.me/0914859927" target="_blank" rel="noopener noreferrer" class="btn btn-primary" id="successZaloBtn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;"><path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.914 1.408 5.516 3.618 7.22L4.5 22l3.795-1.994A10.56 10.56 0 0012 20.486c5.523 0 10-4.145 10-9.243C22 6.145 17.523 2 12 2z"/></svg>
+                  Nhắn Zalo ngay
+                </a>
+                <a href="https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Nhắn tin Facebook</a>
                 <button id="resetForm" class="btn btn-outline">Gửi thêm liên hệ</button>
               </div>
             </div>
@@ -2512,6 +2571,27 @@
         if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
 
+      // Booking fields toggle
+      const typeSelect = document.getElementById('cf-type');
+      const bookingFields = document.getElementById('bookingFields');
+      const msgTextarea = document.getElementById('cf-message');
+      const dateInput = document.getElementById('cf-date');
+      if (dateInput) {
+        const today = new Date();
+        const yyyy = today.getFullYear(), mm = String(today.getMonth()+1).padStart(2,'0'), dd = String(today.getDate()).padStart(2,'0');
+        dateInput.min = `${yyyy}-${mm}-${dd}`;
+      }
+      typeSelect && typeSelect.addEventListener('change', function() {
+        const isBooking = this.value === 'dat-san';
+        bookingFields.classList.toggle('active', isBooking);
+        bookingFields.querySelectorAll('[data-booking]').forEach(el => { el.required = isBooking; });
+        if (isBooking && msgTextarea && !msgTextarea.value) {
+          msgTextarea.placeholder = 'VD: Cần đặt 1 sân, 4 người chơi. Linh hoạt về giờ nếu slot trên đã hết...';
+        } else if (!isBooking && msgTextarea) {
+          msgTextarea.placeholder = 'Mô tả chi tiết yêu cầu của bạn...';
+        }
+      });
+
       // Real-time validation on blur
       form.querySelectorAll('[data-field]').forEach(el => {
         el.addEventListener('blur', () => validateField(el.dataset.field));
@@ -2543,6 +2623,14 @@
 
         form.hidden = true;
         successName.textContent = nameVal.split(' ').pop();
+        // Build Zalo pre-filled context in success button
+        const zaloBtn = document.getElementById('successZaloBtn');
+        if (zaloBtn && typeSelect && typeSelect.value === 'dat-san') {
+          const bookDate = (document.getElementById('cf-date') || {}).value || '';
+          const bookTime = (document.getElementById('cf-time') || {}).value || '';
+          const info = [bookDate && `ngày ${bookDate}`, bookTime && `giờ ${bookTime}`].filter(Boolean).join(', ');
+          if (info) zaloBtn.title = `Nhắn Zalo về đặt sân ${info}`;
+        }
         successEl.hidden = false;
         successEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
