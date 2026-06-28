@@ -449,31 +449,9 @@ var _fsdb = firebase.firestore();
       </div>
 
       <div class="sync-bar" id="syncBar">
-        <span class="sync-dot off" id="syncDot"></span>
-        <span class="sync-msg" id="syncMsg">Chưa kết nối GitHub — video duyệt sẽ lưu local</span>
-        <button class="btn btn-sm btn-outline" style="margin-left:auto;" onclick="toggleGHSetup()">⚙ Kết nối GitHub</button>
+        <span class="sync-dot ok" id="syncDot"></span>
+        <span class="sync-msg ok" id="syncMsg">GitHub push qua server API — token bảo mật server-side</span>
       </div>
-
-      <details class="gh-setup" id="ghSetup" style="display:none">
-        <summary>Cấu hình GitHub Auto-Push</summary>
-        <div class="gh-body">
-          <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Khi kết nối, mỗi lần duyệt video sẽ tự động push lên GitHub → Vercel deploy → web cập nhật trong ~30 giây.</p>
-          <div class="gh-token-input">
-            <input class="form-input" id="ghTokenInput" type="password" placeholder="ghp_xxxx hoặc github_pat_xxxx">
-            <button class="btn btn-primary btn-sm" onclick="saveGHToken()">Lưu</button>
-            <button class="btn btn-outline btn-sm" onclick="clearGHToken()">Xóa</button>
-          </div>
-          <div class="gh-steps">
-            <strong>Cách tạo token (1 lần duy nhất):</strong><br>
-            1. Vào <a href="https://github.com/settings/tokens?type=beta" target="_blank">GitHub → Settings → Fine-grained tokens</a><br>
-            2. Click "Generate new token"<br>
-            3. Tên: <code>AMZ Admin</code> · Expiration: 90 days<br>
-            4. Repository access: chọn <code>amz-pickleball</code><br>
-            5. Permissions → Contents: <strong>Read and write</strong><br>
-            6. Click "Generate token" → copy & paste vào ô trên
-          </div>
-        </div>
-      </details>
 
       <div class="stats-row" style="grid-template-columns: repeat(4, 1fr);">
         <div class="stat-card">
@@ -775,7 +753,7 @@ _auth.onAuthStateChanged(function(user) {
   if (user) {
     showApp();
     loadFromFirestore();
-    loadGHTokenFromFirestore();
+    initSyncStatus();
   } else {
     showLoginScreen();
     db = defaultDB();
@@ -1294,49 +1272,14 @@ function resendZalo(id) {
 
 function logout() { _auth.signOut(); }
 
-// === GITHUB AUTO-PUSH ===
-var GH_REPO      = 'goldmenvt-svg/amz-pickleball';
-var GH_FILE_PATH = 'data/videos.json';
-var GH_BRANCH    = 'master';
-var _ghToken     = '';
+// === GITHUB PUSH — qua server-side API (token không bao giờ ra client) ===
 var _ghPushing   = false;
 var _ghPushTimer = null;
 
-async function loadGHTokenFromFirestore() {
-  try {
-    var doc = await _fsdb.collection('config').doc('credentials').get();
-    if (doc.exists && doc.data().githubToken) {
-      _ghToken = doc.data().githubToken;
-      updateSyncStatus('ok', 'GitHub đã kết nối — auto-push khi duyệt video');
-    } else {
-      updateSyncStatus('off', 'Chưa kết nối GitHub — video duyệt sẽ lưu local');
-    }
-  } catch(e) { updateSyncStatus('off', 'Chưa kết nối GitHub'); }
-}
-
-function toggleGHSetup() {
-  var el = document.getElementById('ghSetup');
-  el.style.display = el.style.display === 'none' ? '' : 'none';
-}
-
-function saveGHToken() {
-  var token = document.getElementById('ghTokenInput').value.trim();
-  if (!token) return;
-  _ghToken = token;
-  _fsdb.collection('config').doc('credentials').set({ githubToken: token }, { merge: true })
-    .catch(function(e) { console.warn('Could not save token to Firestore:', e); });
-  document.getElementById('ghTokenInput').value = '';
-  document.getElementById('ghSetup').style.display = 'none';
-  updateSyncStatus('ok', 'GitHub đã kết nối — sẵn sàng auto-push');
-  toast('Đã lưu GitHub token');
-}
-
-function clearGHToken() {
-  _ghToken = '';
-  _fsdb.collection('config').doc('credentials').set({ githubToken: '' }, { merge: true })
-    .catch(function(e) { console.warn('Could not clear token in Firestore:', e); });
-  updateSyncStatus('off', 'Chưa kết nối GitHub — video duyệt sẽ lưu local');
-  toast('Đã xóa GitHub token');
+async function _getFirebaseIdToken() {
+  var user = _auth.currentUser;
+  if (!user) throw new Error('Chưa đăng nhập');
+  return user.getIdToken();
 }
 
 function updateSyncStatus(state, msg) {
@@ -1348,90 +1291,44 @@ function updateSyncStatus(state, msg) {
 }
 
 function initSyncStatus() {
-  if (_ghToken) {
-    updateSyncStatus('ok', 'GitHub đã kết nối — auto-push khi duyệt video');
-  } else {
-    updateSyncStatus('off', 'Chưa kết nối GitHub — video duyệt sẽ lưu local');
-  }
+  updateSyncStatus('ok', 'Sẵn sàng push lên GitHub qua server API');
 }
 
-
 function schedulePush() {
-  if (!_ghToken) return;
   if (_ghPushTimer) clearTimeout(_ghPushTimer);
   updateSyncStatus('pending', 'Đợi 2s để gộp thay đổi...');
   _ghPushTimer = setTimeout(function() { pushVideosToGitHub(); }, 2000);
 }
 
 async function pushVideosToGitHub() {
-  if (!_ghToken || _ghPushing) return;
+  if (_ghPushing) return;
   _ghPushing = true;
   updateSyncStatus('pending', 'Đang push lên GitHub...');
-
   try {
-    var getRes = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + GH_FILE_PATH + '?ref=' + GH_BRANCH + '&t=' + Date.now(), {
-      headers: { 'Authorization': 'Bearer ' + _ghToken, 'Accept': 'application/vnd.github.v3+json' },
-      cache: 'no-store'
+    var idToken = await _getFirebaseIdToken();
+    var res = await fetch('/api/push-videos', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + idToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoData: videoData })
     });
-    if (!getRes.ok) throw new Error('Không đọc được file: ' + getRes.status);
-    var fileInfo = await getRes.json();
-    var sha = fileInfo.sha;
-
-    var content = btoa(unescape(encodeURIComponent(JSON.stringify(videoData, null, 2))));
-
-    var putRes = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + GH_FILE_PATH, {
-      method: 'PUT',
-      headers: {
-        'Authorization': 'Bearer ' + _ghToken,
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message: 'chore: update video approvals ' + new Date().toISOString().substring(0, 10),
-        content: content,
-        sha: sha,
-        branch: GH_BRANCH
-      })
-    });
-
-    if (!putRes.ok) {
-      var errBody = await putRes.text();
-      throw new Error('Push thất bại: ' + putRes.status + ' ' + errBody.substring(0, 100));
+    if (!res.ok) {
+      var err = await res.json().catch(function() { return { error: res.status }; });
+      throw new Error(err.error || res.status);
     }
-
     updateSyncStatus('ok', 'Đã push lên GitHub — web cập nhật trong ~30s');
     toast('Đã push lên GitHub — Vercel đang deploy...');
   } catch (err) {
     console.error('GitHub push error:', err);
     updateSyncStatus('error', 'Lỗi: ' + err.message.substring(0, 80));
-    toast('Push thất bại — dữ liệu đã lưu local, dùng "Xuất JSON" để cập nhật thủ công');
+    toast('Push thất bại — dùng "Xuất JSON" để cập nhật thủ công');
   } finally {
     _ghPushing = false;
   }
 }
 
 // === EXPORT DATA TO WEB ===
-async function pushFileToGitHub(filePath, content, commitMsg) {
-  if (!_ghToken) throw new Error('Chưa kết nối GitHub — vào tab Video để cài token');
-  var getRes = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + filePath + '?ref=' + GH_BRANCH + '&t=' + Date.now(), {
-    headers: { 'Authorization': 'Bearer ' + _ghToken, 'Accept': 'application/vnd.github.v3+json' },
-    cache: 'no-store'
-  });
-  var sha = '';
-  if (getRes.ok) { sha = (await getRes.json()).sha; }
-  var encoded = btoa(unescape(encodeURIComponent(content)));
-  var putRes = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + filePath, {
-    method: 'PUT',
-    headers: { 'Authorization': 'Bearer ' + _ghToken, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: commitMsg, content: encoded, sha: sha || undefined, branch: GH_BRANCH })
-  });
-  if (!putRes.ok) throw new Error(filePath + ': ' + putRes.status);
-  return putRes.json();
-}
-
 async function exportDataToWeb() {
   var btn = document.getElementById('btnExportWeb');
-  if (!_ghToken) { toast('Chưa có GitHub token — vào tab Video → Kết nối GitHub'); return; }
   btn.disabled = true; btn.textContent = 'Đang xuất...';
   try {
     var db = window.db || { players: [], tournaments: [] };
@@ -1458,9 +1355,16 @@ async function exportDataToWeb() {
         };
       })
     }, null, 2);
-    var ts = new Date().toISOString().substring(0, 10);
-    await pushFileToGitHub('data/events.json', eventsJSON, 'chore: export events ' + ts);
-    await pushFileToGitHub('data/players.json', playersJSON, 'chore: export players ' + ts);
+    var idToken = await _getFirebaseIdToken();
+    var res = await fetch('/api/push-data', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + idToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventsJSON: eventsJSON, playersJSON: playersJSON })
+    });
+    if (!res.ok) {
+      var err = await res.json().catch(function() { return { error: res.status }; });
+      throw new Error(err.error || res.status);
+    }
     toast('Đã xuất events + players lên web — Vercel deploy trong ~30s');
   } catch (err) {
     console.error('Export error:', err);
