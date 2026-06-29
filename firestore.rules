@@ -2,24 +2,26 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── ADMIN DATA ──────────────────────────────────────────────────────────
-    // Chỉ admin (custom claim) mới đọc/ghi được
-    match /settings/{doc} {
-      allow read, write: if request.auth != null
-                         && request.auth.token.admin == true;
+    function isAdmin() {
+      return request.auth != null
+          && request.auth.token.email == "goldmenvt@gmail.com";
     }
 
-    // ── CREDENTIALS (GitHub token) ──────────────────────────────────────────
-    // Chỉ admin mới được đọc/ghi — KHÔNG cho phép user thường
-    match /config/{doc} {
-      allow read, write: if request.auth != null
-                         && request.auth.token.admin == true;
+    match /videos/{videoId} {
+      allow read, write: if isAdmin();
     }
 
-    // ── PUBLIC DATA (nếu sau này có collection public) ──────────────────────
-    // Hiện tại không có collection nào cần public read — block tất cả
-    match /{document=**} {
-      allow read, write: if false;
+    match /registrations/{regId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /config/{configId} {
+      allow read, write: if isAdmin();
     }
   }
 }

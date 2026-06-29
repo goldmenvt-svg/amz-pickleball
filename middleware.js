@@ -10,10 +10,10 @@ export default function middleware(request) {
     const decoded = atob(base64);
     const [user, pass] = decoded.split(':');
 
-    // ⚠️ ĐỔI MẬT KHẨU NÀY TRƯỚC KHI DEPLOY
-    // Username: amzadmin
-    // Password: đổi thành mật khẩu mạnh của bạn
-    if (user === 'amzadmin' && pass === 'Thu140708@') {
+    const expectedUser = process.env.ADMIN_USER || 'amzadmin';
+    const expectedPass = process.env.ADMIN_PASSWORD;
+    if (!expectedPass) return new Response('Server misconfigured', { status: 500 });
+    if (user === expectedUser && pass === expectedPass) {
       return; // pass through → Vercel phục vụ static file bình thường
     }
   }

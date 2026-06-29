@@ -151,6 +151,7 @@ var _fsdb = firebase.firestore();
   }
   .toast.show { transform: translateY(0); opacity: 1; }
   .toast.success { border-color: var(--green); }
+  .toast.error { border-color: var(--red); color: var(--red); }
 
   .tab-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
   .tab-btn {
@@ -343,6 +344,7 @@ var _fsdb = firebase.firestore();
       <div class="page-header">
         <h1>Tổng quan</h1>
         <div class="toolbar">
+          <span id="saveIndicator" style="font-size:12px;color:var(--muted);margin-right:8px;"></span>
           <button class="btn btn-primary" onclick="exportDataToWeb()" id="btnExportWeb">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><polyline points="5 12 12 5 19 12"/><line x1="5" y1="19" x2="19" y2="19"/></svg>
             Xuất dữ liệu lên web
@@ -739,6 +741,13 @@ var _fsdb = firebase.firestore();
 <div class="toast" id="toast"></div>
 
 <script>
+// === CONSTANTS ===
+var STATUS = { PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Từ chối' };
+var CATEGORIES = ['Đơn Nam', 'Đơn Nữ', 'Đôi Nam', 'Đôi Nữ', 'Đôi Hỗn Hợp'];
+var VIDEO_BADGES = ['Thi đấu', 'Tập luyện', 'Sự kiện', 'Tin tức', 'Review'];
+var PHONE_RE = /(03|05|07|08|09)\d{8}/;
+function validPhone(p) { return PHONE_RE.test(String(p).replace(/\s/g, '')); }
+
 // === AUTH (Firebase) ===
 function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
@@ -786,43 +795,75 @@ async function tryLogin() {
 }
 
 const DB_KEY = 'amz_admin';
-const FS_DOC  = 'settings/adminData';
+const FS_COL  = 'settings';
+const FS_DOC  = 'adminData';
+
+var _saveDebounceTimer = null;
+var _isSaving = false;
 
 function defaultDB() { return { players: [], tournaments: [], registrations: [], history: [] }; }
 
+function _normalizeDB(data) {
+  if (!data.players)       data.players       = [];
+  if (!data.tournaments)   data.tournaments   = [];
+  if (!data.registrations) data.registrations = [];
+  if (!data.history)       data.history       = [];
+  return data;
+}
+
 function loadDBLocal() {
-  try { return JSON.parse(localStorage.getItem(DB_KEY)) || defaultDB(); }
+  try { return _normalizeDB(JSON.parse(localStorage.getItem(DB_KEY)) || defaultDB()); }
   catch(e) { return defaultDB(); }
 }
-function saveDB(db) {
-  localStorage.setItem(DB_KEY, JSON.stringify(db));
-  bgSyncToFirestore(db);
+
+function _updateSaveIndicator(state) {
+  var el = document.getElementById('saveIndicator');
+  if (!el) return;
+  if (state === 'saving')  { el.textContent = '⟳ Đang lưu...'; el.style.color = 'var(--muted)'; }
+  if (state === 'saved')   { el.textContent = '✓ Đã lưu';       el.style.color = 'var(--green)'; setTimeout(function() { if (el.textContent === '✓ Đã lưu') el.textContent = ''; }, 3000); }
+  if (state === 'error')   { el.textContent = '⚠ Lỗi lưu';      el.style.color = 'var(--red)'; }
 }
-function bgSyncToFirestore(data) {
-  _fsdb.collection('settings').doc('adminData').set(data).catch(function(e) {
-    console.warn('Firestore sync failed:', e);
-  });
+
+function saveDB(dbData) {
+  localStorage.setItem(DB_KEY, JSON.stringify(dbData));
+  if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
+  _updateSaveIndicator('saving');
+  _saveDebounceTimer = setTimeout(function() { _persistToFirestore(dbData); }, 800);
 }
+
+function _persistToFirestore(data) {
+  if (_isSaving) { _saveDebounceTimer = setTimeout(function() { _persistToFirestore(data); }, 500); return; }
+  _isSaving = true;
+  var payload = Object.assign({}, data, { lastUpdated: new Date().toISOString() });
+  _fsdb.collection(FS_COL).doc(FS_DOC).set(payload)
+    .then(function() { _isSaving = false; _updateSaveIndicator('saved'); })
+    .catch(function(e) { _isSaving = false; _updateSaveIndicator('error'); console.error('[Firestore] save failed:', e); });
+}
+
 async function loadFromFirestore() {
   try {
-    var doc = await _fsdb.collection('settings').doc('adminData').get();
+    var doc = await _fsdb.collection(FS_COL).doc(FS_DOC).get();
     if (doc.exists) {
-      var data = doc.data();
-      if (!data.players)       data.players       = [];
-      if (!data.tournaments)   data.tournaments   = [];
-      if (!data.registrations) data.registrations = [];
-      if (!data.history)       data.history       = [];
-      db = data;
+      db = _normalizeDB(doc.data());
       localStorage.setItem(DB_KEY, JSON.stringify(db));
     } else {
-      db = loadDBLocal();
-      bgSyncToFirestore(db);
+      var local = loadDBLocal();
+      db = local;
+      _persistToFirestore(db);
     }
   } catch(e) {
-    console.warn('Firestore load failed, using localStorage:', e);
+    console.warn('[Firestore] load failed, dùng localStorage:', e);
     db = loadDBLocal();
+    showToastError('Không kết nối được Firestore — đang dùng dữ liệu cục bộ');
   }
   renderAll();
+}
+
+function showToastError(msg) {
+  var t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg; t.className = 'toast show error';
+  setTimeout(function() { t.className = 'toast'; }, 4000);
 }
 
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
@@ -878,6 +919,7 @@ function savePlayer() {
   var name = document.getElementById('p-name').value.trim();
   var phone = document.getElementById('p-phone').value.trim();
   if (!name || !phone) { alert('Vui lòng nhập họ tên và SĐT'); return; }
+  if (!/^(03|05|07|08|09)\d{8}$/.test(phone)) { alert('SĐT không hợp lệ. Vui lòng nhập 10 số bắt đầu bằng 03/05/07/08/09'); return; }
   var data = {
     name: name, phone: phone,
     email: document.getElementById('p-email').value.trim(),
@@ -914,7 +956,8 @@ function renderPlayers(filter) {
   } else {
     list.forEach(function(p) {
       var pct = Math.min(((p.level - 2) / 3.5) * 100, 100);
-      var avatar = p.photo ? '<img src="' + p.photo + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;">' : '<span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:var(--surface2);text-align:center;line-height:28px;font-size:11px;font-weight:700;color:var(--muted);margin-right:8px;vertical-align:middle;">' + esc(p.name.charAt(0)) + '</span>';
+      var _avatarSrc = safeImgSrc(p.photo);
+      var avatar = _avatarSrc ? '<img src="' + esc(_avatarSrc) + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;">' : '<span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:var(--surface2);text-align:center;line-height:28px;font-size:11px;font-weight:700;color:var(--muted);margin-right:8px;vertical-align:middle;">' + esc(p.name.charAt(0)) + '</span>';
       html += '<tr>' +
         '<td style="white-space:nowrap">' + avatar + '<strong>' + esc(p.name) + '</strong></td>' +
         '<td>' + esc(p.phone) + '</td>' +
@@ -1083,8 +1126,10 @@ function renderRegs(tournamentFilter) {
       var tournament = db.tournaments.find(function(t) { return t.id === r.tournamentId; });
       var partner = r.partnerId ? db.players.find(function(p) { return p.id === r.partnerId; }) : null;
       var statusClass = r.status === 'Chờ duyệt' ? 'badge-orange' : r.status === 'Đã duyệt' ? 'badge-green' : r.status === 'Từ chối' ? 'badge-red' : 'badge-blue';
-      var playerAvatar = player && player.photo ? '<img src="' + player.photo + '" style="width:24px;height:24px;border-radius:50%;object-fit:cover;margin-right:6px;vertical-align:middle;">' : '';
-      var partnerAvatar = r.partnerPhoto ? '<img src="' + r.partnerPhoto + '" style="width:20px;height:20px;border-radius:50%;object-fit:cover;margin-right:4px;vertical-align:middle;">' : '';
+      var _pSrc = player && safeImgSrc(player.photo);
+      var playerAvatar = _pSrc ? '<img src="' + esc(_pSrc) + '" style="width:24px;height:24px;border-radius:50%;object-fit:cover;margin-right:6px;vertical-align:middle;">' : '';
+      var _ppSrc = safeImgSrc(r.partnerPhoto);
+      var partnerAvatar = _ppSrc ? '<img src="' + esc(_ppSrc) + '" style="width:20px;height:20px;border-radius:50%;object-fit:cover;margin-right:4px;vertical-align:middle;">' : '';
       html += '<tr>' +
         '<td style="font-size:12px;font-weight:700;color:var(--accent);letter-spacing:0.04em">' + esc(r.code || '—') + '</td>' +
         '<td style="white-space:nowrap">' + playerAvatar + '<strong>' + (player ? esc(player.name) : '?') + '</strong></td>' +
@@ -1146,7 +1191,8 @@ function renderDashboard() {
   var recent = db.players.slice().sort(function(a, b) { return (b.createdAt || '').localeCompare(a.createdAt || ''); }).slice(0, 5);
   var html = '';
   recent.forEach(function(p) {
-    var av = p.photo ? '<img src="' + p.photo + '" style="width:24px;height:24px;border-radius:50%;object-fit:cover;margin-right:6px;vertical-align:middle;">' : '';
+    var _dSrc = safeImgSrc(p.photo);
+    var av = _dSrc ? '<img src="' + esc(_dSrc) + '" style="width:24px;height:24px;border-radius:50%;object-fit:cover;margin-right:6px;vertical-align:middle;">' : '';
     html += '<tr><td>' + av + '<strong>' + esc(p.name) + '</strong></td><td>' + esc(p.phone) + '</td><td>' + p.level + '</td><td style="color:var(--muted);font-size:12px">' + fmt(p.createdAt) + '</td></tr>';
   });
   if (!html) html = '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--muted)">Chưa có VĐV</td></tr>';
@@ -1172,6 +1218,12 @@ function updateCounts() {
 }
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function safeImgSrc(url) {
+  if (!url) return '';
+  var u = String(url).trim().toLowerCase();
+  if (u.startsWith('http://') || u.startsWith('https://') || u.startsWith('/') || u.startsWith('data:image/')) return String(url).trim();
+  return '';
+}
 
 // EXPORT CSV
 function exportAll() {
@@ -1328,6 +1380,15 @@ async function pushVideosToGitHub() {
 
 // === EXPORT DATA TO WEB ===
 async function exportDataToWeb() {
+  var playerCount = (window.db && window.db.players) ? window.db.players.length : 0;
+  var tournCount  = (window.db && window.db.tournaments) ? window.db.tournaments.length : 0;
+  if (!confirm(
+    'Xuất dữ liệu lên web sẽ GHI ĐÈ dữ liệu hiện tại trên amzpickleball.vn.\n\n' +
+    'Sẽ cập nhật:\n' +
+    '• ' + playerCount + ' vận động viên\n' +
+    '• ' + tournCount  + ' giải đấu\n\n' +
+    'Bạn chắc chắn muốn tiếp tục?'
+  )) return;
   var btn = document.getElementById('btnExportWeb');
   btn.disabled = true; btn.textContent = 'Đang xuất...';
   try {
@@ -1433,11 +1494,11 @@ function badgeClass(badge) {
 }
 
 function videoCardHTML(v, actions) {
-  var thumb = v.thumbnail || 'https://i.ytimg.com/vi/' + v.platformId + '/mqdefault.jpg';
-  var ytLink = 'https://www.youtube.com/watch?v=' + v.platformId;
+  var safePlatformId = esc(v.platformId || '');
+  var thumb = v.thumbnail || 'https://i.ytimg.com/vi/' + safePlatformId + '/mqdefault.jpg';
   var viewStr = v.viewCount >= 1000 ? (v.viewCount / 1000).toFixed(1) + 'K' : (v.viewCount || 0);
   return '<div class="v-card" data-id="' + v.id + '">' +
-    '<div class="v-thumb-wrap" onclick="window.open(\'' + ytLink + '\',\'_blank\')">' +
+    '<div class="v-thumb-wrap" data-ytid="' + safePlatformId + '">' +
       '<img src="' + esc(thumb) + '" alt="" loading="lazy">' +
       '<div class="v-play"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>' +
       (v.duration ? '<span class="v-duration">' + esc(v.duration) + '</span>' : '') +
@@ -1680,6 +1741,14 @@ document.querySelectorAll('[data-vtab]').forEach(function(btn) {
       if (el) el.style.display = t === tab ? '' : 'none';
     });
   });
+});
+
+// Open YouTube via event delegation (avoids inline onclick quote injection)
+document.addEventListener('click', function(e) {
+  var thumb = e.target.closest('.v-thumb-wrap[data-ytid]');
+  if (!thumb) return;
+  var id = thumb.getAttribute('data-ytid');
+  if (id) window.open('https://www.youtube.com/watch?v=' + encodeURIComponent(id), '_blank', 'noopener');
 });
 
 // Init
