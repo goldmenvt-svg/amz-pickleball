@@ -37,7 +37,11 @@ module.exports = async function handler(req, res) {
   try {
     const verifyRes = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${process.env.FIREBASE_API_KEY}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) }
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Referer': 'https://amzpickleball.vn/' },
+        body: JSON.stringify({ idToken }),
+      }
     );
     if (!verifyRes.ok) return res.status(401).json({ error: 'Invalid token' });
   } catch {
