@@ -6,7 +6,7 @@ const REPO      = 'goldmenvt-svg/amz-pickleball';
 const FILE_PATH = 'data/videos.json';
 const BRANCH    = 'master';
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

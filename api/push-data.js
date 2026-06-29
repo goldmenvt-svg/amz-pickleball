@@ -27,7 +27,7 @@ async function pushFile(ghToken, filePath, content, commitMsg) {
   if (!putRes.ok) throw new Error(`${filePath}: ${putRes.status}`);
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // Xác thực Firebase ID token
