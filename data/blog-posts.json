@@ -8,21 +8,27 @@
     "image": "images/hanh-dong/doi-khang-net.jpg"
   },
   {
-    "slug": "ky-thuat-dink",
-    "title": "5 kỹ thuật Dink giúp bạn thắng mọi trận đấu",
-    "excerpt": "Dink là vũ khí bí mật của pro player. Học cách kiểm soát nhịp trận đấu với 5 kỹ thuật này.",
+    "slug": "ky-thuat-serve-pickleball",
+    "title": "Kỹ thuật Serve Pickleball chuẩn: Hướng dẫn từng bước cho người mới",
+    "excerpt": "Serve đúng cách từ đầu: cách đứng, cầm vợt, tung bóng và 3 kiểu serve phổ biến nhất. Tránh 5 lỗi mà 90% người mới mắc phải.",
     "tag": "Kỹ thuật",
     "date": "2026-06-28",
-    "image": "",
-    "draft": true
+    "image": "images/hanh-dong/tap-luyen-1.jpg"
   },
   {
-    "slug": "chon-vot-pickleball",
-    "title": "Cách chọn vợt Pickleball phù hợp với trình độ",
-    "excerpt": "Paddle nào cho người mới? Power hay Control? Hướng dẫn chọn vợt chi tiết từ HLV AMZ.",
-    "tag": "Review",
+    "slug": "review-vot-pickleball-2026",
+    "title": "Top 5 vợt Pickleball tốt nhất 2026 cho người mới tại Việt Nam",
+    "excerpt": "So sánh chất liệu, trọng lượng, giá cả. Tìm vợt phù hợp với ngân sách và phong cách chơi của bạn.",
+    "tag": "Review Gear",
     "date": "2026-07-05",
-    "image": "",
-    "draft": true
+    "image": "images/hanh-dong/hanh-dong-dep.jpg"
+  },
+  {
+    "slug": "loi-ich-suc-khoe-pickleball",
+    "title": "8 lợi ích sức khỏe của Pickleball mà khoa học đã chứng minh",
+    "excerpt": "Tim mạch, đốt calo, sức mạnh cơ bắp, tâm trí và tuổi thọ — Pickleball tốt hơn bạn nghĩ.",
+    "tag": "Sức khỏe",
+    "date": "2026-07-12",
+    "image": "images/hanh-dong/nu-hoc-vien.jpg"
   }
 ]
