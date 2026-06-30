@@ -11,17 +11,42 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    match /registrations/{regId} {
-      allow create: if true;
-      allow read, update, delete: if isAdmin();
-    }
-
     match /settings/{settingId} {
       allow read, write: if isAdmin();
     }
 
     match /config/{configId} {
       allow read, write: if isAdmin();
+    }
+
+    match /players/{playerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /tournaments/{tournamentId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /registrations/{regId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /groups/{groupId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /matches/{matchId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }
