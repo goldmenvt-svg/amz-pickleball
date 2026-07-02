@@ -1,5 +1,5 @@
 {
-  "lastUpdated": "2026-07-02T04:33:57.591Z",
+  "lastUpdated": "2026-07-02T05:12:09.160Z",
   "events": [
     {
       "id": "fha59nql4wvirwTx0IsD",
@@ -8,7 +8,12 @@
       "status": "open",
       "venue": "Sân AMZ Pickleball",
       "court_count": 8,
-      "description": "giải thương cao nhất 100 triệu"
+      "description": "giải thương cao nhất 100 triệu",
+      "note": "giải thương cao nhất 100 triệu",
+      "levels": "",
+      "type": "Giải đấu",
+      "maxTeams": 0,
+      "image": ""
     }
   ]
 }
