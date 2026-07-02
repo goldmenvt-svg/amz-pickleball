@@ -2655,16 +2655,35 @@ async function exportDataToWeb() {
     var eventsJSON = JSON.stringify({
       lastUpdated: new Date().toISOString(),
       events: tournaments.map(function(t) {
-        return { id: t.id, name: t.name, date: t.start_date || t.date, status: t.status, venue: t.venue || '', court_count: t.court_count, description: t.description || '' };
+        return {
+          id: t.id, name: t.name, date: t.start_date || t.date, status: t.status,
+          venue: t.venue || '', court_count: t.court_count,
+          description: t.description || '',
+          // TD-06: bổ sung field trang chủ (index.html) cần để render đầy đủ
+          note: t.description || '',
+          levels: t.levels || '',
+          type: t.type || 'Giải đấu',
+          maxTeams: t.maxTeams || t.max_teams || 0,
+          image: t.image || ''
+        };
       })
     }, null, 2);
     var playersJSON = JSON.stringify({
       lastUpdated: new Date().toISOString(),
       players: players.map(function(p) {
         var name = p.full_name || p.name || '?';
+        // TD-06: trang chủ lọc theo categories + sort/hiển thị theo stats → phải xuất đúng shape
+        var cats = (p.categories && p.categories.length) ? p.categories : ['Đơn nam'];
         return {
           id: p.id, name: name,
           initials: name.split(' ').map(function(w) { return w[0]; }).join('').substring(0, 2).toUpperCase(),
+          level: (p.amz_rating != null ? p.amz_rating : (p.level != null ? p.level : (p.elo_score || 0))),
+          categories: cats,
+          stats: {
+            tournaments: (p.stats && p.stats.tournaments) || 0,
+            wins: (p.stats && p.stats.wins) || 0,
+            points: p.elo_score || 0
+          },
           elo: p.elo_score || 1000,
           amz_rating: p.amz_rating || null,
           club: p.club || '', phone: p.phone || ''
