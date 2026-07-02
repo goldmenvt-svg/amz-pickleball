@@ -1,8 +1,4 @@
 {
-  "functions": {
-    "api/push-videos.js": { "runtime": "nodejs20.x" },
-    "api/push-data.js":   { "runtime": "nodejs20.x" }
-  },
   "redirects": [
     {
       "source": "/:path*",
