@@ -1,8 +1,13 @@
 name: Deploy to GitHub Pages
 
+# DISABLED (TD-01, 2026-06-30): Vercel là host duy nhất (ADR-0001).
+# Trigger đã đổi từ `push` sang `workflow_dispatch` để KHÔNG auto-deploy lên
+# GitHub Pages — Pages không chạy được middleware Basic auth, api/, hay security
+# headers. File giữ lại (không xoá) để có thể chạy thủ công nếu cần khẩn cấp;
+# nếu rollback về Pages, BẮT BUỘC khoá/ẩn admin.html trước. Xem
+# docs/design/DESIGN-deploy-consolidation.md và docs/runbooks/TD-01-*.
 on:
-  push:
-    branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read

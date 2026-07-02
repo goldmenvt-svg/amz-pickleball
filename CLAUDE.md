@@ -2,61 +2,57 @@
 
 ---
 
-## 🗂 Trạng Thái Dự Án (cập nhật lần cuối: 2026-05-31)
+## 🗂 Trạng Thái Dự Án (cập nhật lần cuối: 2026-06-30)
 
-### ✅ Đã hoàn thành
+> Dự án đã vượt xa "Phase 1 static" ban đầu. Hiện có **HAI ứng dụng** + Firebase + 2 pipeline deploy. Đọc kỹ phần Kiến Trúc bên dưới.
 
-| Hạng mục | Trạng thái | File |
+### 🏗 Kiến Trúc Tổng Thể (thực tế)
+
+**1. Site tĩnh (PRODUCTION — đang chạy trên `amzpickleball.vn`)**
+- `index.html` — trang chủ: bảng xếp hạng, sự kiện, trận đấu, tin tức, sân, training, bảng giá, FAQ, liên hệ. Đọc dữ liệu từ `data/*.json` (read-only, không Firebase).
+- `admin.html` — panel quản trị, dùng **Firestore** để sửa events/players/tournaments/matches/groups/registrations, rồi gọi `/api/push-data` + `/api/push-videos` để **ghi JSON ngược lên GitHub repo** → Vercel redeploy → site tĩnh cập nhật. Bảo vệ bằng Basic auth (`middleware.js`).
+- `blog/` — 6 bài HTML + index, đọc `data/blog-posts.json`.
+- `api/push-data.js`, `api/push-videos.js` — Vercel serverless functions.
+
+**2. App Next.js (`app-nextjs/` — WIP, CHƯA deploy)**
+- Next 15 + React 19 + Firebase + Tailwind, chạy local port 3001. "Tournament OS" (Sprint 3).
+- Trang: đặt sân (`/dat-san` — booking + VietQR), giải đấu (`/giai-dau` + đăng ký/lịch/kết quả), bảng xếp hạng, hội viên.
+- Đọc/ghi **Firestore trực tiếp** (live, không qua JSON snapshot). Collections: courts, bookings, players, tournaments, events, matches, registrations, groups.
+- Không có `.vercel`, không nằm trong pipeline nào → hiện chỉ dev cục bộ.
+
+**Điểm căng cần quyết:** site tĩnh và app Next.js **trùng** bảng xếp hạng + giải đấu, nhưng dùng **hai cách lưu data khác nhau** (JSON snapshot vs Firestore live) trên **cùng một Firestore**. Cần chốt một nguồn dữ liệu duy nhất cho mỗi loại nội dung.
+
+### ⚠️ Xung Đột Deploy (ƯU TIÊN XỬ LÝ)
+
+Repo có **2 pipeline deploy chĩa vào cùng domain** — không thể cùng tồn tại:
+
+| Pipeline | File | Hỗ trợ |
 |---|---|---|
-| `index.html` — trang chủ hoàn chỉnh | ✅ Done | `index.html` |
-| Design system (dark theme, typography, animations) | ✅ Done | `index.html` / `.claude/rules/design-system.md` |
-| 10 design fixes so sánh với inspiration | ✅ Done | `index.html` |
-| Rules tách riêng theo chủ đề | ✅ Done | `.claude/rules/` |
-| Agent `researcher` | ✅ Done | `.claude/agents/researcher.md` |
-| Agent `tao-noi-dung-pickleball` | ✅ Done | `.claude/agents/tao-noi-dung-pickleball.md` |
-| Nội dung website 7 phần (homepage → FAQ → CTA) | ✅ Done | Trong conversation — chưa tích hợp vào HTML |
-| Form liên hệ `#lien-he` tích hợp trong index.html | ✅ Done | `index.html` |
-| Gmail MCP config | ✅ Done | `.claude/settings.json` |
+| **Vercel** | `.vercel/`, `vercel.json` | ✅ serverless `api/`, ✅ Basic auth `middleware.js`, ✅ security headers |
+| **GitHub Pages** | `.github/workflows/deploy.yml`, `CNAME` | ❌ KHÔNG chạy được api/, middleware, headers |
 
-### 🔄 Đang chờ / Chưa làm
+→ Nếu domain trỏ về **GitHub Pages**, `admin.html` **mất Basic auth** (lộ panel) và `/api/push-*` không hoạt động. **Khuyến nghị: chỉ giữ Vercel**, xóa `deploy.yml` + `CNAME` (cấu hình domain trong Vercel). Firebase chỉ dùng cho Firestore (rules deploy qua `firebase deploy --only firestore:rules`), KHÔNG dùng hosting.
+
+### 🔄 Còn thiếu / chưa làm
 
 | Hạng mục | Ưu tiên | Ghi chú |
 |---|---|---|
-| Ảnh thực tế (sân, người chơi, giải đấu) | 🔴 Cao | Hiện chỉ có CSS placeholder |
-| Tích hợp Formspree cho email thật | 🔴 Cao | Code đã sẵn sàng, cần `YOUR_FORM_ID` |
-| Tích hợp nội dung 7 phần vào HTML | 🟡 Trung | Nội dung đã generate, chưa đưa vào `index.html` |
-| Bảng giá section | 🟡 Trung | Nội dung đã có, chưa có HTML |
-| Blog SEO (bài Pickleball là gì) | 🟡 Trung | Nội dung đã có |
-| Deploy lên Cloudflare Pages | 🟡 Trung | Đã research, Cloudflare thắng toàn diện |
-| Thông tin còn thiếu (Instagram, Zalo, TikTok, email) | 🟡 Trung | Placeholder trong footer |
-| Google Maps embed | 🟢 Thấp | Địa chỉ: 179 Thống Nhất, Phường Vũng Tàu, TP.HCM |
-| Xác thực Gmail MCP (`credentials.json`) | 🟢 Thấp | Cần Google Cloud Console setup |
-| Favicon + Open Graph images | 🟢 Thấp | Chưa có |
-
----
-
-### 🧭 Bước Tiếp Theo (theo thứ tự ưu tiên)
-
-1. **Cung cấp ảnh thực tế** → thay CSS placeholder trong Courts section
-2. **Formspree** → tạo account, lấy form ID, uncomment 2 dòng trong `index.html` (có comment `TODO`)
-3. **Điền thông tin còn thiếu** → Instagram, Zalo, TikTok, email liên hệ, mô tả CLB, USP thực tế
-4. **Tích hợp nội dung** → bảng giá + blog SEO đã generate, cần thêm vào HTML
-5. **Deploy Cloudflare Pages** → kéo thư mục lên dashboard, free, CDN VN ~30ms
-
----
+| Chốt 1 pipeline deploy (bỏ GitHub Pages) | 🔴 Cao | Xung đột domain + lỗ hổng auth admin |
+| Hợp nhất nguồn data (JSON snapshot vs Firestore) | 🔴 Cao | Tránh lệch dữ liệu giữa 2 app |
+| Quyết định số phận `app-nextjs` (deploy / gộp / bỏ) | 🔴 Cao | Hiện là WIP không deploy |
+| Email liên hệ chính thức | 🟡 Trung | CLAUDE.md vẫn ghi [CHƯA CÓ] |
+| Thông tin social còn thiếu (Instagram, Zalo, TikTok) | 🟡 Trung | Placeholder trong footer |
+| Dọn file dev khỏi repo | 🟢 Thấp | `*.docx`, `test-results/`, `contact-*.png` |
 
 ### 🏛 Quyết Định Quan Trọng & Lý Do
 
 | Quyết định | Lý do |
 |---|---|
-| **Phase 1: Static HTML** thay vì Next.js | Nhanh hơn, không cần build step, dễ deploy mọi nơi. Chuyển Next.js ở Phase 2 khi cần blog/SSR |
-| **Background `#000000`** thay vì `#0a0a0a` | Sát hơn với inspiration, tương phản tốt hơn |
-| **Accent `#c8f03a` dùng cực kỳ ít** — chỉ hero italic + CTA button | Inspiration gần như monochromatic; accent càng ít càng có lực |
-| **Services: numbered list** thay vì card grid | Inspection: inspiration dùng editorial list, card grid trông "template" |
-| **Marquee ticker** từ neon yellow → muted/transparent | Ticker màu neon quá commercial, không phù hợp aesthetic tối giản |
-| **Contact form tích hợp index.html** thay vì trang riêng | Tăng conversion rate, giữ user trên trang chủ |
-| **Email: mock trước**, comment Formspree sẵn sàng | Không cần backend ngay; 1 dòng code để kích hoạt thật sau |
-| **Deploy: Cloudflare Pages** (research qua agent) | Bandwidth không giới hạn + CDN có PoP VN (~30ms vs Netlify ~300ms) |
+| **Deploy: Vercel** (không phải Cloudflare/GitHub Pages) | Cần serverless `api/` + Basic auth middleware + security headers — chỉ Vercel chạy đủ |
+| **Firestore làm DB sống**, JSON là snapshot công khai | Admin sửa trên Firestore → push JSON → site tĩnh đọc JSON nhanh, SEO tốt |
+| **app-nextjs = "Tournament OS"** cho phần động (đặt sân, giải đấu) | Site tĩnh giữ marketing/nội dung; phần tương tác cần app riêng |
+| **Background `#000000`**, accent `#c8f03a` dùng cực ít | Bám inspiration monochromatic; accent càng ít càng có lực |
+| **Contact form Formspree** (`/f/xeebjkrz`) tích hợp trong index.html | Tăng conversion, giữ user trên trang chủ — đã kích hoạt thật |
 
 ---
 
@@ -265,48 +261,52 @@ const sectionVariants = {
 - "Xem lịch sự kiện" (View events)
 - "Liên hệ chúng tôi" (Contact us)
 
-## File Structure (Phase 1 — hiện tại)
+## File Structure (thực tế — 2026-06-30)
 
 ```
 d:\website test\
 ├── CLAUDE.md                        ← project guide (file này)
-├── index.html                       ← ✅ toàn bộ website (HTML + CSS + JS)
-├── package.json                     ← chỉ có playwright để testing
+│
+│   ── SITE TĨNH (production / Vercel) ──
+├── index.html                       ← trang chủ (HTML + CSS + JS, đọc data/*.json)
+├── admin.html                       ← panel quản trị (Firestore, sau Basic auth)
+├── 404.html
+├── blog/
+│   ├── index.html
+│   └── posts/                       ← 6 bài blog HTML
+├── data/                            ← snapshot công khai site tĩnh đọc
+│   ├── events.json · players.json · videos.json · blog-posts.json
+├── content/                         ← 5 bài blog nguồn (.md)
+├── api/
+│   ├── push-data.js                 ← Vercel fn: ghi JSON ngược lên GitHub
+│   └── push-videos.js
+├── middleware.js                    ← Basic auth cho /admin.html (Vercel Edge)
+├── vercel.json                      ← functions + security headers + cache
+├── firebase.json · firestore.rules  ← chỉ deploy Firestore rules
+├── manifest.json · sw.js · favicon.svg · robots.txt · sitemap.xml
+├── logo.jpg · logo.webp · images/
+│
+│   ── XUNG ĐỘT DEPLOY (xem phần Kiến Trúc) ──
+├── CNAME                            ← ⚠️ GitHub Pages (amzpickleball.vn)
+├── .github/workflows/
+│   ├── deploy.yml                   ← ⚠️ deploy GitHub Pages (xung đột Vercel)
+│   ├── sync-youtube.yml             ← cron cập nhật videos.json
+│   └── video-scan.yml
+├── .vercel/                         ← Vercel project "website-test"
+│
+│   ── APP NEXT.JS (WIP, chưa deploy) ──
+├── app-nextjs/                      ← Next 15 "Tournament OS", port 3001
+│   └── src/{app,components,lib,types}   ← Firestore trực tiếp
+│
+│   ── CẤU HÌNH / NỘI DUNG ──
 ├── .claude/
-│   ├── settings.json                ← ✅ Gmail MCP config
-│   ├── agents/
-│   │   ├── researcher.md            ← ✅ research agent
-│   │   └── tao-noi-dung-pickleball.md ← ✅ content agent
-│   └── rules/
-│       ├── mandatory-rules.md       ← ✅ screenshot / mobile / animation rules
-│       ├── design-system.md         ← ✅ colors, typography, motion
-│       ├── company-info.md          ← ✅ địa chỉ, SĐT, giờ, social
-│       ├── dev-conventions.md       ← ✅ HTML semantics, perf, a11y
-│       ├── content-guidelines.md    ← ✅ tone, structure, SEO
-│       └── tech-stack.md            ← ✅ stack hiện tại + Phase 2
+│   ├── settings.json                ← Gmail MCP config
+│   ├── agents/                      ← researcher, tao-noi-dung, cto-advisor, ...
+│   └── rules/                       ← design-system, company-info, dev-conventions, ...
+├── firestore-schema.md · huong-dan-airtable.md · huong-dan-youtube.md
 └── godly.website_website_ohzi-interactive-555.png  ← design inspiration
-```
 
-## File Structure (Phase 2 — Next.js, khi cần scale)
-
-```
-├── app/
-│   ├── layout.tsx
-│   ├── page.tsx
-│   ├── about/page.tsx
-│   ├── services/page.tsx
-│   ├── courts/page.tsx
-│   ├── training/page.tsx
-│   ├── events/page.tsx
-│   └── contact/page.tsx
-├── components/sections/
-│   ├── Hero.tsx · Services.tsx · About.tsx
-│   ├── Stats.tsx · Courts.tsx · Training.tsx
-│   ├── Testimonials.tsx · Events.tsx · CTABanner.tsx
-│   └── ContactForm.tsx
-├── components/ui/
-│   └── Button.tsx · Badge.tsx · RevealWrapper.tsx
-└── styles/globals.css
+  (dev artifacts — nên gitignore: *.docx, test-results/, *-mobile.png, screenshot*.png)
 ```
 
 ## Notes

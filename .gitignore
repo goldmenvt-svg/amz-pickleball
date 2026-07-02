@@ -23,6 +23,11 @@ screenshot.mjs
 verify.js
 reports/
 
+# Dev artifacts (TD-14) — báo cáo, ảnh chụp, kết quả test không cần trong repo
+*.docx
+test-results/
+contact-*.png
+
 # OS files
 Thumbs.db
 .DS_Store

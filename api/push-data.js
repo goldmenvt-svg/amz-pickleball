@@ -34,6 +34,9 @@ module.exports = async function handler(req, res) {
   const idToken = (req.headers['authorization'] || '').replace('Bearer ', '').trim();
   if (!idToken) return res.status(401).json({ error: 'Missing auth token' });
 
+  // TD-02: verify token HỢP LỆ và đúng ADMIN (không chỉ verifyRes.ok)
+  const adminEmail = (process.env.ADMIN_EMAIL || '').toLowerCase();
+  if (!adminEmail) return res.status(500).json({ error: 'ADMIN_EMAIL not set on server' });
   try {
     const verifyRes = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${process.env.FIREBASE_API_KEY}`,
@@ -44,6 +47,12 @@ module.exports = async function handler(req, res) {
       }
     );
     if (!verifyRes.ok) return res.status(401).json({ error: 'Invalid token' });
+    const info = await verifyRes.json();
+    const email = info?.users?.[0]?.email?.toLowerCase();
+    if (email !== adminEmail) {
+      console.warn('[push-data] Forbidden: non-admin token');
+      return res.status(403).json({ error: 'Forbidden: not admin' });
+    }
   } catch {
     return res.status(401).json({ error: 'Auth failed' });
   }

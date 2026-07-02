@@ -7,6 +7,32 @@ service cloud.firestore {
           && request.auth.token.email == "goldmenvt@gmail.com";
     }
 
+    // TD-03: đăng ký công khai KHÔNG cần đăng nhập (form dat-san/giai-dau),
+    // nên thay `create: if true` bằng validate shape để chặn ghi rác/lạm quyền.
+    // Người đăng ký công khai chỉ được tạo đúng field, luôn ở trạng thái 'pending'.
+    function isValidPublicRegistration() {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+               'event_id','player_1_name','player_1_phone','player_1_email','player_1_id',
+               'player_2_name','player_2_phone','player_2_id',
+               'status','payment_status','checkin_status','seed_number','source','created_at'
+             ])
+          && d.event_id is string && d.event_id.size() > 0 && d.event_id.size() < 200
+          && d.player_1_name is string && d.player_1_name.size() > 0 && d.player_1_name.size() < 100
+          && d.player_1_phone is string && d.player_1_phone.size() > 0 && d.player_1_phone.size() < 20
+          && d.status == 'pending'
+          && d.payment_status == 'pending'
+          && d.checkin_status == 'pending'
+          && d.seed_number == 0
+          && d.source == 'public'
+          && d.player_1_id == null
+          && d.player_2_id == null
+          && (d.player_1_email == null || (d.player_1_email is string && d.player_1_email.size() < 150))
+          && (d.player_2_name  == null || (d.player_2_name  is string && d.player_2_name.size()  < 100))
+          && (d.player_2_phone == null || (d.player_2_phone is string && d.player_2_phone.size() < 20))
+          && d.created_at is string && d.created_at.size() < 40;
+    }
+
     match /videos/{videoId} {
       allow read, write: if isAdmin();
     }
@@ -35,7 +61,7 @@ service cloud.firestore {
     }
 
     match /registrations/{regId} {
-      allow create: if true;
+      allow create: if isAdmin() || isValidPublicRegistration();
       allow read, update, delete: if isAdmin();
     }
 

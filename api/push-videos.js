@@ -13,6 +13,11 @@ module.exports = async function handler(req, res) {
     return res.status(401).json({ error: 'Missing Firebase auth token' });
   }
 
+  // TD-02: verify token HỢP LỆ và đúng ADMIN (không chỉ verifyRes.ok)
+  const adminEmail = (process.env.ADMIN_EMAIL || '').toLowerCase();
+  if (!adminEmail) {
+    return res.status(500).json({ error: 'ADMIN_EMAIL not set on server' });
+  }
   try {
     const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${process.env.FIREBASE_API_KEY}`;
     const verifyRes = await fetch(verifyUrl, {
@@ -25,6 +30,12 @@ module.exports = async function handler(req, res) {
     });
     if (!verifyRes.ok) {
       return res.status(401).json({ error: 'Invalid Firebase token' });
+    }
+    const info = await verifyRes.json();
+    const email = info?.users?.[0]?.email?.toLowerCase();
+    if (email !== adminEmail) {
+      console.warn('[push-videos] Forbidden: non-admin token');
+      return res.status(403).json({ error: 'Forbidden: not admin' });
     }
   } catch {
     return res.status(401).json({ error: 'Auth verification failed' });

@@ -3,6 +3,14 @@
     "api/push-videos.js": { "runtime": "nodejs20.x" },
     "api/push-data.js":   { "runtime": "nodejs20.x" }
   },
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.amzpickleball.vn" }],
+      "destination": "https://amzpickleball.vn/:path*",
+      "permanent": true
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
