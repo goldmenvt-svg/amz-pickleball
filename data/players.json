@@ -1,95 +1,14 @@
 {
-  "lastUpdated": "2026-06-22T18:00:00Z",
+  "lastUpdated": "2026-07-02T04:32:24.289Z",
   "players": [
     {
-      "id": "p1",
-      "name": "Phạm Hữu Tài",
-      "initials": "PH",
-      "level": 4.5,
-      "photo": "",
-      "categories": ["Đơn nam", "Đôi nam"],
-      "stats": { "tournaments": 12, "wins": 8, "points": 1450 }
-    },
-    {
-      "id": "p2",
-      "name": "Trần Ngọc Anh",
-      "initials": "TN",
-      "level": 4.0,
-      "photo": "",
-      "categories": ["Đơn nữ", "Đôi nam nữ"],
-      "stats": { "tournaments": 9, "wins": 5, "points": 1180 }
-    },
-    {
-      "id": "p3",
-      "name": "Lê Minh Châu",
-      "initials": "LM",
-      "level": 3.5,
-      "photo": "",
-      "categories": ["Đơn nam", "Đôi nam nữ"],
-      "stats": { "tournaments": 7, "wins": 3, "points": 920 }
-    },
-    {
-      "id": "p4",
-      "name": "Nguyễn Văn Dũng",
+      "id": "wJUHDFDv3QAXeEoPXcRA",
+      "name": "nguyễn văn tam",
       "initials": "NV",
-      "level": 3.5,
-      "photo": "",
-      "categories": ["Đơn nam", "Đôi nam"],
-      "stats": { "tournaments": 6, "wins": 4, "points": 860 }
-    },
-    {
-      "id": "p5",
-      "name": "Hoàng Thị Mai",
-      "initials": "HT",
-      "level": 3.0,
-      "photo": "",
-      "categories": ["Đơn nữ", "Đôi nữ"],
-      "stats": { "tournaments": 5, "wins": 3, "points": 720 }
-    },
-    {
-      "id": "p6",
-      "name": "Đặng Quốc Bảo",
-      "initials": "ĐQ",
-      "level": 3.0,
-      "photo": "",
-      "categories": ["Đơn nam", "Đôi nam"],
-      "stats": { "tournaments": 4, "wins": 2, "points": 580 }
-    },
-    {
-      "id": "p7",
-      "name": "Vũ Thanh Hằng",
-      "initials": "VT",
-      "level": 2.5,
-      "photo": "",
-      "categories": ["Đơn nữ", "Đôi nam nữ"],
-      "stats": { "tournaments": 3, "wins": 2, "points": 440 }
-    },
-    {
-      "id": "p8",
-      "name": "Trần Đại Nghĩa",
-      "initials": "TĐ",
-      "level": 4.0,
-      "photo": "",
-      "categories": ["Đơn nam", "Đôi nam nữ"],
-      "stats": { "tournaments": 8, "wins": 6, "points": 1250 }
-    },
-    {
-      "id": "p9",
-      "name": "Nguyễn Thị Hồng",
-      "initials": "NT",
-      "level": 3.5,
-      "photo": "",
-      "categories": ["Đơn nữ", "Đôi nữ", "Đôi nam nữ"],
-      "stats": { "tournaments": 6, "wins": 4, "points": 850 }
-    },
-    {
-      "id": "p10",
-      "name": "Lý Quang Vinh",
-      "initials": "LQ",
-      "level": 3.0,
-      "photo": "",
-      "categories": ["Đơn nam", "Đôi nam"],
-      "stats": { "tournaments": 5, "wins": 2, "points": 620 }
+      "elo": 1000,
+      "amz_rating": 2,
+      "club": "AMZ TPHCM",
+      "phone": "0914938955"
     }
   ]
 }
