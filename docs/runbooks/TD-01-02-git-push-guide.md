@@ -108,4 +108,19 @@ Nếu API trả **500 "ADMIN_EMAIL not set"** → kiểm lại biến `ADMIN_EMA
 
 ---
 
+---
+
+## KẾT QUẢ DEPLOY THỰC TẾ (2026-07-02)
+
+Ghi lại các phát hiện khi thực thi:
+
+1. **Pipeline deploy đã hỏng âm thầm ~3 ngày.** Commit `b24302b` thêm `functions: { runtime: "nodejs20.x" }` vào `vercel.json` — giá trị KHÔNG hợp lệ ("Function Runtimes must have a valid version") → **mọi push master build Error**. Production bị "đóng băng" ở bản cũ `90eaf31` qua Redeploy thủ công. → Đã sửa: bỏ khối `functions` (commit `ad9b06b`); Node functions Vercel tự nhận diện.
+2. **Master KHÔNG tự lên Production.** Project cấu hình để push master → **Preview**; Production phải **Promote thủ công**. → Đã Promote `ad9b06b` lên Production. *(Tech debt: nên đặt master là Production Branch để auto-deploy — xem MASTER_ROADMAP CI/CD.)*
+3. **Đã xác nhận live:** `GET /api/push-data` → `405 {"error":"Method not allowed"}` (function chạy, code TD-02 đã deploy); Production = `ad9b06b` (chứa toàn bộ P0).
+4. **Redirect www→apex — ĐÃ XỬ LÝ (domain-level).** `vercel.json` `has host` không kích hoạt, nên chuyển sang redirect tầng domain trên Vercel. Đã repoint 2 domain `.com` từ `www.vn` sang apex (301), rồi đặt `www.amzpickleball.vn` → **301 → amzpickleball.vn**. Đã verify: `www.amzpickleball.vn` chuyển hướng về `amzpickleball.vn`. *(Khối `redirects` trong `vercel.json` giờ dư thừa nhưng vô hại — có thể dọn sau.)*
+5. **Production Branch — ĐÃ SỬA.** Nguyên nhân "master không tự lên Production": Vercel → Environments → Production track nhánh **`main`** trong khi repo dùng **`master`**. Đã đổi sang `master` → từ nay push `master` tự deploy Production (bỏ promote thủ công).
+6. **Còn cần user xác nhận:** đăng nhập admin panel (`goldmenvt@gmail.com`) → push dữ liệu → nếu 200 thì `ADMIN_EMAIL` đúng (đóng TD-02).
+
+---
+
 *Tham chiếu: `P0-execution-checklist.md`, `TD-01-*`, `TD-02-*`, `TD-03-*` trong `docs/runbooks/`.*
