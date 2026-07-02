@@ -65,9 +65,10 @@
       "viewCount": 56,
       "priority": 4,
       "badge": "Thi đấu",
-      "status": "pending",
+      "status": "approved",
       "addedAt": "2026-06-22T15:27:26.830Z",
-      "approvedAt": null
+      "approvedAt": "2026-07-02T04:35:53.657Z",
+      "category": "featured"
     },
     {
       "id": "yt_iwbzkkMYu5w",
