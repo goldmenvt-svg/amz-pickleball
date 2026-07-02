@@ -1,53 +1,14 @@
 {
-  "lastUpdated": "2026-06-22T18:00:00Z",
+  "lastUpdated": "2026-07-02T04:32:24.289Z",
   "events": [
     {
-      "id": "evt1",
-      "name": "AMZ Open Tournament — Vòng Tháng 7",
-      "date": "2026-07-05",
-      "type": "Nội bộ",
-      "status": "Mở đăng ký",
-      "maxTeams": 16,
-      "levels": "3.0-4.5",
-      "prize": "Tiền mặt + quà tặng",
-      "note": "Đôi nam + Đôi nữ + Đôi hỗn hợp",
-      "image": ""
-    },
-    {
-      "id": "evt2",
-      "name": "Buổi Tập Thử Miễn Phí — Người Mới",
-      "date": "2026-07-12",
-      "type": "Nội bộ",
-      "status": "Mở đăng ký",
-      "maxTeams": 20,
-      "levels": "2.0-3.0",
-      "prize": "",
-      "note": "Trải nghiệm Pickleball lần đầu · HLV hướng dẫn",
-      "image": ""
-    },
-    {
-      "id": "evt3",
-      "name": "AMZ vs Các CLB TP.HCM — Giao Hữu",
-      "date": "2026-07-19",
-      "type": "Liên CLB",
-      "status": "Sắp mở",
-      "maxTeams": 12,
-      "levels": "3.5-5.0",
-      "prize": "",
-      "note": "Giao hữu liên câu lạc bộ · Dành cho thành viên",
-      "image": ""
-    },
-    {
-      "id": "evt4",
-      "name": "Dink & Drink Friday — Tháng 7",
-      "date": "2026-07-25",
-      "type": "Nội bộ",
-      "status": "Mở đăng ký",
-      "maxTeams": 24,
-      "levels": "Mọi trình độ",
-      "prize": "",
-      "note": "Mini-tournament tối thứ 6 · Giao lưu cộng đồng",
-      "image": ""
+      "id": "fha59nql4wvirwTx0IsD",
+      "name": "Giao Lưu Sen Quê",
+      "date": "2026-12-11",
+      "status": "open",
+      "venue": "Sân AMZ Pickleball",
+      "court_count": 8,
+      "description": "giải thương cao nhất 100 triệu"
     }
   ]
 }
