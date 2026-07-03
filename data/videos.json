@@ -1,5 +1,5 @@
 {
-  "lastScan": "2026-06-22T15:27:26.830Z",
+  "lastScan": "2026-07-03T04:41:26.641Z",
   "videos": [
     {
       "id": "yt__3QEQx-USxw",
@@ -35,6 +35,42 @@
       "addedAt": "2026-06-22T15:27:26.830Z",
       "approvedAt": "2026-07-02T04:35:53.657Z",
       "category": "featured"
+    },
+    {
+      "id": "yt_frq0kFxyBHA",
+      "platform": "youtube",
+      "platformId": "frq0kFxyBHA",
+      "title": "Tốp_T Chu VS Tiến_Phương",
+      "description": "Video Pickleball tại sân AMZ — 179 Thống Nhất, TP.HCM",
+      "channelTitle": "AMZ Pickleball",
+      "thumbnail": "https://i.ytimg.com/vi/frq0kFxyBHA/hqdefault.jpg",
+      "duration": "",
+      "publishedAt": "2026-06-26",
+      "viewCount": 0,
+      "priority": 5,
+      "badge": "Mới",
+      "status": "approved",
+      "category": "grid",
+      "addedAt": "2026-07-03T04:41:26.641Z",
+      "approvedAt": "2026-07-03T04:41:26.641Z"
+    },
+    {
+      "id": "yt_kn69UOHSPlE",
+      "platform": "youtube",
+      "platformId": "kn69UOHSPlE",
+      "title": "Tốp_T Chu Vs Tiến_Phương 2",
+      "description": "Video Pickleball tại sân AMZ — 179 Thống Nhất, TP.HCM",
+      "channelTitle": "AMZ Pickleball",
+      "thumbnail": "https://i.ytimg.com/vi/kn69UOHSPlE/hqdefault.jpg",
+      "duration": "",
+      "publishedAt": "2026-06-29",
+      "viewCount": 0,
+      "priority": 5,
+      "badge": "Mới",
+      "status": "approved",
+      "category": "grid",
+      "addedAt": "2026-07-03T04:41:26.641Z",
+      "approvedAt": "2026-07-03T04:41:26.641Z"
     },
     {
       "id": "yt_iwbzkkMYu5w",
