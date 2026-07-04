@@ -31,3 +31,7 @@ contact-*.png
 # OS files
 Thumbs.db
 .DS_Store
+
+.vercel
+.env*
+!.env*.example

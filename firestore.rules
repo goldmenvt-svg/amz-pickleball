@@ -74,5 +74,36 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    // TD-04: bổ sung rule cho các collection app-nextjs / schema dùng.
+    // courts hiển thị công khai (trang đặt sân đọc để render).
+    match /courts/{courtId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Các collection dưới CHƯA có luồng client hoàn chỉnh (đặt sân đang mock,
+    // app chưa có đăng nhập). Tạm admin-only (fail-closed, an toàn). Khi triển khai
+    // đặt sân/hội viên + mô hình đăng nhập sẽ mở rule owner-based (request.auth.uid)
+    // — xem docs/design/DESIGN-firestore-rules.md. payments/elo_history append-only.
+    match /bookings/{bookingId} {
+      allow read, write: if isAdmin();
+    }
+    match /payments/{paymentId} {
+      allow read:   if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+    match /members/{uid} {
+      allow read, write: if isAdmin();
+    }
+    match /users/{uid} {
+      allow read, write: if isAdmin();
+    }
+    match /elo_history/{id} {
+      allow read:   if true;
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
   }
 }
