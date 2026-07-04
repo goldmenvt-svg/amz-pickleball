@@ -4,9 +4,9 @@
 > **Giai đoạn 1: chỉ deploy PREVIEW** (`*.vercel.app`), KHÔNG gắn subdomain công khai. App còn WIP (đặt sân mock, chưa có login) → chưa công khai.
 
 > **⚠️ Ghi chú trạng thái (cập nhật 2026-07-04):** Đây là runbook/biên bản deploy preview app-nextjs, không phải nguồn xác nhận trạng thái sống.
-> - Trạng thái "rules đã publish qua Firebase Console" (mục bên dưới) hiện **CHƯA được xác minh lại** bằng Firebase Console.
-> - Trạng thái Vercel app-nextjs preview hiện **CHƯA được xác minh** đã deploy thành công.
-> - Không dùng file này làm bằng chứng duy nhất cho trạng thái production — cần xác minh lại trực tiếp trước khi dựa vào các claim bên dưới.
+> - ✅ Firebase rules đã được Owner **kiểm tra thủ công trên Firebase Console ngày 2026-07-04**. Nội dung production rules **khớp với `firestore.rules` tại commit `fcd87c2`** về các rule TD-04 (`courts`, `bookings`, `payments`, `members`, `users`, `elo_history`, `registrations` dùng `isValidPublicRegistration()`).
+> - Trạng thái Vercel app-nextjs preview hiện **vẫn CHƯA được xác minh** đã deploy thành công.
+> - Không dùng file này làm bằng chứng cho trạng thái Vercel preview — cần xác minh lại trực tiếp trước khi dựa vào các claim liên quan tới Vercel bên dưới.
 
 ## Bối cảnh sẵn sàng (đọc kỹ)
 - ✅ Chạy thật: xem giải đấu, form đăng ký giải (ghi Firestore).
