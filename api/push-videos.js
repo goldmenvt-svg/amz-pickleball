@@ -56,7 +56,27 @@ module.exports = async function handler(req, res) {
       `https://api.github.com/repos/${REPO}/contents/${FILE_PATH}?ref=${BRANCH}&t=${Date.now()}`,
       { headers: { Authorization: `Bearer ${ghToken}`, Accept: 'application/vnd.github.v3+json' }, cache: 'no-store' }
     );
-    const sha = getRes.ok ? (await getRes.json()).sha : undefined;
+    if (!getRes.ok) {
+      return res.status(500).json({ error: 'Không đọc được dữ liệu hiện tại trên GitHub để kiểm tra xung đột — vui lòng thử lại.' });
+    }
+    const current = await getRes.json();
+    const sha = current.sha;
+
+    // TD-10: chống ghi đè âm thầm. lastScan chỉ bị cron (sync-youtube/video-discover)
+    // thay đổi — admin approve/reject không đụng tới field này. Nếu lastScan hiện tại
+    // trên GitHub khác với lastScan mà client đang giữ (baseline lúc admin tải dữ liệu),
+    // nghĩa là cron đã ghi thêm/duyệt video sau khi admin tải — từ chối ghi đè.
+    let currentContent;
+    try {
+      currentContent = JSON.parse(Buffer.from(current.content, 'base64').toString('utf-8'));
+    } catch {
+      return res.status(500).json({ error: 'Không đọc được dữ liệu hiện tại trên GitHub để kiểm tra xung đột — vui lòng thử lại.' });
+    }
+    if (currentContent.lastScan !== videoData.lastScan) {
+      return res.status(409).json({
+        error: 'Dữ liệu video đã thay đổi trên GitHub (có thể do đồng bộ tự động). Vui lòng tải lại trang rồi duyệt lại.',
+      });
+    }
 
     const content = Buffer.from(JSON.stringify(videoData, null, 2) + '\n').toString('base64');
     const today   = new Date().toISOString().substring(0, 10);

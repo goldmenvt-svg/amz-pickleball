@@ -242,10 +242,11 @@ async function discover() {
     var isFeaturedChannel = isProChannel(v.channelTitle);
 
     if (isFeaturedGroup || isFeaturedChannel) {
+      // Video bên thứ ba / pro / quốc tế — không tự động approved, chờ Owner duyệt tay.
       v.category = 'featured';
-      v.status = 'approved';
+      v.status = 'pending';
       v.badge = 'Thi đấu';
-      v.approvedAt = new Date().toISOString();
+      v.approvedAt = null;
       newFeatured.push(v);
     } else {
       v.status = 'pending';
@@ -279,7 +280,7 @@ async function discover() {
     });
   }
   if (newFeatured.length) {
-    console.log('New Featured (auto-approved): ' + newFeatured.length);
+    console.log('New Featured (pending review): ' + newFeatured.length);
     newFeatured.forEach(function(v) {
       console.log('  [P' + v.priority + '] ' + v.title.substring(0, 70) + ' (' + v.duration + ', ' + v.viewCount + ' views)');
     });

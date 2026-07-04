@@ -2625,6 +2625,11 @@ async function pushVideosToGitHub() {
     });
     if (!res.ok) {
       var err = await res.json().catch(function() { return { error: res.status }; });
+      if (res.status === 409) {
+        updateSyncStatus('error', 'Dữ liệu video đã thay đổi, vui lòng tải lại trang rồi duyệt lại.');
+        toast('Dữ liệu video đã thay đổi — vui lòng tải lại trang (F5) rồi duyệt lại.');
+        return;
+      }
       throw new Error(err.error || res.status);
     }
     updateSyncStatus('ok', 'Đã push lên GitHub — web cập nhật trong ~30s');
