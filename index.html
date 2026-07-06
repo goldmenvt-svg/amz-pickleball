@@ -3503,8 +3503,9 @@
       var grid = document.getElementById('videoGrid');
       if (!grid) return;
 
-      var ALLOWED_VIDEO_PLATFORMS = { youtube: true, facebook: true };
+      var ALLOWED_VIDEO_PLATFORMS = { youtube: true, facebook: true, tiktok: true };
       function safeVideoId(id) { return typeof id === 'string' && /^[a-zA-Z0-9_\-]{5,100}$/.test(id) ? id : null; }
+      var TIKTOK_PLACEHOLDER_THUMB = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#111"/><text x="160" y="95" font-family="Arial,sans-serif" font-size="22" fill="#fff" text-anchor="middle">TikTok</text></svg>');
 
       function renderVideoCards(videos) {
         var safeVideos = videos.filter(function(v) {
@@ -3517,15 +3518,18 @@
         grid.innerHTML = safeVideos.map(function(v, i) {
           var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
           var isYT = v.platform === 'youtube';
+          var isTT = v.platform === 'tiktok';
           var thumb = v.thumbnail || '';
           if (isYT && v.platformId && !thumb.startsWith('images/')) {
             thumb = 'https://i.ytimg.com/vi/' + v.platformId + '/mqdefault.jpg';
+          } else if (isTT && !thumb) {
+            thumb = TIKTOK_PLACEHOLDER_THUMB;
           }
-          return '<div class="video-card reveal' + delay + '" data-platform="' + escapeHTML(v.platform) + '" data-video-id="' + escapeHTML(v.platformId || '') + '">' +
+          return '<div class="video-card reveal' + delay + '" data-platform="' + escapeHTML(v.platform) + '" data-video-id="' + escapeHTML(v.platformId || '') + '" data-source-url="' + escapeHTML(v.sourceUrl || '') + '">' +
             '<div class="video-thumb">' +
             '<img src="' + escapeHTML(thumb) + '" alt="' + escapeHTML(v.title) + '" loading="lazy">' +
             '<div class="video-play-overlay"><div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div></div>' +
-            (v.duration ? '<span class="video-duration">' + escapeHTML(v.duration) + '</span>' : '') +
+            (isTT ? '<span class="video-duration">TikTok ↗</span>' : (v.duration ? '<span class="video-duration">' + escapeHTML(v.duration) + '</span>' : '')) +
             '</div>' +
             '<div class="video-info">' +
             (v.badge ? '<span class="video-badge">' + escapeHTML(v.badge) + '</span>' : '') +
@@ -3559,6 +3563,9 @@
               iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
               thumb.appendChild(iframe);
               card.classList.add('video-embed-active');
+            } else if (platform === 'tiktok') {
+              var sourceUrl = card.dataset.sourceUrl;
+              if (sourceUrl) window.open(sourceUrl, '_blank', 'noopener');
             }
           });
         });
@@ -3595,10 +3602,11 @@
       var featGrid = document.getElementById('featuredGrid');
       if (!heroWrap || !featGrid) return;
 
-      var ALLOWED_FEAT_PLATFORMS = { youtube: true, facebook: true };
+      var ALLOWED_FEAT_PLATFORMS = { youtube: true, facebook: true, tiktok: true };
       function safeFeatId(id) { return typeof id === 'string' && /^[a-zA-Z0-9_\-]{5,100}$/.test(id) ? id : null; }
+      var TIKTOK_PLACEHOLDER_THUMB_FEAT = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#111"/><text x="160" y="95" font-family="Arial,sans-serif" font-size="22" fill="#fff" text-anchor="middle">TikTok</text></svg>');
 
-      function embedIframe(container, platform, videoId) {
+      function embedIframe(container, platform, videoId, sourceUrl) {
         if (platform === 'youtube' && safeFeatId(videoId)) {
           var wrap = document.createElement('div');
           wrap.className = 'featured-hero-embed';
@@ -3610,6 +3618,8 @@
           wrap.appendChild(iframe);
           container.innerHTML = '';
           container.appendChild(wrap);
+        } else if (platform === 'tiktok' && sourceUrl) {
+          window.open(sourceUrl, '_blank', 'noopener');
         }
       }
 
@@ -3627,6 +3637,8 @@
         var thumb = hero.thumbnail || '';
         if (hero.platform === 'youtube' && hero.platformId) {
           thumb = 'https://i.ytimg.com/vi/' + hero.platformId + '/hqdefault.jpg';
+        } else if (hero.platform === 'tiktok' && !thumb) {
+          thumb = TIKTOK_PLACEHOLDER_THUMB_FEAT;
         }
 
         heroWrap.innerHTML =
@@ -3634,7 +3646,7 @@
           '<img src="' + escapeHTML(thumb) + '" alt="' + escapeHTML(hero.title) + '" loading="lazy">' +
           '<div class="video-play-overlay"><div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div></div>' +
           (hero.isLive ? '<span class="featured-live-badge">LIVE</span>' : '') +
-          (hero.duration ? '<span class="video-duration">' + escapeHTML(hero.duration) + '</span>' : '') +
+          (hero.platform === 'tiktok' ? '<span class="video-duration">TikTok ↗</span>' : (hero.duration ? '<span class="video-duration">' + escapeHTML(hero.duration) + '</span>' : '')) +
           '<div class="featured-hero-info">' +
           (hero.badge ? '<span class="video-badge">' + escapeHTML(hero.badge) + '</span>' : '') +
           '<h4>' + escapeHTML(hero.title) + '</h4>' +
@@ -3642,20 +3654,22 @@
           '</div></div>';
 
         heroWrap.querySelector('.featured-hero').addEventListener('click', function() {
-          embedIframe(heroWrap, hero.platform, hero.platformId);
+          embedIframe(heroWrap, hero.platform, hero.platformId, hero.sourceUrl);
         });
 
         if (rest.length) {
           featGrid.innerHTML = rest.map(function(v, i) {
             var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
+            var isTT = v.platform === 'tiktok';
             var t = v.thumbnail || '';
             if (v.platform === 'youtube' && v.platformId) t = 'https://i.ytimg.com/vi/' + v.platformId + '/mqdefault.jpg';
-            return '<div class="video-card reveal' + delay + '" data-platform="' + escapeHTML(v.platform) + '" data-video-id="' + escapeHTML(v.platformId || '') + '">' +
+            else if (isTT && !t) t = TIKTOK_PLACEHOLDER_THUMB_FEAT;
+            return '<div class="video-card reveal' + delay + '" data-platform="' + escapeHTML(v.platform) + '" data-video-id="' + escapeHTML(v.platformId || '') + '" data-source-url="' + escapeHTML(v.sourceUrl || '') + '">' +
               '<div class="video-thumb">' +
               '<img src="' + escapeHTML(t) + '" alt="' + escapeHTML(v.title) + '" loading="lazy">' +
               '<div class="video-play-overlay"><div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div></div>' +
               (v.isLive ? '<span class="featured-live-badge" style="position:absolute;top:8px;left:8px;">LIVE</span>' : '') +
-              (v.duration ? '<span class="video-duration">' + escapeHTML(v.duration) + '</span>' : '') +
+              (isTT ? '<span class="video-duration">TikTok ↗</span>' : (v.duration ? '<span class="video-duration">' + escapeHTML(v.duration) + '</span>' : '')) +
               '</div>' +
               '<div class="video-info">' +
               (v.badge ? '<span class="video-badge">' + escapeHTML(v.badge) + '</span>' : '') +
@@ -3680,6 +3694,9 @@
                 iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
                 thumb.appendChild(iframe);
                 card.classList.add('video-embed-active');
+              } else if (platform === 'tiktok') {
+                var sourceUrl = card.dataset.sourceUrl;
+                if (sourceUrl) window.open(sourceUrl, '_blank', 'noopener');
               }
             });
           });

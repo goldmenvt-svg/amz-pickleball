@@ -711,8 +711,12 @@ var _fsdb = firebase.firestore();
       <div id="vtab-add" style="display:none">
         <div class="v-add-form">
           <div class="form-group">
-            <label class="form-label">URL Video YouTube</label>
-            <input class="form-input" id="v-add-url" placeholder="https://www.youtube.com/watch?v=..." oninput="previewVideoURL()">
+            <label class="form-label">URL Video (YouTube hoặc TikTok)</label>
+            <input class="form-input" id="v-add-url" placeholder="https://www.youtube.com/watch?v=... hoặc https://www.tiktok.com/@ten/video/..." oninput="previewVideoURL()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tiêu đề video (bắt buộc cho TikTok, tuỳ chọn cho YouTube)</label>
+            <input class="form-input" id="v-add-title-input" placeholder="VD: Pha bóng đẹp tại AMZ Pickleball">
           </div>
           <div class="form-group">
             <label class="form-label">Hiển thị ở section</label>
@@ -2273,6 +2277,7 @@ function attachNewNavHandlers() {
 var STATUS = { PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Từ chối' };
 var CATEGORIES = ['Đơn Nam', 'Đơn Nữ', 'Đôi Nam', 'Đôi Nữ', 'Đôi Hỗn Hợp'];
 var VIDEO_BADGES = ['Thi đấu', 'Tập luyện', 'Sự kiện', 'Tin tức', 'Review'];
+var TIKTOK_PLACEHOLDER_THUMB = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#111"/><text x="160" y="95" font-family="Arial,sans-serif" font-size="22" fill="#fff" text-anchor="middle">TikTok</text></svg>');
 var PHONE_RE = /(03|05|07|08|09)\d{8}/;
 function validPhone(p) { return PHONE_RE.test(String(p).replace(/\s/g, '')); }
 
@@ -3073,7 +3078,7 @@ function badgeClass(badge) {
 
 function videoCardHTML(v, actions) {
   var safePlatformId = esc(v.platformId || '');
-  var thumb = v.thumbnail || 'https://i.ytimg.com/vi/' + safePlatformId + '/mqdefault.jpg';
+  var thumb = v.thumbnail || (v.platform === 'tiktok' ? TIKTOK_PLACEHOLDER_THUMB : 'https://i.ytimg.com/vi/' + safePlatformId + '/mqdefault.jpg');
   var viewStr = v.viewCount >= 1000 ? (v.viewCount / 1000).toFixed(1) + 'K' : (v.viewCount || 0);
   return '<div class="v-card" data-id="' + v.id + '">' +
     '<div class="v-thumb-wrap" data-ytid="' + safePlatformId + '">' +
@@ -3260,47 +3265,106 @@ function parseYouTubeId(url) {
   return match ? match[1] : null;
 }
 
+function parseTikTokId(url) {
+  var match = url.match(/tiktok\.com\/@[\w.-]+\/video\/(\d+)/);
+  return match ? match[1] : null;
+}
+
+function detectVideoPlatform(url) {
+  if (/(?:youtube\.com|youtu\.be)/i.test(url)) return 'youtube';
+  if (/tiktok\.com/i.test(url)) return 'tiktok';
+  return null;
+}
+
 function previewVideoURL() {
   var url = document.getElementById('v-add-url').value.trim();
-  var ytId = parseYouTubeId(url);
   var preview = document.getElementById('v-add-preview');
-  if (!ytId) { preview.classList.remove('show'); return; }
-  document.getElementById('v-add-thumb').src = 'https://i.ytimg.com/vi/' + ytId + '/mqdefault.jpg';
-  document.getElementById('v-add-title').textContent = 'YouTube ID: ' + ytId;
-  document.getElementById('v-add-channel').textContent = 'Thumbnail đã tải — nhấn "Thêm & Duyệt" để lưu';
-  preview.classList.add('show');
+  var platform = detectVideoPlatform(url);
+  if (platform === 'youtube') {
+    var ytId = parseYouTubeId(url);
+    if (!ytId) { preview.classList.remove('show'); return; }
+    document.getElementById('v-add-thumb').src = 'https://i.ytimg.com/vi/' + ytId + '/mqdefault.jpg';
+    document.getElementById('v-add-title').textContent = 'YouTube ID: ' + ytId;
+    document.getElementById('v-add-channel').textContent = 'Thumbnail đã tải — nhấn "Thêm & Duyệt" để lưu';
+    preview.classList.add('show');
+  } else if (platform === 'tiktok') {
+    var ttId = parseTikTokId(url);
+    if (!ttId) { preview.classList.remove('show'); return; }
+    document.getElementById('v-add-thumb').src = TIKTOK_PLACEHOLDER_THUMB;
+    document.getElementById('v-add-title').textContent = 'TikTok ID: ' + ttId;
+    document.getElementById('v-add-channel').textContent = 'Không có thumbnail tự động — web hiển thị card TikTok, bấm vào mở link gốc ở tab mới.';
+    preview.classList.add('show');
+  } else {
+    preview.classList.remove('show');
+  }
 }
 
 function addManualVideo() {
   var url = document.getElementById('v-add-url').value.trim();
-  var ytId = parseYouTubeId(url);
-  if (!ytId) { alert('URL YouTube không hợp lệ'); return; }
-  var existing = videoData.videos.find(function(v) { return v.platformId === ytId; });
-  if (existing) { alert('Video này đã có trong danh sách (status: ' + existing.status + ')'); return; }
+  var platform = detectVideoPlatform(url);
+  var titleInput = document.getElementById('v-add-title-input').value.trim();
   var badge = document.getElementById('v-add-badge').value;
   var category = document.getElementById('v-add-category').value;
   var now = new Date().toISOString();
-  var newVideo = {
-    id: 'yt_' + ytId,
-    platform: 'youtube',
-    platformId: ytId,
-    title: 'Video thủ công — ' + ytId,
-    description: '',
-    channelTitle: '',
-    thumbnail: 'https://i.ytimg.com/vi/' + ytId + '/mqdefault.jpg',
-    duration: '',
-    publishedAt: now.substring(0, 10),
-    viewCount: 0,
-    priority: 1,
-    badge: badge,
-    status: 'approved',
-    addedAt: now,
-    approvedAt: now
-  };
-  if (category) newVideo.category = category;
+  var newVideo;
+
+  if (platform === 'youtube') {
+    var ytId = parseYouTubeId(url);
+    if (!ytId) { alert('URL YouTube không hợp lệ'); return; }
+    var existing = videoData.videos.find(function(v) { return v.platformId === ytId; });
+    if (existing) { alert('Video này đã có trong danh sách (status: ' + existing.status + ')'); return; }
+    newVideo = {
+      id: 'yt_' + ytId,
+      platform: 'youtube',
+      platformId: ytId,
+      title: titleInput || ('Video thủ công — ' + ytId),
+      description: '',
+      channelTitle: '',
+      thumbnail: 'https://i.ytimg.com/vi/' + ytId + '/mqdefault.jpg',
+      duration: '',
+      publishedAt: now.substring(0, 10),
+      viewCount: 0,
+      priority: 1,
+      badge: badge,
+      status: 'approved',
+      addedAt: now,
+      approvedAt: now
+    };
+    if (category) newVideo.category = category;
+  } else if (platform === 'tiktok') {
+    var ttId = parseTikTokId(url);
+    if (!ttId) { alert('URL TikTok không hợp lệ — cần dạng https://www.tiktok.com/@ten/video/1234567890123456789'); return; }
+    if (!titleInput) { alert('Vui lòng nhập tiêu đề cho video TikTok'); return; }
+    var existingTT = videoData.videos.find(function(v) { return v.platform === 'tiktok' && v.platformId === ttId; });
+    if (existingTT) { alert('Video này đã có trong danh sách (status: ' + existingTT.status + ')'); return; }
+    newVideo = {
+      id: 'tt_' + ttId,
+      platform: 'tiktok',
+      platformId: ttId,
+      sourceUrl: url,
+      title: titleInput,
+      description: '',
+      channelTitle: '',
+      thumbnail: '',
+      duration: '',
+      publishedAt: now.substring(0, 10),
+      viewCount: 0,
+      priority: 1,
+      badge: badge,
+      status: 'approved',
+      addedAt: now,
+      approvedAt: now
+    };
+    if (category) newVideo.category = category;
+  } else {
+    alert('URL không hợp lệ — vui lòng dán link YouTube hoặc TikTok');
+    return;
+  }
+
   videoData.videos.unshift(newVideo);
   saveVideoData(); renderVideos();
   document.getElementById('v-add-url').value = '';
+  document.getElementById('v-add-title-input').value = '';
   document.getElementById('v-add-preview').classList.remove('show');
   var label = category === 'featured' ? 'Trận Đấu Đỉnh Cao' : 'AMZ Highlights';
   toast('Đã thêm vào ' + label);
