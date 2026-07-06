@@ -1,0 +1,41 @@
+{
+  "lastUpdated": "2026-07-06T00:00:00.000Z",
+  "courtPricing": {
+    "weekday": {
+      "label": "Thứ 2 – Thứ 6",
+      "startTime": "05:00",
+      "endTime": "16:00",
+      "pricePerHour": 70000,
+      "visible": true
+    },
+    "weekend": {
+      "label": "Thứ 7 – Chủ nhật",
+      "startTime": "05:00",
+      "endTime": "14:00",
+      "pricePerHour": 100000,
+      "visible": true
+    }
+  },
+  "socialPlan": {
+    "name": "Social",
+    "pricePerMonth": 350000,
+    "period": "tháng",
+    "description": "Phù hợp người chơi thường xuyên, giao lưu cộng đồng.",
+    "visible": true
+  },
+  "walkInPass": {
+    "name": "Xé vé",
+    "pricePerVisit": 40000,
+    "period": "lần",
+    "description": "Linh hoạt cho người chơi không thường xuyên.",
+    "visible": true
+  },
+  "beginnerNote": "Có coach hướng dẫn miễn phí cho người mới bắt đầu.",
+  "priceNote": "Giá có thể thay đổi theo chương trình thực tế. Vui lòng gọi 0914 859 927 để được tư vấn.",
+  "cta": {
+    "phone": "0914859927",
+    "phoneDisplay": "0914 859 927",
+    "facebook": "https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/",
+    "zalo": null
+  }
+}
