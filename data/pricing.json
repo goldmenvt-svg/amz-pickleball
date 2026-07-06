@@ -1,5 +1,4 @@
 {
-  "lastUpdated": "2026-07-06T00:00:00.000Z",
   "courtPricing": {
     "weekday": {
       "label": "Thứ 2 – Thứ 6",
@@ -37,5 +36,6 @@
     "phoneDisplay": "0914 859 927",
     "facebook": "https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/",
     "zalo": null
-  }
+  },
+  "lastUpdated": "2026-07-06T08:54:10.484Z"
 }
