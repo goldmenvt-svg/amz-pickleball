@@ -2,6 +2,24 @@
   "lastScan": "2026-07-03T04:41:26.641Z",
   "videos": [
     {
+      "id": "tt_7511660441987321106",
+      "platform": "tiktok",
+      "platformId": "7511660441987321106",
+      "sourceUrl": "https://www.tiktok.com/@amzpickleball.vt/video/7511660441987321106?is_from_webapp=1&sender_device=pc",
+      "title": "AMZ Pickeleball",
+      "description": "",
+      "channelTitle": "",
+      "thumbnail": "",
+      "duration": "",
+      "publishedAt": "2026-07-06",
+      "viewCount": 0,
+      "priority": 1,
+      "badge": "Review",
+      "status": "approved",
+      "addedAt": "2026-07-06T10:37:31.026Z",
+      "approvedAt": "2026-07-06T10:37:31.026Z"
+    },
+    {
       "id": "tt_7507450878861839623",
       "platform": "tiktok",
       "platformId": "7507450878861839623",
