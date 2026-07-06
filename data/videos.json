@@ -2,6 +2,24 @@
   "lastScan": "2026-07-03T04:41:26.641Z",
   "videos": [
     {
+      "id": "tt_7526038562651835656",
+      "platform": "tiktok",
+      "platformId": "7526038562651835656",
+      "sourceUrl": "https://www.tiktok.com/@amzpickleball.vt/video/7526038562651835656?is_from_webapp=1&sender_device=pc",
+      "title": "AMZ Pickleball — Sân chơi, cà phê và cộng đồng",
+      "description": "",
+      "channelTitle": "",
+      "thumbnail": "",
+      "duration": "",
+      "publishedAt": "2026-07-06",
+      "viewCount": 0,
+      "priority": 1,
+      "badge": "Sự kiện",
+      "status": "approved",
+      "addedAt": "2026-07-06T10:33:55.503Z",
+      "approvedAt": "2026-07-06T10:33:55.503Z"
+    },
+    {
       "id": "yt__3QEQx-USxw",
       "platform": "youtube",
       "platformId": "_3QEQx-USxw",
