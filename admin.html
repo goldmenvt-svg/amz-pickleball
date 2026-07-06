@@ -397,6 +397,10 @@ var _fsdb = firebase.firestore();
       Video
       <span class="nav-badge" id="videoPendingCount">0</span>
     </button>
+    <button class="nav-item" data-page="pricing">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      Bảng giá
+    </button>
     <div style="padding:16px 20px;margin-top:auto;border-top:1px solid var(--border);">
       <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="exportAll()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -748,6 +752,110 @@ var _fsdb = firebase.firestore();
             <thead><tr><th>VĐV</th><th>Ngày</th><th>Trình cũ</th><th>Trình mới</th><th>+/-</th><th>Lý do</th><th>Giải liên quan</th></tr></thead>
             <tbody id="history-table"></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRICING -->
+    <div class="page" id="page-pricing">
+      <div class="page-header">
+        <h1>Bảng giá</h1>
+        <div class="toolbar">
+          <span id="pricingLoadError" style="font-size:12px;color:var(--red);margin-right:8px;"></span>
+          <button class="btn btn-outline" onclick="previewPricingJSON()">Xem trước JSON</button>
+          <button class="btn btn-primary" onclick="exportPricingToWeb()" id="btnExportPricing">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><polyline points="5 12 12 5 19 12"/><line x1="5" y1="19" x2="19" y2="19"/></svg>
+            Xuất bảng giá lên web
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Giá thuê sân ngày thường</h3></div>
+        <div class="card-body">
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Nhãn</label><input class="form-input" id="pr-weekday-label" placeholder="Thứ 2 – Thứ 6"></div>
+            <div class="form-group"><label class="form-label">Giờ bắt đầu (HH:MM)</label><input class="form-input" id="pr-weekday-start" placeholder="05:00"></div>
+            <div class="form-group"><label class="form-label">Giờ kết thúc (HH:MM)</label><input class="form-input" id="pr-weekday-end" placeholder="16:00"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Giá / giờ (VNĐ)</label><input class="form-input" id="pr-weekday-price" placeholder="70000"></div>
+            <div class="form-group"><label class="form-label">Hiển thị</label><label style="display:flex;align-items:center;gap:8px;height:38px;"><input type="checkbox" id="pr-weekday-visible" checked> Hiện trên web</label></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Giá thuê sân cuối tuần</h3></div>
+        <div class="card-body">
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Nhãn</label><input class="form-input" id="pr-weekend-label" placeholder="Thứ 7 – Chủ nhật"></div>
+            <div class="form-group"><label class="form-label">Giờ bắt đầu (HH:MM)</label><input class="form-input" id="pr-weekend-start" placeholder="05:00"></div>
+            <div class="form-group"><label class="form-label">Giờ kết thúc (HH:MM)</label><input class="form-input" id="pr-weekend-end" placeholder="14:00"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Giá / giờ (VNĐ)</label><input class="form-input" id="pr-weekend-price" placeholder="100000"></div>
+            <div class="form-group"><label class="form-label">Hiển thị</label><label style="display:flex;align-items:center;gap:8px;height:38px;"><input type="checkbox" id="pr-weekend-visible" checked> Hiện trên web</label></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Gói Social</h3></div>
+        <div class="card-body">
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Tên gói</label><input class="form-input" id="pr-social-name" placeholder="Social"></div>
+            <div class="form-group"><label class="form-label">Giá / tháng (VNĐ)</label><input class="form-input" id="pr-social-price" placeholder="350000"></div>
+            <div class="form-group"><label class="form-label">Đơn vị</label><input class="form-input" id="pr-social-period" placeholder="tháng"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Mô tả ngắn</label><input class="form-input" id="pr-social-desc" placeholder="Phù hợp người chơi thường xuyên, giao lưu cộng đồng."></div>
+            <div class="form-group"><label class="form-label">Hiển thị</label><label style="display:flex;align-items:center;gap:8px;height:38px;"><input type="checkbox" id="pr-social-visible" checked> Hiện trên web</label></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Xé vé</h3></div>
+        <div class="card-body">
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Tên</label><input class="form-input" id="pr-walkin-name" placeholder="Xé vé"></div>
+            <div class="form-group"><label class="form-label">Giá / lần (VNĐ)</label><input class="form-input" id="pr-walkin-price" placeholder="40000"></div>
+            <div class="form-group"><label class="form-label">Đơn vị</label><input class="form-input" id="pr-walkin-period" placeholder="lần"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Mô tả ngắn</label><input class="form-input" id="pr-walkin-desc" placeholder="Linh hoạt cho người chơi không thường xuyên."></div>
+            <div class="form-group"><label class="form-label">Hiển thị</label><label style="display:flex;align-items:center;gap:8px;height:38px;"><input type="checkbox" id="pr-walkin-visible" checked> Hiện trên web</label></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Ghi chú</h3></div>
+        <div class="card-body">
+          <div class="form-group"><label class="form-label">Ghi chú coach</label><input class="form-input" id="pr-beginner-note" placeholder="Có coach hướng dẫn miễn phí cho người mới bắt đầu."></div>
+          <div class="form-group"><label class="form-label">Ghi chú giá</label><input class="form-input" id="pr-price-note" placeholder="Giá có thể thay đổi theo chương trình thực tế..."></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Liên hệ (CTA)</h3></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Số điện thoại (không dấu cách)</label><input class="form-input" id="pr-cta-phone" placeholder="0914859927"></div>
+            <div class="form-group"><label class="form-label">Số điện thoại hiển thị</label><input class="form-input" id="pr-cta-phone-display" placeholder="0914 859 927"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Facebook (https://...)</label><input class="form-input" id="pr-cta-facebook" placeholder="https://www.facebook.com/..."></div>
+            <div class="form-group"><label class="form-label">Zalo (để trống nếu chưa có)</label><input class="form-input" id="pr-cta-zalo" placeholder="https://zalo.me/..."></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Xem trước JSON</h3></div>
+        <div class="card-body">
+          <pre id="pricingJSONPreview" style="white-space:pre-wrap;font-size:12px;color:var(--muted);background:var(--surface2);padding:12px;border-radius:8px;min-height:60px;">Bấm "Xem trước JSON" để xem dữ liệu sẽ được xuất.</pre>
         </div>
       </div>
     </div>
@@ -2315,6 +2423,7 @@ document.querySelectorAll('[data-page]').forEach(function(btn) {
     if (pg === 'standings') { populateTournamentSelects(); renderEloTable(); }
     if (pg === 'history') renderHistory();
     if (pg === 'videos') renderVideos();
+    if (pg === 'pricing') loadPricingIntoForm();
   });
 });
 
@@ -2711,6 +2820,196 @@ async function exportDataToWeb() {
     toast('Lỗi: ' + err.message);
   } finally {
     btn.disabled = false; btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><polyline points="5 12 12 5 19 12"/><line x1="5" y1="19" x2="19" y2="19"/></svg> Xuất dữ liệu lên web';
+  }
+}
+
+// === PRICING MANAGEMENT ===
+function validPricingNumber(v) {
+  var n = Number(v);
+  return Number.isInteger(n) && n > 0;
+}
+
+function validPricingTime(v) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '').trim());
+}
+
+function validPricingUrl(v) {
+  return /^https:\/\/.+/.test(String(v || '').trim());
+}
+
+function collectPricingForm() {
+  var errors = [];
+  function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  function checked(id) { var el = document.getElementById(id); return el ? el.checked : false; }
+
+  var weekdayLabel = val('pr-weekday-label');
+  var weekdayStart = val('pr-weekday-start');
+  var weekdayEnd   = val('pr-weekday-end');
+  var weekdayPrice = val('pr-weekday-price');
+
+  var weekendLabel = val('pr-weekend-label');
+  var weekendStart = val('pr-weekend-start');
+  var weekendEnd   = val('pr-weekend-end');
+  var weekendPrice = val('pr-weekend-price');
+
+  var socialName   = val('pr-social-name');
+  var socialPrice  = val('pr-social-price');
+  var socialPeriod = val('pr-social-period');
+  var socialDesc   = val('pr-social-desc');
+
+  var walkinName   = val('pr-walkin-name');
+  var walkinPrice  = val('pr-walkin-price');
+  var walkinPeriod = val('pr-walkin-period');
+  var walkinDesc   = val('pr-walkin-desc');
+
+  var beginnerNote = val('pr-beginner-note');
+  var priceNote    = val('pr-price-note');
+
+  var ctaPhone        = val('pr-cta-phone');
+  var ctaPhoneDisplay = val('pr-cta-phone-display');
+  var ctaFacebook     = val('pr-cta-facebook');
+  var ctaZalo         = val('pr-cta-zalo');
+
+  if (!weekdayLabel) errors.push('Thiếu nhãn giá ngày thường');
+  if (!validPricingTime(weekdayStart)) errors.push('Giờ bắt đầu ngày thường phải đúng định dạng HH:MM');
+  if (!validPricingTime(weekdayEnd)) errors.push('Giờ kết thúc ngày thường phải đúng định dạng HH:MM');
+  if (validPricingTime(weekdayStart) && validPricingTime(weekdayEnd) && weekdayStart === weekdayEnd) errors.push('Giờ kết thúc ngày thường phải khác giờ bắt đầu');
+  if (!validPricingNumber(weekdayPrice)) errors.push('Giá/giờ ngày thường phải là số nguyên dương');
+
+  if (!weekendLabel) errors.push('Thiếu nhãn giá cuối tuần');
+  if (!validPricingTime(weekendStart)) errors.push('Giờ bắt đầu cuối tuần phải đúng định dạng HH:MM');
+  if (!validPricingTime(weekendEnd)) errors.push('Giờ kết thúc cuối tuần phải đúng định dạng HH:MM');
+  if (validPricingTime(weekendStart) && validPricingTime(weekendEnd) && weekendStart === weekendEnd) errors.push('Giờ kết thúc cuối tuần phải khác giờ bắt đầu');
+  if (!validPricingNumber(weekendPrice)) errors.push('Giá/giờ cuối tuần phải là số nguyên dương');
+
+  if (!socialName) errors.push('Thiếu tên gói Social');
+  if (!validPricingNumber(socialPrice)) errors.push('Giá gói Social phải là số nguyên dương');
+
+  if (!walkinName) errors.push('Thiếu tên xé vé');
+  if (!validPricingNumber(walkinPrice)) errors.push('Giá xé vé phải là số nguyên dương');
+
+  if (!ctaPhone) errors.push('Thiếu số điện thoại');
+  if (ctaFacebook && !validPricingUrl(ctaFacebook)) errors.push('Facebook phải bắt đầu bằng https://, hoặc để trống');
+  if (ctaZalo && !validPricingUrl(ctaZalo)) errors.push('Zalo phải bắt đầu bằng https://, hoặc để trống');
+
+  if (errors.length) return { valid: false, errors: errors };
+
+  return {
+    valid: true,
+    data: {
+      courtPricing: {
+        weekday: { label: weekdayLabel, startTime: weekdayStart, endTime: weekdayEnd, pricePerHour: Number(weekdayPrice), visible: checked('pr-weekday-visible') },
+        weekend: { label: weekendLabel, startTime: weekendStart, endTime: weekendEnd, pricePerHour: Number(weekendPrice), visible: checked('pr-weekend-visible') }
+      },
+      socialPlan: { name: socialName, pricePerMonth: Number(socialPrice), period: socialPeriod || 'tháng', description: socialDesc, visible: checked('pr-social-visible') },
+      walkInPass: { name: walkinName, pricePerVisit: Number(walkinPrice), period: walkinPeriod || 'lần', description: walkinDesc, visible: checked('pr-walkin-visible') },
+      beginnerNote: beginnerNote,
+      priceNote: priceNote,
+      cta: {
+        phone: ctaPhone,
+        phoneDisplay: ctaPhoneDisplay || ctaPhone,
+        facebook: ctaFacebook || null,
+        zalo: ctaZalo || null
+      }
+    }
+  };
+}
+
+function previewPricingJSON() {
+  var el = document.getElementById('pricingJSONPreview');
+  var result = collectPricingForm();
+  if (!result.valid) {
+    el.style.color = 'var(--red)';
+    el.textContent = 'Không thể xuất — sửa các lỗi sau:\n- ' + result.errors.join('\n- ');
+    return;
+  }
+  el.style.color = 'var(--muted)';
+  el.textContent = JSON.stringify(result.data, null, 2);
+}
+
+async function loadPricingIntoForm() {
+  var errEl = document.getElementById('pricingLoadError');
+  var btn = document.getElementById('btnExportPricing');
+  try {
+    var res = await fetch('data/pricing.json?t=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var p = await res.json();
+
+    document.getElementById('pr-weekday-label').value    = p.courtPricing.weekday.label || '';
+    document.getElementById('pr-weekday-start').value    = p.courtPricing.weekday.startTime || '';
+    document.getElementById('pr-weekday-end').value      = p.courtPricing.weekday.endTime || '';
+    document.getElementById('pr-weekday-price').value    = p.courtPricing.weekday.pricePerHour || '';
+    document.getElementById('pr-weekday-visible').checked = p.courtPricing.weekday.visible !== false;
+
+    document.getElementById('pr-weekend-label').value    = p.courtPricing.weekend.label || '';
+    document.getElementById('pr-weekend-start').value    = p.courtPricing.weekend.startTime || '';
+    document.getElementById('pr-weekend-end').value      = p.courtPricing.weekend.endTime || '';
+    document.getElementById('pr-weekend-price').value    = p.courtPricing.weekend.pricePerHour || '';
+    document.getElementById('pr-weekend-visible').checked = p.courtPricing.weekend.visible !== false;
+
+    document.getElementById('pr-social-name').value    = p.socialPlan.name || '';
+    document.getElementById('pr-social-price').value   = p.socialPlan.pricePerMonth || '';
+    document.getElementById('pr-social-period').value  = p.socialPlan.period || '';
+    document.getElementById('pr-social-desc').value    = p.socialPlan.description || '';
+    document.getElementById('pr-social-visible').checked = p.socialPlan.visible !== false;
+
+    document.getElementById('pr-walkin-name').value    = p.walkInPass.name || '';
+    document.getElementById('pr-walkin-price').value   = p.walkInPass.pricePerVisit || '';
+    document.getElementById('pr-walkin-period').value  = p.walkInPass.period || '';
+    document.getElementById('pr-walkin-desc').value    = p.walkInPass.description || '';
+    document.getElementById('pr-walkin-visible').checked = p.walkInPass.visible !== false;
+
+    document.getElementById('pr-beginner-note').value  = p.beginnerNote || '';
+    document.getElementById('pr-price-note').value     = p.priceNote || '';
+
+    document.getElementById('pr-cta-phone').value         = (p.cta && p.cta.phone) || '';
+    document.getElementById('pr-cta-phone-display').value = (p.cta && p.cta.phoneDisplay) || '';
+    document.getElementById('pr-cta-facebook').value      = (p.cta && p.cta.facebook) || '';
+    document.getElementById('pr-cta-zalo').value          = (p.cta && p.cta.zalo) || '';
+
+    if (errEl) errEl.textContent = '';
+    if (btn) btn.disabled = false;
+    var previewEl = document.getElementById('pricingJSONPreview');
+    if (previewEl) previewEl.textContent = 'Bấm "Xem trước JSON" để xem dữ liệu sẽ được xuất.';
+  } catch (err) {
+    console.error('Load pricing.json error:', err);
+    if (errEl) errEl.textContent = 'Không tải được data/pricing.json — không thể xuất. Lỗi: ' + err.message;
+    if (btn) btn.disabled = true;
+  }
+}
+
+async function exportPricingToWeb() {
+  var result = collectPricingForm();
+  if (!result.valid) {
+    toast('Không thể xuất — sửa lỗi: ' + result.errors[0]);
+    previewPricingJSON();
+    return;
+  }
+  if (!confirm(
+    'Xuất bảng giá lên web sẽ GHI ĐÈ dữ liệu giá hiện tại trên amzpickleball.vn.\n\n' +
+    'Bạn chắc chắn muốn tiếp tục?'
+  )) return;
+
+  var btn = document.getElementById('btnExportPricing');
+  btn.disabled = true; btn.textContent = 'Đang xuất...';
+  try {
+    var idToken = await _getFirebaseIdToken();
+    var res = await fetch('/api/push-data', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + idToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pricingJSON: JSON.stringify(result.data, null, 2) })
+    });
+    if (!res.ok) {
+      var err = await res.json().catch(function() { return { error: res.status }; });
+      throw new Error(err.error || res.status);
+    }
+    toast('Đã xuất bảng giá lên web — Vercel deploy trong ~30s');
+  } catch (err) {
+    console.error('Export pricing error:', err);
+    toast('Lỗi: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><polyline points="5 12 12 5 19 12"/><line x1="5" y1="19" x2="19" y2="19"/></svg> Xuất bảng giá lên web';
   }
 }
 

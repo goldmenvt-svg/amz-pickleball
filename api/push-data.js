@@ -5,6 +5,48 @@
 const REPO   = 'goldmenvt-svg/amz-pickleball';
 const BRANCH = 'master';
 
+function isPositiveInt(n) {
+  return typeof n === 'number' && Number.isInteger(n) && n > 0;
+}
+
+function isValidTime(t) {
+  return typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+}
+
+function isValidHttpsUrl(u) {
+  return typeof u === 'string' && /^https:\/\/.+/.test(u);
+}
+
+function validatePricing(p) {
+  const errors = [];
+  if (!p || typeof p !== 'object') { errors.push('pricing data must be an object'); return errors; }
+
+  const cp = (p.courtPricing && typeof p.courtPricing === 'object') ? p.courtPricing : {};
+  ['weekday', 'weekend'].forEach(function (key) {
+    const slot = cp[key];
+    if (!slot || typeof slot !== 'object') { errors.push(key + ' is missing'); return; }
+    if (!slot.label) errors.push(key + '.label is required');
+    if (!isValidTime(slot.startTime)) errors.push(key + '.startTime must be HH:MM (00:00-23:59)');
+    if (!isValidTime(slot.endTime)) errors.push(key + '.endTime must be HH:MM (00:00-23:59)');
+    if (!isPositiveInt(slot.pricePerHour)) errors.push(key + '.pricePerHour must be a positive integer');
+  });
+
+  const social = p.socialPlan;
+  if (!social || !social.name) errors.push('socialPlan.name is required');
+  if (!social || !isPositiveInt(social.pricePerMonth)) errors.push('socialPlan.pricePerMonth must be a positive integer');
+
+  const walkIn = p.walkInPass;
+  if (!walkIn || !walkIn.name) errors.push('walkInPass.name is required');
+  if (!walkIn || !isPositiveInt(walkIn.pricePerVisit)) errors.push('walkInPass.pricePerVisit must be a positive integer');
+
+  const cta = (p.cta && typeof p.cta === 'object') ? p.cta : {};
+  if (!cta.phone) errors.push('cta.phone is required');
+  if (cta.facebook && !isValidHttpsUrl(cta.facebook)) errors.push('cta.facebook must be a https URL');
+  if (cta.zalo && !isValidHttpsUrl(cta.zalo)) errors.push('cta.zalo must be a https URL or empty/null');
+
+  return errors;
+}
+
 async function pushFile(ghToken, filePath, content, commitMsg) {
   const getRes = await fetch(
     `https://api.github.com/repos/${REPO}/contents/${filePath}?ref=${BRANCH}&t=${Date.now()}`,
@@ -60,13 +102,37 @@ module.exports = async function handler(req, res) {
   const ghToken = process.env.GITHUB_TOKEN;
   if (!ghToken) return res.status(500).json({ error: 'GITHUB_TOKEN not set on server' });
 
-  const { eventsJSON, playersJSON } = req.body || {};
-  if (!eventsJSON || !playersJSON) return res.status(400).json({ error: 'Missing data' });
+  const { eventsJSON, playersJSON, pricingJSON } = req.body || {};
+  const hasPlayersEvents = !!(eventsJSON && playersJSON);
+  if (!hasPlayersEvents && !pricingJSON) return res.status(400).json({ error: 'Missing data' });
+
+  let pricingToWrite = null;
+  if (pricingJSON) {
+    let parsedPricing;
+    try {
+      parsedPricing = JSON.parse(pricingJSON);
+    } catch {
+      return res.status(400).json({ error: 'pricingJSON is not valid JSON' });
+    }
+    const pricingErrors = validatePricing(parsedPricing);
+    if (pricingErrors.length) {
+      return res.status(400).json({ error: 'Invalid pricing data: ' + pricingErrors.join('; ') });
+    }
+    parsedPricing.lastUpdated = new Date().toISOString();
+    parsedPricing.cta.facebook = parsedPricing.cta.facebook || null;
+    parsedPricing.cta.zalo = parsedPricing.cta.zalo || null;
+    pricingToWrite = JSON.stringify(parsedPricing, null, 2);
+  }
 
   const today = new Date().toISOString().substring(0, 10);
   try {
-    await pushFile(ghToken, 'data/events.json',  eventsJSON,  `chore: export events ${today}`);
-    await pushFile(ghToken, 'data/players.json', playersJSON, `chore: export players ${today}`);
+    if (hasPlayersEvents) {
+      await pushFile(ghToken, 'data/events.json',  eventsJSON,  `chore: export events ${today}`);
+      await pushFile(ghToken, 'data/players.json', playersJSON, `chore: export players ${today}`);
+    }
+    if (pricingToWrite) {
+      await pushFile(ghToken, 'data/pricing.json', pricingToWrite, 'Update AMZ pricing data');
+    }
     return res.status(200).json({ ok: true });
   } catch (err) {
     console.error('[push-data] Error:', err.message);
