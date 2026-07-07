@@ -19,7 +19,7 @@ Giải nội bộ tri ân cộng đồng AMZ, tổ chức nhân dịp kỷ niệ
 - **Lệ phí:** 300.000đ/VĐV.
 - **Hình thức thu tiền:** tiền mặt hoặc chuyển khoản.
 - **Hạn chót đăng ký + đóng tiền:** trước ngày thi đấu 2 ngày → **16/07/2026**.
-- **Hình thức đăng ký:** cá nhân, không đăng ký cặp cố định — BTC xét trình rồi bốc thăm ghép cặp ngẫu nhiên.
+- **Hình thức đăng ký:** cá nhân, không đăng ký cặp cố định — BTC xét trình, sau đó **hệ thống tự động bốc thăm ghép cặp ngẫu nhiên** (không ghép thủ công theo cảm tính — xem mục 11 và lưu ý kỹ thuật quan trọng trong đó).
 - **Quy mô:** Trình Thấp 32 VĐV (→16 cặp) + Trình Cao 32 VĐV (→16 cặp) = 64 VĐV, 32 cặp, 8 sân.
 - **Phân sân:** Sân 1–4 Trình Thấp, Sân 5–8 Trình Cao.
 - **Ban chuyên môn xét trình:** Mr. Tốp, Mrs. Hồng Ngân.
@@ -46,13 +46,14 @@ Giải nội bộ tri ân cộng đồng AMZ, tổ chức nhân dịp kỷ niệ
 - Cách xử lý nếu số lượng đăng ký thực tế lẻ (không tròn 32/32) — chờ thêm hay ghép linh hoạt.
 - Chi tiết Gala Dinner: số khách mời, có mời người nhà VĐV không, MC/âm thanh, ngân sách.
 - Người phụ trách y tế/sơ cứu trong ngày thi đấu.
+- **Tính năng "hệ thống tự động bốc thăm ghép cặp" hiện chưa tồn tại trong code** (xem mục 11) — cần Owner/ChatGPT/Claude Code audit + chốt phương án kỹ thuật, có mốc thời gian hoàn thành rõ ràng trước 18/07/2026, nếu không kịp thì cần phương án dự phòng được Owner phê duyệt trước (không tự ý chuyển sang ghép tay).
 
 ---
 
 ## 5. Cấu trúc thi đấu
 
-- 64 VĐV cá nhân đăng ký → BTC xét trình → chia 2 nhóm trình (Thấp/Cao), mỗi nhóm 32 người.
-- Mỗi nhóm trình: bốc thăm ngẫu nhiên ghép thành **16 cặp**.
+- 64 VĐV cá nhân đăng ký → BTC xét trình → xác nhận đóng tiền → chốt danh sách hợp lệ → chia 2 nhóm trình (Thấp/Cao), mỗi nhóm 32 người.
+- Mỗi nhóm trình: **hệ thống tự động bốc thăm ghép cặp ngẫu nhiên** thành **16 cặp** (không phải BTC tự tay ghép — xem mục 11).
 - Mỗi trình (16 cặp): chia thành **4 bảng x 4 cặp**, đấu vòng tròn trong bảng.
 - Lấy **2 cặp đầu mỗi bảng** (4 bảng x 2 = 8 cặp) vào **Tứ kết**.
 - Tứ kết (8→4) → **Bán kết** (4→2) → **Chung kết** (tranh Vô địch/Á quân) + **Tranh hạng ba** (2 đội thua bán kết).
@@ -121,11 +122,29 @@ Quy trình:
 
 ## 11. Quy trình bốc thăm ghép cặp
 
-1. Chốt danh sách VĐV đã xét trình xong **và** đã đóng tiền, tách riêng theo Trình Thấp / Trình Cao.
-2. Xác nhận đủ 32 VĐV mỗi trình (hoặc số lượng thực tế nếu không tròn — theo chính sách Owner chốt).
-3. Bốc thăm ngẫu nhiên ghép cặp trong cùng 1 trình (không ghép chéo Thấp-Cao).
-4. Công khai/thông báo danh sách cặp đã ghép cho VĐV biết trước ngày thi đấu.
-5. Cặp đã ghép được xem là **cố định**, không đổi lại trừ trường hợp bất khả kháng (VĐV rút lui sát ngày) — Owner/BTC quyết định xử lý riêng từng trường hợp.
+**Yêu cầu nghiệp vụ chính thức (Owner chốt):** Sau khi VĐV đăng ký xong và đã qua xét trình, việc bắt cặp ngẫu nhiên **phải được làm hoàn toàn tự động bởi hệ thống** — **không ghép cặp thủ công theo cảm tính** dưới bất kỳ hình thức nào (kể cả BTC tự bốc thăm bằng tay rồi nhập kết quả vào hệ thống).
+
+**⚠️ Cảnh báo kỹ thuật quan trọng — đọc trước khi vận hành:**
+**Hệ thống hiện tại (`admin.html`) CHƯA có chức năng tự động ghép cặp ngẫu nhiên.** Đã kiểm tra code và xác nhận: không có hàm random/shuffle nào dùng để ghép 2 VĐV cá nhân thành 1 cặp — tab "Chia bảng" hiện chỉ chia bảng cho các **cặp đã có sẵn** (`registrations` đã điền đủ cả VĐV 1 và VĐV 2), không tạo cặp mới từ danh sách cá nhân. **Đây là một tính năng kỹ thuật cần audit + triển khai riêng trước ngày thi đấu (18/07/2026)**, không được giả định là đã hoạt động. **Không mở vận hành ghép cặp bằng tay** để thay thế trong lúc chờ — nếu tới hạn mà tính năng tự động chưa sẵn sàng, cần Owner quyết định phương án (lùi thời điểm ghép cặp, hoặc chốt phương án kỹ thuật khác) trước khi tiếp tục, không tự ý làm thủ công.
+
+**Điều kiện để một VĐV được đưa vào ghép cặp tự động** (hệ thống chỉ nên lấy đúng nhóm này làm đầu vào):
+- Đã được duyệt tham gia (`registrations.status = confirmed`).
+- Đã chốt Trình Thấp hoặc Trình Cao (đã xét trình xong, đúng `event_id`).
+- Đã xác nhận đóng tiền (`payment_status = paid`).
+- Không nằm trong danh sách chờ / bị loại / thiếu thông tin.
+
+**Quy tắc ghép cặp:**
+- Trình Thấp: đủ 32 VĐV hợp lệ → hệ thống tự động random thành 16 cặp.
+- Trình Cao: đủ 32 VĐV hợp lệ → hệ thống tự động random thành 16 cặp.
+- Không ghép chéo Thấp-Cao.
+- **Không cho VĐV tự chọn đồng đội.**
+- **Không ghép thủ công theo cảm tính** dưới bất kỳ lý do gì.
+
+**Minh bạch vận hành:**
+1. Sau khi hệ thống bốc thăm xong, kết quả cần được **lưu lại** (ghi vào `registrations` — `player_1_id`/`player_2_id` của từng cặp) và công khai/thông báo cho VĐV trước ngày thi đấu.
+2. Nếu cần bốc thăm lại (VD phát hiện lỗi dữ liệu đầu vào), **phải có xác nhận của BTC** trước khi chạy lại — không tự ý bốc thăm lại.
+3. Hệ thống hiện **chưa có audit log riêng** cho việc này — trong lúc chờ tính năng kỹ thuật đầy đủ, cần **ghi nhận thời điểm bốc thăm và người thao tác** vào ghi chú vận hành (sổ tay/Google Sheet ngoài hệ thống, xem Data Checklist mục 7) để có thể tra lại khi cần.
+4. Cặp đã ghép được xem là **cố định**, không đổi lại trừ trường hợp bất khả kháng (VĐV rút lui sát ngày) — Owner/BTC quyết định xử lý riêng từng trường hợp.
 
 ---
 
@@ -152,7 +171,8 @@ Quy trình:
 
 - [ ] Danh sách VĐV đã xét trình xong, phân đúng Trình Thấp/Cao.
 - [ ] Toàn bộ VĐV trong danh sách bốc thăm đã xác nhận đóng tiền.
-- [ ] Đã bốc thăm ghép cặp xong, danh sách cặp đã công bố.
+- [ ] Tính năng hệ thống tự động bốc thăm ghép cặp đã được audit/triển khai và kiểm tra thử trước — không đợi tới sát ngày mới biết có hoạt động không (xem mục 11).
+- [ ] Đã bốc thăm ghép cặp xong **bằng hệ thống tự động** (không phải ghép tay), danh sách cặp đã công bố.
 - [ ] Đã chia bảng xong (4 bảng/trình).
 - [ ] Đã xếp lịch vòng bảng đủ 8 sân, không trùng giờ VĐV.
 - [ ] Đã thông báo lịch thi đấu + giờ check-in cho toàn bộ VĐV.
@@ -189,13 +209,17 @@ Quy trình:
 
 **Ban chuyên môn (chỉ Mr. Tốp và Mrs. Hồng Ngân — không có Mr. Quang)**
 - Xét trình toàn bộ VĐV đăng ký.
+- Xác nhận cho phép bốc thăm lại nếu hệ thống báo cần bốc thăm lại (mục 11) — không tự ý bốc thăm lại khi chưa có xác nhận.
 - Hỗ trợ xử lý tranh chấp trình trong ngày thi đấu nếu có.
 
 **BTC/Nhân viên AMZ**
 - Nhận đăng ký qua Facebook/Zalo/Hotline, nhập vào hệ thống (không dùng form web công khai — xem mục 8).
 - Thu tiền, cập nhật trạng thái thanh toán.
+- **Không tự tay ghép cặp VĐV** dưới bất kỳ hình thức nào — việc ghép cặp chỉ do hệ thống tự động thực hiện (mục 11).
+- Ghi nhận thời điểm bốc thăm + người thao tác vào ghi chú vận hành (mục 11, do hệ thống chưa có audit log riêng).
 - Vận hành check-in, ghi điểm, xếp lịch trong ngày.
 
 **Claude Code**
 - Hỗ trợ kỹ thuật khi nhập dữ liệu vào hệ thống hoặc khi có sự cố khi thao tác trên trang quản trị.
-- Không tham gia quyết định nghiệp vụ (xét trình, ghép cặp, giải thưởng...).
+- **Audit + đề xuất phương án triển khai tính năng tự động bốc thăm ghép cặp** (hiện chưa tồn tại trong code — xem mục 11), báo cáo Owner/ChatGPT chốt trước khi build.
+- Không tham gia quyết định nghiệp vụ (xét trình, ghép cặp, giải thưởng...) — chỉ thực hiện đúng theo quyết định Owner đã chốt.
