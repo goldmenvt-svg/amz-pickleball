@@ -554,6 +554,7 @@ var _fsdb = firebase.firestore();
           <div class="card-body">
             <div class="hint-box" id="autopair-status">Chọn nội dung thi đấu để xem trạng thái dữ liệu.</div>
             <button class="btn btn-primary" style="width:100%;margin:12px 0 0;" onclick="previewAutoPairing()" id="btn-autopair-preview" disabled>Xem trước ghép cặp</button>
+            <div id="autopair-repreview-note" style="display:none;font-size:12px;color:var(--orange);margin-top:6px;">⚠ Bấm "Bốc lại preview" sẽ tạo phương án khác. Chỉ phương án đang hiển thị cuối cùng mới được lưu.</div>
             <div id="autopair-preview" style="display:none;margin-top:16px;">
               <div style="background:rgba(245,158,11,0.12);border:1px solid var(--orange);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--orange);">
                 ⚠ Đây chỉ là bản xem trước, chưa lưu vào hệ thống.<br>
@@ -1224,6 +1225,7 @@ var _bracketPreview = null;
 var _bracketEventId = null;
 var currentAutoPairPreviewPairs = null;
 var currentAutoPairPreviewEventId = null;
+var _autoPairLastSavedInfo = null;
 
 function showLoading(v) {
   var el = document.getElementById('loadingOverlay');
@@ -1943,12 +1945,18 @@ function updateAutoPairStatus(evId) {
   var statusBox = document.getElementById('autopair-status');
   var btn = document.getElementById('btn-autopair-preview');
   var saveBtn = document.getElementById('btn-autopair-save');
+  var repreviewNote = document.getElementById('autopair-repreview-note');
   if (previewBox) previewBox.style.display = 'none';
   if (previewTable) previewTable.innerHTML = '';
-  // Đổi event (hoặc bỏ chọn) → bỏ preview cũ, tránh lưu nhầm preview của event khác.
+  // Đổi event (hoặc bỏ chọn) → bỏ preview cũ, tránh lưu nhầm preview của event khác. Reset luôn nhãn nút về trạng thái ban đầu.
   currentAutoPairPreviewPairs = null;
   currentAutoPairPreviewEventId = null;
-  if (saveBtn) saveBtn.disabled = true;
+  if (btn) btn.textContent = 'Xem trước ghép cặp';
+  if (repreviewNote) repreviewNote.style.display = 'none';
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.title = 'Cần có bản xem trước hợp lệ (16 cặp) trước khi có thể lưu.';
+  }
   if (!evId) {
     if (statusBox) statusBox.innerHTML = 'Chọn nội dung thi đấu để xem trạng thái dữ liệu.';
     if (btn) btn.disabled = true;
@@ -1966,7 +1974,11 @@ function updateAutoPairStatus(evId) {
     var p = players.find(function(pl) { return pl.id === r.player_1_id; });
     return !p || p.amz_rating === undefined || p.amz_rating === null || p.amz_rating === '' || isNaN(parseFloat(p.amz_rating));
   }).length;
-  var html = '<strong>' + eligible.length + ' / 32</strong> VĐV hợp lệ để ghép cặp.<br>';
+  var html = '';
+  if (_autoPairLastSavedInfo && _autoPairLastSavedInfo.eventId === evId) {
+    html += '<div style="color:var(--green);font-weight:600;margin-bottom:6px;">✓ Đã lưu xong ' + _autoPairLastSavedInfo.pairCount + ' cặp gần nhất (batch ' + esc(_autoPairLastSavedInfo.batchId) + ').</div>';
+  }
+  html += '<strong>' + eligible.length + ' / 32</strong> VĐV hợp lệ để ghép cặp.<br>';
   html += 'Chưa xác nhận (chưa confirmed): ' + missingConfirmed + '<br>';
   html += 'Chưa thanh toán: ' + missingPaid + '<br>';
   html += 'Thiếu điểm trình (amz_rating): ' + missingRating + '<br>';
@@ -1978,6 +1990,11 @@ function updateAutoPairStatus(evId) {
 function previewAutoPairing() {
   var evId = _bracketEventId;
   if (!evId) return;
+  // Đã có preview chưa lưu cho đúng event này → phải xác nhận trước khi bốc lại, không random lại ngay.
+  if (currentAutoPairPreviewPairs && currentAutoPairPreviewEventId === evId) {
+    var reconfirm = confirm('Bạn đã có một bản xem trước ghép cặp chưa lưu. Bốc lại sẽ thay thế bản xem trước hiện tại. Bạn có chắc muốn bốc lại không?');
+    if (!reconfirm) return;
+  }
   var eligible = getEligiblePlayersForPairing(evId);
   if (eligible.length !== 32) {
     showToastError('Cần đúng 32 VĐV hợp lệ để xem trước ghép cặp (hiện có ' + eligible.length + ').');
@@ -2009,8 +2026,15 @@ function previewAutoPairing() {
   document.getElementById('autopair-preview').style.display = 'block';
   currentAutoPairPreviewPairs = pairs;
   currentAutoPairPreviewEventId = evId;
+  var previewBtn = document.getElementById('btn-autopair-preview');
+  if (previewBtn) previewBtn.textContent = 'Bốc lại preview';
+  var repreviewNote = document.getElementById('autopair-repreview-note');
+  if (repreviewNote) repreviewNote.style.display = 'block';
   var saveBtn = document.getElementById('btn-autopair-save');
-  if (saveBtn) saveBtn.disabled = false;
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.title = 'Lưu đúng 16 cặp đang hiển thị ở trên vào Firestore.';
+  }
   toast('✓ Đã tạo bản xem trước 16 cặp — chưa lưu vào hệ thống.');
 }
 
@@ -2069,7 +2093,13 @@ async function saveAutoPairingResults() {
     return;
   }
 
-  var confirmMsg = 'Bạn sắp lưu 16 cặp đang hiển thị. Hệ thống sẽ cập nhật registration chính và đánh dấu registration còn lại là merged. Không thể hoàn tác tự động.';
+  var confirmMsg = 'Bạn sắp lưu 16 cặp đang hiển thị. Hệ thống sẽ cập nhật registration chính và đánh dấu registration còn lại là merged. Không thể hoàn tác tự động.\n\n' +
+    'Lưu ý trước khi xác nhận:\n' +
+    '- Đây là thao tác ghi dữ liệu thật vào Firestore.\n' +
+    '- Chỉ nên có 1 admin thao tác ghép cặp cho nội dung này tại một thời điểm.\n' +
+    '- Hệ thống sẽ lưu đúng 16 cặp đang hiển thị ở trên — không random lại khi bấm nút này.\n' +
+    '- Registration còn lại (không phải cặp chính) sẽ chuyển sang status = merged, không bị xóa.\n' +
+    '- Thao tác này không thể hoàn tác tự động.';
   if (!confirm(confirmMsg)) return;
 
   var batchId = 'pb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
@@ -2106,6 +2136,7 @@ async function saveAutoPairingResults() {
 
     currentAutoPairPreviewPairs = null;
     currentAutoPairPreviewEventId = null;
+    _autoPairLastSavedInfo = { eventId: evId, batchId: batchId, pairCount: pairs.length };
     toast('✓ Đã lưu ' + pairs.length + ' cặp ghép vào hệ thống (batch ' + batchId + ').');
     await loadAll();
     onBracketEventChange();
