@@ -563,7 +563,7 @@ var _fsdb = firebase.firestore();
                 <thead><tr><th>#</th><th>VĐV 1</th><th>Giới tính 1</th><th>Điểm AMZ 1</th><th>VĐV 2</th><th>Giới tính 2</th><th>Điểm AMZ 2</th><th>Hệ số giới tính</th><th>Điểm cặp</th></tr></thead>
                 <tbody id="autopair-preview-table"></tbody>
               </table>
-              <button class="btn btn-outline" style="width:100%;margin-top:14px;" disabled title="Sẽ triển khai ở bước tiếp theo">Lưu kết quả ghép cặp (sẽ triển khai ở bước tiếp theo)</button>
+              <button class="btn btn-outline" style="width:100%;margin-top:14px;" onclick="saveAutoPairingResults()" id="btn-autopair-save" disabled>Lưu kết quả ghép cặp</button>
             </div>
           </div>
         </div>
@@ -1222,6 +1222,8 @@ var matches = [];
 
 var _bracketPreview = null;
 var _bracketEventId = null;
+var currentAutoPairPreviewPairs = null;
+var currentAutoPairPreviewEventId = null;
 
 function showLoading(v) {
   var el = document.getElementById('loadingOverlay');
@@ -1940,8 +1942,13 @@ function updateAutoPairStatus(evId) {
   var previewTable = document.getElementById('autopair-preview-table');
   var statusBox = document.getElementById('autopair-status');
   var btn = document.getElementById('btn-autopair-preview');
+  var saveBtn = document.getElementById('btn-autopair-save');
   if (previewBox) previewBox.style.display = 'none';
   if (previewTable) previewTable.innerHTML = '';
+  // Đổi event (hoặc bỏ chọn) → bỏ preview cũ, tránh lưu nhầm preview của event khác.
+  currentAutoPairPreviewPairs = null;
+  currentAutoPairPreviewEventId = null;
+  if (saveBtn) saveBtn.disabled = true;
   if (!evId) {
     if (statusBox) statusBox.innerHTML = 'Chọn nội dung thi đấu để xem trạng thái dữ liệu.';
     if (btn) btn.disabled = true;
@@ -2000,7 +2007,114 @@ function previewAutoPairing() {
   });
   document.getElementById('autopair-preview-table').innerHTML = html;
   document.getElementById('autopair-preview').style.display = 'block';
+  currentAutoPairPreviewPairs = pairs;
+  currentAutoPairPreviewEventId = evId;
+  var saveBtn = document.getElementById('btn-autopair-save');
+  if (saveBtn) saveBtn.disabled = false;
   toast('✓ Đã tạo bản xem trước 16 cặp — chưa lưu vào hệ thống.');
+}
+
+// Lưu đúng bản preview đang hiển thị vào Firestore theo merge policy (ADR-0007 mục 9-10). KHÔNG random lại ở đây.
+async function saveAutoPairingResults() {
+  var evId = _bracketEventId;
+  var saveBtn = document.getElementById('btn-autopair-save');
+
+  if (!currentAutoPairPreviewPairs || !currentAutoPairPreviewEventId) {
+    showToastError('Chưa có bản xem trước để lưu. Hãy bấm "Xem trước ghép cặp" trước.');
+    return;
+  }
+  if (currentAutoPairPreviewEventId !== evId) {
+    showToastError('Nội dung thi đấu đã đổi khác lúc xem trước. Vui lòng xem trước lại.');
+    return;
+  }
+  var pairs = currentAutoPairPreviewPairs;
+  if (!Array.isArray(pairs) || pairs.length !== 16) {
+    showToastError('Bản xem trước không hợp lệ (không đúng 16 cặp). Vui lòng xem trước lại.');
+    return;
+  }
+
+  var regIds = [];
+  var playerIds = [];
+  for (var i = 0; i < pairs.length; i++) {
+    var pr = pairs[i];
+    if (!pr.regA || !pr.regB || !pr.playerA || !pr.playerB) {
+      showToastError('Bản xem trước thiếu dữ liệu ở cặp #' + (i + 1) + '. Vui lòng xem trước lại.');
+      return;
+    }
+    regIds.push(pr.regA.id, pr.regB.id);
+    playerIds.push(pr.playerA.id, pr.playerB.id);
+  }
+  var uniqueRegIds = regIds.filter(function(v, idx) { return regIds.indexOf(v) === idx; });
+  var uniquePlayerIds = playerIds.filter(function(v, idx) { return playerIds.indexOf(v) === idx; });
+  if (uniqueRegIds.length !== regIds.length || uniquePlayerIds.length !== playerIds.length) {
+    showToastError('Phát hiện trùng registration hoặc VĐV trong bản xem trước. Không thể lưu, vui lòng xem trước lại.');
+    return;
+  }
+
+  // Re-kiểm tra dữ liệu hiện tại (không random lại) — phòng trường hợp registration đổi trạng thái trong lúc đang xem preview.
+  for (var j = 0; j < pairs.length; j++) {
+    var freshA = registrations.find(function(r) { return r.id === pairs[j].regA.id; });
+    var freshB = registrations.find(function(r) { return r.id === pairs[j].regB.id; });
+    if (!freshA || !freshB ||
+        freshA.status !== 'confirmed' || freshB.status !== 'confirmed' ||
+        freshA.payment_status !== 'paid' || freshB.payment_status !== 'paid' ||
+        freshA.player_2_id || freshB.player_2_id) {
+      showToastError('Dữ liệu đăng ký đã thay đổi kể từ lúc xem trước (VD: bị hủy/đổi trạng thái). Vui lòng xem trước lại trước khi lưu.');
+      return;
+    }
+  }
+  var eligibleNow = getEligiblePlayersForPairing(evId);
+  if (eligibleNow.length !== 32) {
+    showToastError('Số VĐV hợp lệ hiện không còn đúng 32 (hiện ' + eligibleNow.length + '). Vui lòng xem trước lại trước khi lưu.');
+    return;
+  }
+
+  var confirmMsg = 'Bạn sắp lưu 16 cặp đang hiển thị. Hệ thống sẽ cập nhật registration chính và đánh dấu registration còn lại là merged. Không thể hoàn tác tự động.';
+  if (!confirm(confirmMsg)) return;
+
+  var batchId = 'pb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  var pairedAt = new Date().toISOString();
+  var pairedBy = (_auth.currentUser && (_auth.currentUser.email || _auth.currentUser.uid)) || 'admin';
+
+  if (saveBtn) saveBtn.disabled = true;
+  showLoading(true);
+  try {
+    var batch = _fsdb.batch();
+    pairs.forEach(function(p) {
+      var primaryRef = _fsdb.collection('registrations').doc(p.regA.id);
+      var secondaryRef = _fsdb.collection('registrations').doc(p.regB.id);
+      batch.update(primaryRef, {
+        player_2_id: p.playerB.id,
+        status: 'confirmed',
+        payment_status: 'paid',
+        paired_at: pairedAt,
+        paired_by: pairedBy,
+        pairing_batch_id: batchId,
+        official_rating_snapshot_1: p.official_rating_snapshot_1,
+        official_rating_snapshot_2: p.official_rating_snapshot_2,
+        gender_adjustment: p.gender_adjustment,
+        pair_adjusted_score: p.pair_adjusted_score
+      });
+      batch.update(secondaryRef, {
+        status: 'merged',
+        merged_into: p.regA.id,
+        merged_at: pairedAt,
+        pairing_batch_id: batchId
+      });
+    });
+    await batch.commit();
+
+    currentAutoPairPreviewPairs = null;
+    currentAutoPairPreviewEventId = null;
+    toast('✓ Đã lưu ' + pairs.length + ' cặp ghép vào hệ thống (batch ' + batchId + ').');
+    await loadAll();
+    onBracketEventChange();
+  } catch (e) {
+    showToastError('Lỗi khi lưu ghép cặp: ' + e.message);
+    if (saveBtn) saveBtn.disabled = false;
+  } finally {
+    showLoading(false);
+  }
 }
 
 function generateBracketPreview() {
