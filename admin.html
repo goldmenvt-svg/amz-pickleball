@@ -547,6 +547,26 @@ var _fsdb = firebase.firestore();
         </select>
       </div>
       <div id="bracket-main" style="display:none;">
+        <div class="card" id="autopair-block" style="margin-bottom:24px;">
+          <div class="card-header">
+            <h3>Ghép cặp tự động (xem trước — chưa lưu)</h3>
+          </div>
+          <div class="card-body">
+            <div class="hint-box" id="autopair-status">Chọn nội dung thi đấu để xem trạng thái dữ liệu.</div>
+            <button class="btn btn-primary" style="width:100%;margin:12px 0 0;" onclick="previewAutoPairing()" id="btn-autopair-preview" disabled>Xem trước ghép cặp</button>
+            <div id="autopair-preview" style="display:none;margin-top:16px;">
+              <div style="background:rgba(245,158,11,0.12);border:1px solid var(--orange);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--orange);">
+                ⚠ Đây chỉ là bản xem trước, chưa lưu vào hệ thống.<br>
+                Muốn lưu kết quả ghép cặp cần bước Commit 4.
+              </div>
+              <table>
+                <thead><tr><th>#</th><th>VĐV 1</th><th>Giới tính 1</th><th>Điểm AMZ 1</th><th>VĐV 2</th><th>Giới tính 2</th><th>Điểm AMZ 2</th><th>Hệ số giới tính</th><th>Điểm cặp</th></tr></thead>
+                <tbody id="autopair-preview-table"></tbody>
+              </table>
+              <button class="btn btn-outline" style="width:100%;margin-top:14px;" disabled title="Sẽ triển khai ở bước tiếp theo">Lưu kết quả ghép cặp (sẽ triển khai ở bước tiếp theo)</button>
+            </div>
+          </div>
+        </div>
         <div class="two-col">
           <div class="card">
             <div class="card-header">
@@ -1878,8 +1898,9 @@ function onBracketTournamentChange() {
 
 function onBracketEventChange() {
   var evId = document.getElementById('bracket-event').value;
-  if (!evId) { document.getElementById('bracket-main').style.display = 'none'; return; }
+  if (!evId) { document.getElementById('bracket-main').style.display = 'none'; updateAutoPairStatus(null); return; }
   _bracketEventId = evId;
+  updateAutoPairStatus(evId);
   document.getElementById('bracket-main').style.display = 'block';
   var hasGroups = groups.some(function(g) { return g.event_id === evId; });
   document.getElementById('bracket-done').style.display = hasGroups ? 'block' : 'none';
@@ -1910,6 +1931,76 @@ function onBracketEventChange() {
   hintHtml += 'Trận vòng bảng: ~' + matchCount + ' trận<br>';
   hintHtml += 'Ước tính: ~' + Math.ceil(matchCount * 30 / 60) + ' tiếng (30 phút/trận)';
   document.getElementById('bracket-hint').innerHTML = hintHtml;
+}
+
+// === AUTO PAIRING MVP — UI PREVIEW (ADR-0007 Commit 3, chỉ preview, không ghi Firestore) ===
+
+function updateAutoPairStatus(evId) {
+  var previewBox = document.getElementById('autopair-preview');
+  var previewTable = document.getElementById('autopair-preview-table');
+  var statusBox = document.getElementById('autopair-status');
+  var btn = document.getElementById('btn-autopair-preview');
+  if (previewBox) previewBox.style.display = 'none';
+  if (previewTable) previewTable.innerHTML = '';
+  if (!evId) {
+    if (statusBox) statusBox.innerHTML = 'Chọn nội dung thi đấu để xem trạng thái dữ liệu.';
+    if (btn) btn.disabled = true;
+    return;
+  }
+  var candidateRegs = registrations.filter(function(r) { return r.event_id === evId && !r.player_2_id; });
+  var eligible = getEligiblePlayersForPairing(evId);
+  var missingConfirmed = candidateRegs.filter(function(r) { return r.status !== 'confirmed'; }).length;
+  var missingPaid = candidateRegs.filter(function(r) { return r.payment_status !== 'paid'; }).length;
+  var missingGender = candidateRegs.filter(function(r) {
+    var p = players.find(function(pl) { return pl.id === r.player_1_id; });
+    return !p || !p.gender;
+  }).length;
+  var missingRating = candidateRegs.filter(function(r) {
+    var p = players.find(function(pl) { return pl.id === r.player_1_id; });
+    return !p || p.amz_rating === undefined || p.amz_rating === null || p.amz_rating === '' || isNaN(parseFloat(p.amz_rating));
+  }).length;
+  var html = '<strong>' + eligible.length + ' / 32</strong> VĐV hợp lệ để ghép cặp.<br>';
+  html += 'Chưa xác nhận (chưa confirmed): ' + missingConfirmed + '<br>';
+  html += 'Chưa thanh toán: ' + missingPaid + '<br>';
+  html += 'Thiếu điểm trình (amz_rating): ' + missingRating + '<br>';
+  html += 'Thiếu giới tính: ' + missingGender;
+  if (statusBox) statusBox.innerHTML = html;
+  if (btn) btn.disabled = eligible.length !== 32;
+}
+
+function previewAutoPairing() {
+  var evId = _bracketEventId;
+  if (!evId) return;
+  var eligible = getEligiblePlayersForPairing(evId);
+  if (eligible.length !== 32) {
+    showToastError('Cần đúng 32 VĐV hợp lệ để xem trước ghép cặp (hiện có ' + eligible.length + ').');
+    return;
+  }
+  var pairs;
+  try {
+    pairs = generateRandomPairs(eligible);
+  } catch (e) {
+    showToastError('Lỗi ghép cặp: ' + e.message);
+    return;
+  }
+  var html = '';
+  pairs.forEach(function(p, i) {
+    var genderLabel = function(g) { return g === 'male' ? 'Nam' : g === 'female' ? 'Nữ' : '?'; };
+    html += '<tr>' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td>' + esc(p.playerA.full_name || p.playerA.name || '?') + '</td>' +
+      '<td>' + genderLabel(p.playerA.gender) + '</td>' +
+      '<td>' + p.official_rating_snapshot_1 + '</td>' +
+      '<td>' + esc(p.playerB.full_name || p.playerB.name || '?') + '</td>' +
+      '<td>' + genderLabel(p.playerB.gender) + '</td>' +
+      '<td>' + p.official_rating_snapshot_2 + '</td>' +
+      '<td>' + (p.gender_adjustment > 0 ? '+' : '') + p.gender_adjustment + '</td>' +
+      '<td><strong>' + p.pair_adjusted_score + '</strong></td>' +
+      '</tr>';
+  });
+  document.getElementById('autopair-preview-table').innerHTML = html;
+  document.getElementById('autopair-preview').style.display = 'block';
+  toast('✓ Đã tạo bản xem trước 16 cặp — chưa lưu vào hệ thống.');
 }
 
 function generateBracketPreview() {
