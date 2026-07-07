@@ -1297,6 +1297,95 @@ function isDoublesEvent(eventId) {
   return ev.event_type === 'mens_doubles' || ev.event_type === 'womens_doubles' || ev.event_type === 'mixed';
 }
 
+// === AUTO PAIRING MVP — HELPERS THUẦN (ADR-0007, không ghi Firestore) ===
+
+// Lấy danh sách registration cá nhân đủ điều kiện đưa vào auto pairing cho 1 event_id.
+function getEligiblePlayersForPairing(eventId) {
+  return registrations.filter(function(r) {
+    if (r.event_id !== eventId) return false;
+    if (r.player_2_id) return false;
+    if (r.status !== 'confirmed') return false;
+    if (r.payment_status !== 'paid') return false;
+    if (!r.player_1_id) return false;
+    var p = players.find(function(pl) { return pl.id === r.player_1_id; });
+    if (!p) return false;
+    if (!p.gender) return false;
+    if (p.amz_rating === undefined || p.amz_rating === null || p.amz_rating === '' || isNaN(parseFloat(p.amz_rating))) return false;
+    return true;
+  }).map(function(r) {
+    var p = players.find(function(pl) { return pl.id === r.player_1_id; });
+    return {
+      registration: r,
+      player: p,
+      player_id: p.id,
+      gender: p.gender,
+      amz_rating: parseFloat(p.amz_rating)
+    };
+  });
+}
+
+// Nhận diện Nam-Nam / Nam-Nữ / Nữ-Nữ theo dữ liệu gender đã khai — không suy đoán từ tên/hình.
+function getGenderPairType(genderA, genderB) {
+  var valid = ['male', 'female'];
+  if (valid.indexOf(genderA) === -1 || valid.indexOf(genderB) === -1) {
+    throw new Error('getGenderPairType: gender không hợp lệ (' + genderA + ', ' + genderB + ')');
+  }
+  if (genderA === 'male' && genderB === 'male') return 'MM';
+  if (genderA === 'female' && genderB === 'female') return 'FF';
+  return 'MF';
+}
+
+// Công thức pair_adjusted_score theo ADR-0007 mục 7 — thuần tính toán runtime, không ghi/sửa players.amz_rating.
+function calculatePairAdjustedScore(playerA, playerB) {
+  if (!playerA || !playerB) throw new Error('calculatePairAdjustedScore: thiếu player');
+  var ratingA = parseFloat(playerA.amz_rating);
+  var ratingB = parseFloat(playerB.amz_rating);
+  if (isNaN(ratingA) || isNaN(ratingB)) {
+    throw new Error('calculatePairAdjustedScore: thiếu amz_rating của player ' + (isNaN(ratingA) ? playerA.id : playerB.id));
+  }
+  if (!playerA.gender || !playerB.gender) {
+    throw new Error('calculatePairAdjustedScore: thiếu gender của player ' + (!playerA.gender ? playerA.id : playerB.id));
+  }
+  var pairType = getGenderPairType(playerA.gender, playerB.gender);
+  var genderAdjustment = pairType === 'MM' ? 0.3 : pairType === 'FF' ? -0.3 : 0;
+  var pairBaseScore = ratingA + ratingB;
+  return {
+    pair_base_score: pairBaseScore,
+    gender_adjustment: genderAdjustment,
+    pair_adjusted_score: pairBaseScore + genderAdjustment
+  };
+}
+
+// Random 32 VĐV cá nhân hợp lệ (output của getEligiblePlayersForPairing) thành 16 cặp — chỉ tính trong bộ nhớ, không ghi Firestore, không update registrations.
+function generateRandomPairs(eligibleRegs) {
+  if (!Array.isArray(eligibleRegs) || eligibleRegs.length !== 32) {
+    throw new Error('generateRandomPairs: cần đúng 32 VĐV hợp lệ, hiện có ' + (eligibleRegs ? eligibleRegs.length : 0));
+  }
+  // Fisher-Yates shuffle trên bản sao — không đổi mảng eligibleRegs gốc.
+  var shuffled = eligibleRegs.slice();
+  for (var i = shuffled.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
+  }
+  var pairs = [];
+  for (var k = 0; k < shuffled.length; k += 2) {
+    var a = shuffled[k];
+    var b = shuffled[k + 1];
+    var score = calculatePairAdjustedScore(a.player, b.player);
+    pairs.push({
+      regA: a.registration,
+      regB: b.registration,
+      playerA: a.player,
+      playerB: b.player,
+      official_rating_snapshot_1: a.amz_rating,
+      official_rating_snapshot_2: b.amz_rating,
+      gender_adjustment: score.gender_adjustment,
+      pair_adjusted_score: score.pair_adjusted_score
+    });
+  }
+  return pairs;
+}
+
 function eventTypeName(type) {
   var map = {mens_doubles:'Đôi nam', womens_doubles:'Đôi nữ', mixed:'Mixed', mens_singles:'Đơn nam', womens_singles:'Đơn nữ'};
   return map[type] || type;
