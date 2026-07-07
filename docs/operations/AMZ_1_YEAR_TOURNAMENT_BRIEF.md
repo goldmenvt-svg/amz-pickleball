@@ -46,7 +46,7 @@ Giải nội bộ tri ân cộng đồng AMZ, tổ chức nhân dịp kỷ niệ
 - Cách xử lý nếu số lượng đăng ký thực tế lẻ (không tròn 32/32) — chờ thêm hay ghép linh hoạt.
 - Chi tiết Gala Dinner: số khách mời, có mời người nhà VĐV không, MC/âm thanh, ngân sách.
 - Người phụ trách y tế/sơ cứu trong ngày thi đấu.
-- **Tính năng "hệ thống tự động bốc thăm ghép cặp" hiện chưa tồn tại trong code** (xem mục 11) — cần Owner/ChatGPT/Claude Code audit + chốt phương án kỹ thuật, có mốc thời gian hoàn thành rõ ràng trước 18/07/2026, nếu không kịp thì cần phương án dự phòng được Owner phê duyệt trước (không tự ý chuyển sang ghép tay).
+- **Tính năng "hệ thống tự động bốc thăm ghép cặp" (kèm tính điểm quy đổi cặp đôi `pair_adjusted_score`) hiện chưa tồn tại trong code** (xem mục 11) — cần Owner/ChatGPT/Claude Code audit + chốt phương án kỹ thuật, có mốc thời gian hoàn thành rõ ràng trước 18/07/2026, nếu không kịp thì cần phương án dự phòng được Owner phê duyệt trước (không tự ý chuyển sang ghép tay).
 
 ---
 
@@ -107,6 +107,7 @@ Quy trình:
 3. Quyết định xếp VĐV vào **Trình Thấp** hoặc **Trình Cao** — có thể khác với trình VĐV tự khai báo.
 4. Nếu trình xếp khác với khai báo ban đầu, đây **không phải một trạng thái/status riêng trong hệ thống** — ghi nhận thay đổi qua tính năng "Lịch sử trình" có sẵn trong admin (xem Data Checklist mục 6) để tránh thắc mắc từ VĐV.
 5. Thông báo kết quả xét trình cho VĐV trước hạn đóng tiền, để VĐV còn kịp xác nhận tham gia đúng trình được xếp.
+6. Trong lúc xét trình, xác nhận VĐV đã có đủ **điểm trình cá nhân** và **giới tính thi đấu** trong hồ sơ — đây là 2 điều kiện bắt buộc để đưa vào ghép cặp tự động (mục 11). Nếu thiếu, bổ sung ngay trong bước này, không để dồn tới lúc bốc thăm.
 
 ---
 
@@ -131,6 +132,8 @@ Quy trình:
 - Đã được duyệt tham gia (`registrations.status = confirmed`).
 - Đã chốt Trình Thấp hoặc Trình Cao (đã xét trình xong, đúng `event_id`).
 - Đã xác nhận đóng tiền (`payment_status = paid`).
+- **Đã có điểm trình cá nhân** (kết quả xét trình — không random khi còn thiếu điểm trình).
+- **Đã có giới tính thi đấu** (do VĐV tự khai hoặc BTC xác nhận — không suy đoán từ tên/hình ảnh).
 - Không nằm trong danh sách chờ / bị loại / thiếu thông tin.
 
 **Quy tắc ghép cặp:**
@@ -139,6 +142,29 @@ Quy trình:
 - Không ghép chéo Thấp-Cao.
 - **Không cho VĐV tự chọn đồng đội.**
 - **Không ghép thủ công theo cảm tính** dưới bất kỳ lý do gì.
+
+**Công bằng ghép cặp — đây KHÔNG phải random thuần túy (Owner bổ sung):**
+
+Nếu chỉ random hoàn toàn ngẫu nhiên theo điểm trình, các cặp Nam-Nam / Nam-Nữ / Nữ-Nữ có thể không cân sức dù tổng điểm bằng nhau. Vì vậy hệ thống phải tính thêm một **điểm quy đổi cặp đôi** để hỗ trợ ghép cặp/chia bảng cho cân, theo công thức:
+
+```
+pair_base_score = player_1_rating + player_2_rating
+gender_adjustment:
+  Nam-Nam → +0.3
+  Nam-Nữ  → 0
+  Nữ-Nữ   → -0.3
+pair_adjusted_score = pair_base_score + gender_adjustment
+```
+
+(`player_1_rating`/`player_2_rating` là điểm trình cá nhân của từng VĐV sau xét trình — xem Data Checklist mục 3.1 cho tên field thật.)
+
+**Nguyên tắc bắt buộc đi kèm:**
+- `pair_adjusted_score` **chỉ dùng để hỗ trợ**: (a) ghép cặp tự động, (b) chia bảng cho cân, (c) cân bằng sức mạnh giữa các bảng/nhánh.
+- **Không dùng điểm quy đổi này để chấp điểm trong trận đấu.**
+- **Không sửa điểm trình cá nhân vĩnh viễn của VĐV** — đây chỉ là một con số tính toán tạm thời tại thời điểm ghép cặp, không ghi đè lên hồ sơ VĐV.
+- **Không suy đoán giới tính từ tên hoặc hình ảnh** — chỉ dùng giới tính thi đấu do chính VĐV tự khai hoặc do BTC xác nhận (đã có sẵn trong hồ sơ VĐV).
+- Hệ số `+0.3 / 0 / -0.3` hiện là **hệ số tạm thời** Owner đưa ra cho giải này — có thể cần điều chỉnh lại ở các giải sau, không mặc định là con số cố định vĩnh viễn.
+- **Nếu VĐV thiếu điểm trình cá nhân hoặc thiếu thông tin giới tính thi đấu, VĐV đó CHƯA đủ điều kiện đưa vào ghép cặp tự động** — phải bổ sung đủ thông tin trước, không random tạm với dữ liệu thiếu.
 
 **Minh bạch vận hành:**
 1. Sau khi hệ thống bốc thăm xong, kết quả cần được **lưu lại** (ghi vào `registrations` — `player_1_id`/`player_2_id` của từng cặp) và công khai/thông báo cho VĐV trước ngày thi đấu.
@@ -167,7 +193,21 @@ Quy trình:
 
 ---
 
-## 14. Checklist trước ngày thi đấu
+## 14. Quản lý dữ liệu VĐV dài hạn
+
+**Nguyên tắc (Owner chốt):** Toàn bộ dữ liệu VĐV (hồ sơ, đăng ký, lịch sử thi đấu, điểm trình) là **tài sản vận hành dài hạn của AMZ** — phải được lưu giữ và quản lý để dùng cho các giải sau, xét trình sau, lịch sử thi đấu, thành tích, và vận hành cộng đồng, không chỉ dùng cho một lần giải này rồi bỏ.
+
+**Nguyên tắc vận hành:**
+1. Mọi VĐV đăng ký phải gắn về đúng 1 hồ sơ VĐV duy nhất trong hệ thống — nếu VĐV mới, phải tạo hồ sơ trước hoặc trong lúc nhập đăng ký, không để đăng ký "trôi nổi" không gắn với ai.
+2. Không ghi đè mất lịch sử điểm trình — nếu điểm trình của VĐV thay đổi (do xét trình lại hoặc kết quả giải), phải ghi nhận lại đầy đủ, không chỉ thay số mới rồi mất số cũ.
+3. Facebook/Zalo/Hotline **chỉ là nơi tiếp nhận đăng ký ban đầu** — nguồn dữ liệu chính thức, lâu dài của AMZ vẫn là hệ thống quản trị (admin/Firestore), không phải sổ tay hay tin nhắn rời rạc.
+4. Dữ liệu công khai/không công khai áp dụng xuyên suốt mọi giải, không chỉ riêng giải này (xem Data Checklist mục 8).
+
+**⚠️ Lưu ý kỹ thuật quan trọng:** Việc phân loại dữ liệu (hồ sơ gốc VĐV / đăng ký theo giải / lịch sử trận đấu / lịch sử điểm trình / dữ liệu bảng đấu-lịch-kết quả) và các field điểm số chi tiết (điểm tự khai, điểm AMZ chấm, điểm chính thức dùng cho giải, người xác nhận, ghi chú điều chỉnh) đã được đối chiếu với schema thật — xem **Data Checklist mục 9** để biết chính xác field nào đã có, field nào chưa có và cần audit kỹ thuật riêng trước khi coi là đã hoạt động. Đặc biệt: tính năng **"Lịch sử trình"** hiện tại **chưa lưu vào Firestore thật** (chỉ lưu tạm trên trình duyệt), cần audit/sửa riêng trước khi dựa vào đó làm nơi lưu lịch sử điểm trình chính thức.
+
+---
+
+## 15. Checklist trước ngày thi đấu
 
 - [ ] Danh sách VĐV đã xét trình xong, phân đúng Trình Thấp/Cao.
 - [ ] Toàn bộ VĐV trong danh sách bốc thăm đã xác nhận đóng tiền.
@@ -180,7 +220,7 @@ Quy trình:
 - [ ] Đã chốt nhân sự: người check-in, người ghi điểm mỗi sân, người xử lý phát sinh.
 - [ ] Đã chuẩn bị khu vực/chương trình Gala Dinner 16:30.
 
-## 15. Checklist trong ngày thi đấu
+## 16. Checklist trong ngày thi đấu
 
 - [ ] Mở check-in đúng 07:00, đối chiếu danh sách đã đóng tiền.
 - [ ] Xác nhận VĐV có mặt đầy đủ theo từng cặp trước khi bắt đầu — nếu thiếu người, xử lý theo phương án dự phòng.
@@ -190,7 +230,7 @@ Quy trình:
 - [ ] Theo dõi tiến độ để đảm bảo kết thúc trước 16:00.
 - [ ] Chuẩn bị chuyển giao sang Gala Dinner đúng 16:30.
 
-## 16. Checklist sau giải
+## 17. Checklist sau giải
 
 - [ ] Cập nhật đầy đủ kết quả cuối cùng (Vô địch/Á quân/Hạng 3) cho cả 2 trình.
 - [ ] Cập nhật trình sau giải cho VĐV nếu có thay đổi do kết quả thi đấu (nếu Owner áp dụng quy tắc tăng/giảm trình sau giải).
@@ -201,7 +241,7 @@ Quy trình:
 
 ---
 
-## 17. Vai trò
+## 18. Vai trò
 
 **Owner**
 - Quyết định các thông tin còn thiếu (mục 4).
@@ -214,6 +254,7 @@ Quy trình:
 
 **BTC/Nhân viên AMZ**
 - Nhận đăng ký qua Facebook/Zalo/Hotline, nhập vào hệ thống (không dùng form web công khai — xem mục 8).
+- **Luôn gắn đăng ký về đúng hồ sơ VĐV có sẵn, hoặc tạo hồ sơ mới trước khi đăng ký** nếu VĐV chưa từng có trong hệ thống (mục 14).
 - Thu tiền, cập nhật trạng thái thanh toán.
 - **Không tự tay ghép cặp VĐV** dưới bất kỳ hình thức nào — việc ghép cặp chỉ do hệ thống tự động thực hiện (mục 11).
 - Ghi nhận thời điểm bốc thăm + người thao tác vào ghi chú vận hành (mục 11, do hệ thống chưa có audit log riêng).
@@ -222,4 +263,5 @@ Quy trình:
 **Claude Code**
 - Hỗ trợ kỹ thuật khi nhập dữ liệu vào hệ thống hoặc khi có sự cố khi thao tác trên trang quản trị.
 - **Audit + đề xuất phương án triển khai tính năng tự động bốc thăm ghép cặp** (hiện chưa tồn tại trong code — xem mục 11), báo cáo Owner/ChatGPT chốt trước khi build.
+- **Audit + đề xuất phương án quản lý dữ liệu VĐV dài hạn** (mục 14, chi tiết kỹ thuật ở Data Checklist mục 9) — bao gồm sửa tính năng "Lịch sử trình" hiện chưa dùng Firestore thật.
 - Không tham gia quyết định nghiệp vụ (xét trình, ghép cặp, giải thưởng...) — chỉ thực hiện đúng theo quyết định Owner đã chốt.
