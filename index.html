@@ -1989,8 +1989,8 @@
               <h3>Đăng ký<br><span class="dim">tập luyện ngay</span></h3>
               <p>Buổi đầu tiên: HLV đánh giá trình độ miễn phí và thiết kế lộ trình tập cá nhân hóa phù hợp mục tiêu của bạn.</p>
               <div class="training-price">
-                <div class="from">Học phí từ</div>
-                <strong>500K</strong><small> / buổi</small>
+                <div class="from">Học phí</div>
+                <strong>400.000đ</strong><small> / buổi</small>
               </div>
               <a href="tel:0914859927" class="btn btn-primary btn-lg btn-cta" style="width:100%;justify-content:center;margin-bottom:12px;">
                 <span class="btn-cta-text">Đăng Ký Ngay</span>
@@ -2188,8 +2188,8 @@
                   </button>
                   <button class="bw-service-card" data-service="membership">
                     <span class="bw-service-icon">💳</span>
-                    <span class="bw-service-name">Thành Viên</span>
-                    <span class="bw-service-desc">Gói membership ưu đãi</span>
+                    <span class="bw-service-name">Social Club</span>
+                    <span class="bw-service-desc">Gói Social Club ưu đãi</span>
                   </button>
                   <button class="bw-service-card" data-service="khac">
                     <span class="bw-service-icon">💬</span>
@@ -2680,7 +2680,7 @@
       var SVC_LABEL = {
         'dat-san': '🏓 Thuê sân', 'dang-ky-hoc': '📚 Tập nhóm',
         'coaching': '👤 Coaching 1-on-1', 'dang-ky-giai': '🏆 Thi đấu',
-        'membership': '💳 Thành viên', 'khac': '💬 Hỏi thêm'
+        'membership': '💳 Social Club', 'khac': '💬 Hỏi thêm'
       };
 
       function goTo(n, dir) {
@@ -3260,7 +3260,9 @@
 
       function renderPricing(p) {
         var weekday = p.courtPricing.weekday;
+        var weekdayEvening = p.courtPricing.weekdayEvening;
         var weekend = p.courtPricing.weekend;
+        var weekendEvening = p.courtPricing.weekendEvening;
         var social  = p.socialPlan;
         var walkIn  = p.walkInPass;
         var phoneDisplay = p.cta.phoneDisplay || p.cta.phone;
@@ -3270,8 +3272,14 @@
         if (weekday && weekday.visible !== false) {
           courtLines += '<div class="pricing-price"><strong>' + formatVNDShort(weekday.pricePerHour) + '</strong><span>/ giờ — ' + escapeHTML(weekday.label) + ', ' + formatHourRange(weekday.startTime, weekday.endTime) + '</span></div>';
         }
+        if (weekdayEvening && weekdayEvening.visible !== false) {
+          courtLines += '<div class="pricing-price"><strong>' + formatVNDShort(weekdayEvening.pricePerHour) + '</strong><span>/ giờ — ' + escapeHTML(weekdayEvening.label) + ', ' + formatHourRange(weekdayEvening.startTime, weekdayEvening.endTime) + '</span></div>';
+        }
         if (weekend && weekend.visible !== false) {
           courtLines += '<div class="pricing-price"><strong>' + formatVNDShort(weekend.pricePerHour) + '</strong><span>/ giờ — ' + escapeHTML(weekend.label) + ', ' + formatHourRange(weekend.startTime, weekend.endTime) + '</span></div>';
+        }
+        if (weekendEvening && weekendEvening.visible !== false) {
+          courtLines += '<div class="pricing-price"><strong>' + formatVNDShort(weekendEvening.pricePerHour) + '</strong><span>/ giờ — ' + escapeHTML(weekendEvening.label) + ', ' + formatHourRange(weekendEvening.startTime, weekendEvening.endTime) + '</span></div>';
         }
 
         var cards = '';
@@ -3323,8 +3331,14 @@
           if (weekday && weekday.visible !== false) {
             parts.push(weekday.label + ' (' + formatHourRange(weekday.startTime, weekday.endTime) + '): ' + formatVNDShort(weekday.pricePerHour) + '/giờ.');
           }
+          if (weekdayEvening && weekdayEvening.visible !== false) {
+            parts.push(weekdayEvening.label + ' (' + formatHourRange(weekdayEvening.startTime, weekdayEvening.endTime) + '): ' + formatVNDShort(weekdayEvening.pricePerHour) + '/giờ.');
+          }
           if (weekend && weekend.visible !== false) {
             parts.push(weekend.label + ' (' + formatHourRange(weekend.startTime, weekend.endTime) + '): ' + formatVNDShort(weekend.pricePerHour) + '/giờ.');
+          }
+          if (weekendEvening && weekendEvening.visible !== false) {
+            parts.push(weekendEvening.label + ' (' + formatHourRange(weekendEvening.startTime, weekendEvening.endTime) + '): ' + formatVNDShort(weekendEvening.pricePerHour) + '/giờ.');
           }
           if (walkIn && walkIn.visible !== false) {
             parts.push(walkIn.name + ': ' + formatVNDShort(walkIn.pricePerVisit) + '/' + walkIn.period + '.');

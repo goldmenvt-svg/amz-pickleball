@@ -22,7 +22,7 @@ function validatePricing(p) {
   if (!p || typeof p !== 'object') { errors.push('pricing data must be an object'); return errors; }
 
   const cp = (p.courtPricing && typeof p.courtPricing === 'object') ? p.courtPricing : {};
-  ['weekday', 'weekend'].forEach(function (key) {
+  ['weekday', 'weekdayEvening', 'weekend', 'weekendEvening'].forEach(function (key) {
     const slot = cp[key];
     if (!slot || typeof slot !== 'object') { errors.push(key + ' is missing'); return; }
     if (!slot.label) errors.push(key + '.label is required');
@@ -38,6 +38,10 @@ function validatePricing(p) {
   const walkIn = p.walkInPass;
   if (!walkIn || !walkIn.name) errors.push('walkInPass.name is required');
   if (!walkIn || !isPositiveInt(walkIn.pricePerVisit)) errors.push('walkInPass.pricePerVisit must be a positive integer');
+
+  const coaching = p.coaching;
+  if (!coaching || !coaching.name) errors.push('coaching.name is required');
+  if (!coaching || !isPositiveInt(coaching.pricePerSession)) errors.push('coaching.pricePerSession must be a positive integer');
 
   const cta = (p.cta && typeof p.cta === 'object') ? p.cta : {};
   if (!cta.phone) errors.push('cta.phone is required');
