@@ -127,10 +127,12 @@ Before marketing, UI, SEO, pricing, or landing-page work, read:
 - `npm publish`, `pnpm publish`, `yarn publish`
 - Gửi dữ liệu ra ngoài bằng `curl`/`wget`/`Invoke-WebRequest` nếu chưa có yêu cầu riêng
 
-### D. Riêng `data/players.json`
-- Không in nội dung file.
-- Chỉ được kiểm tra tên field (field name) hoặc xử lý bằng script không in dữ liệu cá nhân.
-- Nếu cần sửa dữ liệu public thì phải hỏi trước.
+### D. Riêng `data/players.json` — dữ liệu nhạy cảm
+- `data/players.json` chứa thông tin cá nhân thật của VĐV (tên, v.v.) — coi là **dữ liệu nhạy cảm**, không phải file cấu hình thông thường.
+- **Không dùng tool Read trên file này** dưới bất kỳ lý do gì — Read in toàn bộ nội dung ra transcript, kể cả khi không cố ý.
+- Chỉ được kiểm tra bằng `grep`/`find` (đếm field, kiểm tra tên key có tồn tại hay không, đếm số lượng bản ghi) hoặc script không in giá trị (VD `node -e` chỉ in `Object.keys(...)` hoặc `.length`, không in nội dung từng record).
+- **Không in tên VĐV hoặc bất kỳ giá trị cá nhân nào** ra transcript/báo cáo nếu Owner không yêu cầu rõ ràng.
+- Nếu cần sửa dữ liệu (kể cả dữ liệu public) trong file này thì phải hỏi trước.
 
 ### E. Quy trình trước khi sửa
 - Luôn liệt kê chính xác file dự kiến sửa trước khi bắt đầu.
