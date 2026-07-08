@@ -17,6 +17,14 @@ Before marketing, UI, SEO, pricing, or landing-page work, read:
 - current route/page/component files relevant to the task
 - design tokens/theme/tailwind config if present
 
+## CODEGRAPH USAGE — AMZ REPO
+- CodeGraph đã được cài và index cho repo AMZ.
+- Dùng CodeGraph ưu tiên khi cần hiểu `app-nextjs/`, route/component/function, dependency/call graph.
+- Với production hiện tại là static root, các file như `index.html`, `data/*.json`, `blog/index.html`, `blog/posts/*.html`, `sitemap.xml`, `vercel.json` phải đọc trực tiếp vì CodeGraph không hiểu đầy đủ HTML/JSON/sitemap như code symbol.
+- Không dùng CodeGraph để đọc `.env`, `.env.*`, `app-nextjs/.env.local`, `secrets/**`, `*.pem`, `*.key`.
+- Không commit/push/deploy nếu chưa có xác nhận.
+- Khi câu hỏi liên quan "production đang chạy gì", mặc định production = static root, app-nextjs = Phase 2 đang phát triển song song, trừ khi `vercel.json` hoặc Vercel config thay đổi.
+
 ## Core principles
 1. Do not generate generic AI-looking UI.
 2. Preserve working functionality unless explicitly asked to refactor.
