@@ -32,6 +32,16 @@ Before marketing, UI, SEO, pricing, or landing-page work, read:
 - Khi sửa pricing/campaign phải kiểm `data/pricing.json` trước.
 - Đọc thêm `.agents/amz-marketing-playbook.md` trước khi áp dụng skill vào nội dung AMZ.
 
+## TASTE SKILL / UI-UX USAGE — AMZ REPO
+- Dùng Taste Skill khi audit hoặc sửa UI/UX, landing page, hero, pricing, booking widget, mobile layout.
+- Với production static site, ưu tiên `index.html`.
+- Không redesign toàn site nếu chưa có yêu cầu.
+- Không phá CTA, booking flow, pricing data.
+- Không thêm claim "lớn nhất", "số 1", "đầu tiên".
+- Không tự thêm testimonial/review giả.
+- Trước khi sửa UI phải báo file dự kiến sửa và mục tiêu sửa.
+- Đọc thêm `.agents/amz-design-playbook.md` trước khi áp dụng skill vào giao diện AMZ.
+
 ## Core principles
 1. Do not generate generic AI-looking UI.
 2. Preserve working functionality unless explicitly asked to refactor.
