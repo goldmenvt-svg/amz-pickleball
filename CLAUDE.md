@@ -25,6 +25,13 @@ Before marketing, UI, SEO, pricing, or landing-page work, read:
 - Không commit/push/deploy nếu chưa có xác nhận.
 - Khi câu hỏi liên quan "production đang chạy gì", mặc định production = static root, app-nextjs = Phase 2 đang phát triển song song, trừ khi `vercel.json` hoặc Vercel config thay đổi.
 
+## MARKETINGSKILLS USAGE — AMZ REPO
+- Dùng MarketingSkills (`.agents/skills/`) cho copywriting, SEO local, landing page, campaign, blog, pricing messaging.
+- Không dùng MarketingSkills để tự bịa claim như "lớn nhất", "đầu tiên", "số 1".
+- Khi sửa blog phải đồng bộ `data/blog-posts.json`, `blog/index.html`, `blog/posts/*.html`, `sitemap.xml`.
+- Khi sửa pricing/campaign phải kiểm `data/pricing.json` trước.
+- Đọc thêm `.agents/amz-marketing-playbook.md` trước khi áp dụng skill vào nội dung AMZ.
+
 ## Core principles
 1. Do not generate generic AI-looking UI.
 2. Preserve working functionality unless explicitly asked to refactor.

@@ -46,3 +46,4 @@ secrets/
 *.pem
 *.key
 .codegraph/
+.claude/skills/
