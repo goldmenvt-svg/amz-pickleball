@@ -61,8 +61,25 @@
   }
   .blog-card:hover { border-color: rgba(255,255,255,0.12); transform: translateY(-2px); }
   .blog-card-img {
-    width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #111;
-    display: block;
+    width: 100%; aspect-ratio: 16/9; background: var(--surface);
+    display: block; position: relative; overflow: hidden;
+  }
+  .blog-card-img::before {
+    content: ''; position: absolute; inset: 0;
+    background:
+      linear-gradient(135deg, rgba(200,240,58,0.06), transparent 55%),
+      repeating-linear-gradient(135deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 22px);
+  }
+  .blog-card-img::after {
+    content: ''; position: absolute; width: 130px; height: 130px;
+    right: -35px; bottom: -35px; border: 1px solid rgba(200,240,58,0.22);
+    border-radius: 50%;
+  }
+  .blog-card:nth-child(2n) .blog-card-img::after {
+    right: auto; left: -35px; top: -35px; bottom: auto;
+  }
+  .blog-card:nth-child(3n) .blog-card-img::after {
+    width: 90px; height: 90px; right: 24px; bottom: 24px;
   }
   .blog-card-body { padding: 20px; }
   .blog-card-tag {
@@ -113,7 +130,7 @@
 <div class="blog-grid">
 
   <a href="posts/loi-ich-suc-khoe-pickleball.html" class="blog-card">
-    <div class="blog-card-img" style="background:linear-gradient(135deg,#200a0a,#3a1414);display:flex;align-items:center;justify-content:center;font-size:48px;">💪</div>
+    <div class="blog-card-img"></div>
     <div class="blog-card-body">
       <span class="blog-card-tag">Sức khỏe</span>
       <h2 class="blog-card-title">8 lợi ích sức khỏe của Pickleball mà khoa học đã chứng minh</h2>
@@ -123,7 +140,7 @@
   </a>
 
   <a href="posts/review-vot-pickleball-2026.html" class="blog-card">
-    <div class="blog-card-img" style="background:linear-gradient(135deg,#221505,#3a2408);display:flex;align-items:center;justify-content:center;font-size:48px;">⭐</div>
+    <div class="blog-card-img"></div>
     <div class="blog-card-body">
       <span class="blog-card-tag">Review Gear</span>
       <h2 class="blog-card-title">Top 5 vợt Pickleball tốt nhất 2026 cho người mới tại Việt Nam</h2>
@@ -133,7 +150,7 @@
   </a>
 
   <a href="posts/ky-thuat-serve-pickleball.html" class="blog-card">
-    <div class="blog-card-img" style="background:linear-gradient(135deg,#0a1f1c,#14332e);display:flex;align-items:center;justify-content:center;font-size:48px;">🎾</div>
+    <div class="blog-card-img"></div>
     <div class="blog-card-body">
       <span class="blog-card-tag">Kỹ thuật</span>
       <h2 class="blog-card-title">Kỹ thuật Serve Pickleball chuẩn: Hướng dẫn từng bước cho người mới</h2>
@@ -143,7 +160,7 @@
   </a>
 
   <a href="posts/san-pickleball-tphcm.html" class="blog-card">
-    <div class="blog-card-img" style="background:linear-gradient(135deg,#0d1a0d,#1a3a1a);display:flex;align-items:center;justify-content:center;font-size:48px;">🏟️</div>
+    <div class="blog-card-img"></div>
     <div class="blog-card-body">
       <span class="blog-card-tag">Đánh giá & Review</span>
       <h2 class="blog-card-title">Top sân Pickleball TP.HCM uy tín nhất 2026</h2>
@@ -153,7 +170,7 @@
   </a>
 
   <a href="posts/hoc-pickleball-tu-dau.html" class="blog-card">
-    <div class="blog-card-img" style="background:linear-gradient(135deg,#1a1428,#2a1a3a);display:flex;align-items:center;justify-content:center;font-size:48px;">🎯</div>
+    <div class="blog-card-img"></div>
     <div class="blog-card-body">
       <span class="blog-card-tag">Hướng dẫn & Kỹ thuật</span>
       <h2 class="blog-card-title">Lộ trình 3 tháng: Từ người mới đến thi đấu Pickleball</h2>
@@ -163,7 +180,7 @@
   </a>
 
   <a href="posts/pickleball-la-gi.html" class="blog-card">
-    <div class="blog-card-img" style="background:linear-gradient(135deg,#0a1628,#1a2a4a);display:flex;align-items:center;justify-content:center;font-size:48px;">🏓</div>
+    <div class="blog-card-img"></div>
     <div class="blog-card-body">
       <span class="blog-card-tag">Hướng dẫn</span>
       <h2 class="blog-card-title">Pickleball là gì? Hướng dẫn toàn diện cho người mới</h2>

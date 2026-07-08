@@ -585,7 +585,9 @@
       transition: opacity 0.2s, visibility 0.2s; z-index: 110;
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     }
-    .nav-item:hover .nav-dropdown { opacity: 1; visibility: visible; }
+    .nav-item:hover .nav-dropdown,
+    .nav-item.open .nav-dropdown,
+    .nav-item:focus-within .nav-dropdown { opacity: 1; visibility: visible; }
     .nav-dropdown a {
       display: block; padding: 10px 20px; font-size: 13px; font-weight: 500;
       letter-spacing: 0.02em; text-transform: none; color: rgba(255,255,255,0.6);
@@ -1582,15 +1584,15 @@
           <div class="nav-dropdown">
             <a href="#events">Giải đấu sắp tới</a>
             <a href="#tran-dau">Trận đấu đỉnh cao</a>
+            <a href="#tin-tuc">Tin Tức</a>
           </div>
         </li>
         <li><a href="#bang-xep-hang">Bảng Xếp Hạng</a></li>
-        <li><a href="#tin-tuc">Tin Tức</a></li>
+        <li><a href="#bang-gia">Bảng Giá</a></li>
         <li class="nav-item"><a href="#courts">Về AMZ <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></a>
           <div class="nav-dropdown">
             <a href="#courts">Sân Chơi</a>
             <a href="#training">Huấn Luyện</a>
-            <a href="#bang-gia">Bảng Giá</a>
             <a href="#faq">FAQ</a>
             <a href="blog/">Blog</a>
             <a href="#lien-he">Liên Hệ</a>
@@ -2607,6 +2609,24 @@
         hamburger.classList.remove('open');
         mobileMenu.classList.remove('open');
         document.body.style.overflow = '';
+      });
+    });
+
+    // Desktop nav dropdown: tap/click support (in addition to existing :hover)
+    document.querySelectorAll('.nav-links > .nav-item').forEach(item => {
+      const trigger = item.querySelector(':scope > a');
+      if (!trigger || !item.querySelector('.nav-dropdown')) return;
+      trigger.addEventListener('click', (e) => {
+        if (!item.classList.contains('open')) {
+          e.preventDefault();
+          document.querySelectorAll('.nav-item.open').forEach(o => { if (o !== item) o.classList.remove('open'); });
+          item.classList.add('open');
+        }
+      });
+    });
+    document.addEventListener('click', (e) => {
+      document.querySelectorAll('.nav-item.open').forEach(item => {
+        if (!item.contains(e.target)) item.classList.remove('open');
       });
     });
 
