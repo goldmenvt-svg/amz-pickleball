@@ -35,3 +35,13 @@ Thumbs.db
 .vercel
 .env*
 !.env*.example
+# AMZ AI safety - local Claude settings and secrets
+.claude/settings.local.json
+.claude\\settings.local.json
+.amz-ai-backup-*
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key

@@ -19,11 +19,27 @@
   </url>
 
   <url>
-    <loc>https://amzpickleball.vn/blog/posts/pickleball-la-gi.html</loc>
-    <lastmod>2026-06-26</lastmod>
+    <loc>https://amzpickleball.vn/blog/posts/loi-ich-suc-khoe-pickleball.html</loc>
+    <lastmod>2026-07-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
-    <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/posts/pickleball-la-gi.html"/>
+    <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/posts/loi-ich-suc-khoe-pickleball.html"/>
+  </url>
+
+  <url>
+    <loc>https://amzpickleball.vn/blog/posts/review-vot-pickleball-2026.html</loc>
+    <lastmod>2026-07-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/posts/review-vot-pickleball-2026.html"/>
+  </url>
+
+  <url>
+    <loc>https://amzpickleball.vn/blog/posts/ky-thuat-serve-pickleball.html</loc>
+    <lastmod>2026-06-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/posts/ky-thuat-serve-pickleball.html"/>
   </url>
 
   <url>
@@ -40,6 +56,14 @@
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/posts/hoc-pickleball-tu-dau.html"/>
+  </url>
+
+  <url>
+    <loc>https://amzpickleball.vn/blog/posts/pickleball-la-gi.html</loc>
+    <lastmod>2026-06-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="vi" href="https://amzpickleball.vn/blog/posts/pickleball-la-gi.html"/>
   </url>
 
 </urlset>

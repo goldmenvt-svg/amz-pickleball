@@ -106,6 +106,22 @@ module.exports = async function handler(req, res) {
   const hasPlayersEvents = !!(eventsJSON && playersJSON);
   if (!hasPlayersEvents && !pricingJSON) return res.status(400).json({ error: 'Missing data' });
 
+  // TD: data/players.json is served publicly (unauthenticated) — never let PII reach it.
+  let playersJSONToWrite = playersJSON;
+  if (hasPlayersEvents) {
+    let parsedPlayers;
+    try {
+      parsedPlayers = JSON.parse(playersJSON);
+    } catch {
+      return res.status(400).json({ error: 'playersJSON is not valid JSON' });
+    }
+    (parsedPlayers.players || []).forEach(function (p) {
+      delete p.phone;
+      delete p.email;
+    });
+    playersJSONToWrite = JSON.stringify(parsedPlayers, null, 2);
+  }
+
   let pricingToWrite = null;
   if (pricingJSON) {
     let parsedPricing;
@@ -128,7 +144,7 @@ module.exports = async function handler(req, res) {
   try {
     if (hasPlayersEvents) {
       await pushFile(ghToken, 'data/events.json',  eventsJSON,  `chore: export events ${today}`);
-      await pushFile(ghToken, 'data/players.json', playersJSON, `chore: export players ${today}`);
+      await pushFile(ghToken, 'data/players.json', playersJSONToWrite, `chore: export players ${today}`);
     }
     if (pricingToWrite) {
       await pushFile(ghToken, 'data/pricing.json', pricingToWrite, 'Update AMZ pricing data');
