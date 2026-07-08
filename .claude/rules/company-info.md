@@ -24,8 +24,8 @@ Dùng thông tin này cho: footer, trang Contact, SEO meta tags, structured data
 |---|---|
 | Facebook | https://www.facebook.com/p/AMZ-Pickle-Ball-Club-61574575574795/ |
 | Instagram | [chưa có] |
-| Zalo | [chưa có] |
-| TikTok | [chưa có] |
+| Zalo | https://zalo.me/0914859927 |
+| TikTok | https://www.tiktok.com/@amzpickleball.vt |
 
 ## Structured Data (LocalBusiness)
 
