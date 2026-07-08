@@ -55,47 +55,59 @@ Before marketing, UI, SEO, pricing, or landing-page work, read:
 5. Run checks.
 6. Summarize changed files and next action.
 
-## AMZ PERMISSION POLICY — QUYỀN ĐỌC/SỬA/LỆNH AN TOÀN
+## AMZ PERMISSION POLICY — SETUP MODE
 
-### A. Nhóm được phép đọc/sửa trong Phase 1 (static site)
-- `index.html`
-- `admin.html` — được phép đọc/sửa, nhưng không in hoặc lộ thông tin auth/hash/token nếu gặp
-- `blog/index.html`
-- `blog/posts/*.html`
-- `sitemap.xml`
-- `robots.txt`
-- `vercel.json`
-- `data/pricing.json`
-- `data/blog-posts.json`
-- `content/*.md`
-- `404.html`
-- `package.json` — nếu cần kiểm tra script
+> **SETUP MODE** được dùng khi đang trong giai đoạn nâng cấp/cài đặt/audit hệ thống AMZ AI workflow — mục tiêu là giảm thao tác thủ công, cho phép Claude hỗ trợ cài đặt/audit/sửa code nhanh hơn, nhưng vẫn phải bảo vệ secret, dữ liệu cá nhân, và không tự push/deploy.
+> Sau khi hệ thống ổn định, chính sách này sẽ được chuyển về **OPERATION MODE** chặt hơn (thu hẹp nhóm AUTO-SAFE, mở rộng nhóm ASK-FIRST).
 
-### B. Nhóm lệnh an toàn thường được phép dùng
-- `git status`
-- `git diff`
-- `git diff --stat`
-- `ls` / `dir`
-- `find`
-- `grep`
-- `head`
+### A. Nhóm AUTO-SAFE — đọc/sửa và lệnh không cần hỏi trước
+- Đọc/sửa `index.html`
+- Đọc/sửa `blog/index.html`
+- Đọc/sửa `blog/posts/*.html`
+- Đọc/sửa `sitemap.xml`
+- Đọc/sửa `data/blog-posts.json`
+- Đọc/sửa `data/pricing.json`
+- Đọc/sửa `content/*.md`
+- Đọc/sửa `404.html`
+- Chạy `git status`
+- Chạy `git diff`
+- Chạy `git diff --stat`
+- Chạy `grep`, `find`, `ls`, `dir`, `head`
+
+### B. Nhóm ASK-FIRST — phải hỏi trước khi chạy/sửa trong SETUP MODE
+- `npx`
+- `npm install` / `npm i` / `npm ci`
+- `pnpm install` / `pnpm add` / `pnpm dlx`
+- `yarn install` / `yarn add` / `yarn dlx`
+- `codegraph init`
+- `npm test`
 - `npm run lint`
 - `npm run build`
-
-### C. Nhóm luôn bị cấm nếu chưa có lệnh riêng của chủ dự án
-- Đọc `.env`, `.env.*`, `app-nextjs/.env.local`
-- Đọc `secrets/**`, `*.pem`, `*.key`
-- In nội dung chứa token, API key, password, hash, số điện thoại, email cá nhân
-- `npx`
-- `npm install` / `pnpm install` / `yarn add`
-- `curl` / `wget`
 - `git commit`
-- `git push`
-- `vercel deploy`
-- Xoá file hàng loạt
-- Sửa `app-nextjs/` khi đang xử lý production static site
+- Sửa `admin.html`
+- Sửa `api/*.js`
+- Sửa `vercel.json`
+- Sửa `robots.txt`
+- Sửa `app-nextjs/**`
+- Chạy tool audit/test như Playwright nếu không đọc secret
 
-### D. Quy trình trước khi sửa
+### C. Nhóm HARD-DENY — luôn cấm, không có ngoại lệ trong SETUP MODE
+- Đọc `.env`, `.env.*`, `app-nextjs/.env.local`
+- Đọc `secrets/**`
+- Đọc `*.pem`, `*.key`, `id_rsa`, `id_ed25519`
+- In token, API key, password, hash, số điện thoại, email cá nhân
+- `git push`
+- `vercel deploy`, `vercel --prod`
+- `rm -rf`, `rm -r`, xoá file hàng loạt
+- `npm publish`, `pnpm publish`, `yarn publish`
+- Gửi dữ liệu ra ngoài bằng `curl`/`wget`/`Invoke-WebRequest` nếu chưa có yêu cầu riêng
+
+### D. Riêng `data/players.json`
+- Không in nội dung file.
+- Chỉ được kiểm tra tên field (field name) hoặc xử lý bằng script không in dữ liệu cá nhân.
+- Nếu cần sửa dữ liệu public thì phải hỏi trước.
+
+### E. Quy trình trước khi sửa
 - Luôn liệt kê chính xác file dự kiến sửa trước khi bắt đầu.
 - Chỉ sửa đúng những file đã liệt kê.
 - Sau khi sửa, luôn chạy `git diff --stat` và `git diff` để xác nhận thay đổi.
