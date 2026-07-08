@@ -45,3 +45,4 @@ Thumbs.db
 secrets/
 *.pem
 *.key
+.codegraph/
