@@ -21,6 +21,10 @@
 - Tạo **1 nội dung thi đấu (event) riêng cho test**, đặt tên rõ ràng, ví dụ: `TEST_AUTO_PAIRING`, để không lẫn với nội dung thi đấu thật.
 - Dùng **VĐV test** (hồ sơ `players` tạo riêng cho mục đích test) hoặc dữ liệu test đã được đánh dấu rõ, không dùng hồ sơ VĐV thật đang tham gia giải khác.
 - **Không bấm nút Lưu kết quả ghép cặp nếu chưa kiểm tra kỹ bảng preview** đang hiển thị.
+- **Tuyệt đối không bấm nút "Xuất dữ liệu lên web"** trong thời gian đang có tournament/event/player test trong Firestore.
+- **VĐV test phải đặt tên có tiền tố rõ ràng**, ví dụ: `TEST_VDV_01`.
+- **Không nhập số điện thoại/email thật** cho VĐV test nếu không bắt buộc.
+- Nếu form cho phép để trống SĐT/email thì **để trống**.
 
 ---
 
@@ -117,6 +121,9 @@ Sau khi dữ liệu test đủ đúng 32 VĐV hợp lệ:
 - [ ] Đã kiểm tra toàn bộ VĐV có `amz_rating` đầy đủ, đúng (đã qua xét trình, không phải giá trị tạm/nháp).
 - [ ] Xác nhận chỉ có **1 admin** thao tác ghép cặp tại thời điểm chạy thật (không có ai khác đang mở cùng tab Chia bảng của event đó).
 - [ ] **Owner/BTC đã xem và duyệt bảng preview** trước khi admin bấm nút Lưu — không tự ý bấm Lưu khi chưa có xác nhận từ Owner/BTC.
+- [ ] **Trước khi export dữ liệu lên web, phải kiểm tra không còn tournament/event/player test lẫn trong dữ liệu xuất.**
+- [ ] **Không export web nếu còn dữ liệu `TEST_AUTO_PAIRING`.**
+- [ ] **Sau khi test xong, phải xóa hoặc dọn dữ liệu test** trước lần export web tiếp theo.
 
 ---
 
@@ -125,6 +132,16 @@ Sau khi dữ liệu test đủ đúng 32 VĐV hợp lệ:
 - **Chưa có application-level lock** chống 2 admin thao tác đồng thời trên cùng 1 event — nếu 2 người cùng mở tab Chia bảng và cùng bấm Lưu gần như đồng thời, có rủi ro race condition tầng ứng dụng (dù mỗi lượt `batch.commit()` vẫn atomic ở tầng Firestore).
 - **Banner "Đã lưu xong"** trên UI chỉ tồn tại trong phiên trình duyệt hiện tại (biến JS `_autoPairLastSavedInfo`) — không phải nguồn sự thật, sẽ biến mất nếu tải lại trang dù dữ liệu đã lưu vẫn còn nguyên trong Firestore.
 - **Nếu nhập sai `amz_rating`/`gender` trước khi ghép cặp**, kết quả ghép cặp (bao gồm `pair_adjusted_score`) sẽ sai theo đúng dữ liệu đầu vào sai đó — hệ thống không có cơ chế phát hiện dữ liệu "sai nhưng hợp lệ về mặt kiểu dữ liệu" (ví dụ rating nhập nhầm số nhưng vẫn là số hợp lệ).
+- **Nếu bấm "Xuất dữ liệu lên web" khi còn dữ liệu test trong Firestore**, dữ liệu test có thể xuất hiện trên website thật.
+- **Nếu player test có SĐT/email thật**, có rủi ro lộ thông tin không cần thiết.
+
+---
+
+## Khoảng trống hiện tại
+
+- UI hiện có export players CSV nhưng **chưa có export registrations riêng**.
+- Trước khi dùng cho giải thật, **Owner cần quyết định** có bổ sung công cụ export/backup registrations hay dùng quy trình backup Firestore/ghi nhận thủ công.
+- **Không xem ảnh chụp màn hình là backup đủ** cho giải thật nếu cần đối soát sau này.
 
 ---
 
