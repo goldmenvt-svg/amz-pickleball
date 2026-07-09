@@ -956,7 +956,7 @@ var _fsdb = firebase.firestore();
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Số dòng kỳ vọng (tùy chọn)</label>
+              <label class="form-label">Số VĐV kỳ vọng (tùy chọn)</label>
               <input class="form-input" id="imp-expected-count" type="number" min="1" placeholder="VD: 32">
             </div>
           </div>
@@ -3678,7 +3678,7 @@ function validateImportRows(rows, mode, eventId, expectedCount) {
   }
 
   if (expectedCount && parseInt(expectedCount) !== summary.total) {
-    summary.expectedCountMismatch = 'Số dòng import không khớp expectedCount. Vui lòng kiểm tra lại danh sách trước khi ghi dữ liệu. (Đọc được ' + summary.total + ' dòng, kỳ vọng ' + expectedCount + ')';
+    summary.expectedCountMismatch = 'Số VĐV/dòng dữ liệu import không khớp số VĐV kỳ vọng. Vui lòng kiểm tra lại danh sách trước khi ghi dữ liệu. (Đọc được ' + summary.total + ' dòng, kỳ vọng ' + expectedCount + ')';
   }
 
   return { results: results, summary: summary };
