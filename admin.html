@@ -401,6 +401,10 @@ var _fsdb = firebase.firestore();
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       Bảng giá
     </button>
+    <button class="nav-item" data-page="import">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Import dữ liệu
+    </button>
     <div style="padding:16px 20px;margin-top:auto;border-top:1px solid var(--border);">
       <button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="exportAll()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -929,6 +933,91 @@ var _fsdb = firebase.firestore();
         </div>
       </div>
     </div>
+
+    <!-- IMPORT DỮ LIỆU (Commit 2 — parser + validate + preview only, CHƯA ghi Firestore) -->
+    <div class="page" id="page-import">
+      <div class="page-header">
+        <h1>Import dữ liệu</h1>
+      </div>
+
+      <div style="background:rgba(239,68,68,0.08);border:1px solid var(--red);border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:var(--red);">
+        ⚠ Đây là bản xem trước (preview) — <strong>chưa ghi Firestore</strong>. Nút ghi dữ liệu thật sẽ được thêm ở Commit 3, sau khi Owner duyệt riêng.
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>1. Chọn chế độ &amp; đích import</h3></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Chế độ import</label>
+              <select class="form-select" id="imp-mode" onchange="onImportModeChange()">
+                <option value="A">A — Chỉ tạo VĐV</option>
+                <option value="B">B — Tạo VĐV + đăng ký cá nhân vào event</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Số dòng kỳ vọng (tùy chọn)</label>
+              <input class="form-input" id="imp-expected-count" type="number" min="1" placeholder="VD: 32">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Giải đấu</label>
+              <select class="form-select" id="imp-tournament" onchange="onImportTournamentChange()">
+                <option value="">Chọn giải đấu</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Nội dung thi đấu (bắt buộc ở chế độ B)</label>
+              <select class="form-select" id="imp-event">
+                <option value="">Chọn nội dung thi đấu</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>2. Dán dữ liệu CSV</h3></div>
+        <div class="card-body">
+          <div class="hint-box" id="imp-csv-template">Chế độ A — cột bắt buộc: full_name,gender,amz_rating,phone,email,note</div>
+          <textarea class="form-textarea" id="imp-csv-text" rows="8" style="width:100%;font-family:monospace;font-size:12px;margin-top:10px;min-height:160px;" placeholder="Dán CSV có header row vào đây, ví dụ:&#10;full_name,gender,amz_rating,phone,email,note&#10;TEST_VDV_01,male,3.5,,,"></textarea>
+          <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="previewImportCSV()">Parse &amp; Preview</button>
+        </div>
+      </div>
+
+      <div id="imp-result" style="display:none;">
+        <div class="card">
+          <div class="card-header"><h3>3. Kết quả kiểm tra</h3></div>
+          <div class="card-body">
+            <div id="imp-banner" style="border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;"></div>
+            <div class="two-col" style="margin-bottom:14px;">
+              <div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Tổng số dòng đọc được: <strong id="imp-sum-total">0</strong></div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Số dòng hợp lệ (OK): <strong id="imp-sum-ok" style="color:var(--green);">0</strong></div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Số dòng cảnh báo (Warning): <strong id="imp-sum-warn" style="color:var(--orange);">0</strong></div>
+                <div style="font-size:12px;color:var(--muted);">Số dòng lỗi (Error): <strong id="imp-sum-err" style="color:var(--red);">0</strong></div>
+              </div>
+              <div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Chế độ đang chọn: <strong id="imp-sum-mode">—</strong></div>
+                <div style="font-size:12px;color:var(--muted);">Nội dung thi đấu: <strong id="imp-sum-event">—</strong></div>
+              </div>
+            </div>
+            <div style="background:rgba(245,158,11,0.1);border:1px solid var(--orange);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--orange);margin-bottom:14px;">
+              ⚠ Không nhập SĐT/email thật cho dữ liệu test nếu không cần.<br>
+              ⚠ Không bấm "Xuất dữ liệu lên web" khi còn dữ liệu test.
+            </div>
+            <div style="overflow-x:auto;">
+              <table>
+                <thead><tr><th>#</th><th>Họ tên</th><th>Giới tính</th><th>Điểm AMZ</th><th>SĐT</th><th>Email</th><th>Trạng thái ĐK</th><th>Thanh toán</th><th>Kết quả</th><th>Ghi chú</th></tr></thead>
+                <tbody id="imp-preview-table"></tbody>
+              </table>
+            </div>
+            <button class="btn btn-outline" style="width:100%;margin-top:14px;" disabled title="Sẽ triển khai ở Commit 3">Ghi dữ liệu (sẽ triển khai ở Commit 3)</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -1327,7 +1416,7 @@ function updateCounts2() {
 }
 
 function populateTournamentSelects() {
-  var selects = ['filterEventTournament','bracket-tournament','schedule-tournament','scores-tournament','standings-tournament'];
+  var selects = ['filterEventTournament','bracket-tournament','schedule-tournament','scores-tournament','standings-tournament','imp-tournament'];
   selects.forEach(function(sid) {
     var el = document.getElementById(sid);
     if (!el) return;
@@ -2810,6 +2899,7 @@ document.querySelectorAll('[data-page]').forEach(function(btn) {
     if (pg === 'history') renderHistory();
     if (pg === 'videos') renderVideos();
     if (pg === 'pricing') loadPricingIntoForm();
+    if (pg === 'import') { populateTournamentSelects(); }
   });
 });
 
@@ -3451,6 +3541,229 @@ async function exportPricingToWeb() {
     btn.disabled = false;
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><polyline points="5 12 12 5 19 12"/><line x1="5" y1="19" x2="19" y2="19"/></svg> Xuất bảng giá lên web';
   }
+}
+
+// === IMPORT DỮ LIỆU — Commit 2 (ADR-0008): parser + validate + preview only ===
+// KHÔNG có bất kỳ lệnh ghi Firestore nào trong khối này (không .add/.update/.set/.delete).
+// Nút ghi dữ liệu thật sẽ được nối ở Commit 3, sau khi Owner duyệt riêng.
+
+function onImportModeChange() {
+  var mode = document.getElementById('imp-mode').value;
+  var tpl = document.getElementById('imp-csv-template');
+  tpl.textContent = mode === 'B'
+    ? 'Chế độ B — cột bắt buộc: full_name,gender,amz_rating,phone,email,note,registration_status,payment_status (registration_status mặc định "confirmed", payment_status mặc định "paid" nếu để trống)'
+    : 'Chế độ A — cột bắt buộc: full_name,gender,amz_rating,phone,email,note';
+}
+
+function onImportTournamentChange() {
+  var tId = document.getElementById('imp-tournament').value;
+  var evs = events.filter(function(e) { return e.tournament_id === tId; });
+  var html = '<option value="">Chọn nội dung thi đấu</option>';
+  evs.forEach(function(e) { html += '<option value="' + e.id + '">' + esc(e.name) + '</option>'; });
+  document.getElementById('imp-event').innerHTML = html;
+}
+
+function normalizeImportName(s) {
+  return (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// Parser CSV đơn giản: hỗ trợ header row, trim khoảng trắng, xử lý dấu phẩy trong ô có dấu ngoặc kép ("...").
+// Không hỗ trợ ô nhiều dòng (multiline quoted cell) ở MVP.
+function parseImportCSVLine(line) {
+  var cells = [];
+  var cur = '';
+  var inQuotes = false;
+  for (var i = 0; i < line.length; i++) {
+    var ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ',') { cells.push(cur.trim()); cur = ''; }
+      else cur += ch;
+    }
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+function parseImportCSV(text) {
+  var lines = text.split(/\r\n|\r|\n/).filter(function(l) { return l.trim() !== ''; });
+  if (!lines.length) return { error: 'Không có dữ liệu để đọc.' };
+  var header = parseImportCSVLine(lines[0]).map(function(h) { return h.trim().toLowerCase(); });
+  var required = ['full_name', 'gender', 'amz_rating'];
+  var missing = required.filter(function(h) { return header.indexOf(h) === -1; });
+  if (missing.length) return { error: 'CSV thiếu cột bắt buộc: ' + missing.join(', ') };
+  var rows = [];
+  for (var i = 1; i < lines.length; i++) {
+    var cells = parseImportCSVLine(lines[i]);
+    var row = {};
+    header.forEach(function(h, idx) { row[h] = (cells[idx] !== undefined ? cells[idx].trim() : ''); });
+    rows.push(row);
+  }
+  return { header: header, rows: rows };
+}
+
+function isValidImportGender(g) { return g === 'male' || g === 'female'; }
+function isValidImportRating(r) { return r !== '' && r !== undefined && r !== null && !isNaN(parseFloat(r)); }
+
+// Thuần validate + duplicate-check, KHÔNG ghi Firestore. Trả về preview rows + summary.
+function validateImportRows(rows, mode, eventId, expectedCount) {
+  var seenNames = {};
+  var results = rows.map(function(row, idx) {
+    var issues = [];
+    var level = 'ok';
+    function addError(msg) { issues.push(msg); level = 'error'; }
+    function addWarning(msg) { issues.push(msg); if (level !== 'error') level = 'warning'; }
+
+    var fullName = row.full_name || '';
+    var normName = normalizeImportName(fullName);
+    var gender = (row.gender || '').trim().toLowerCase();
+    var amzRating = row.amz_rating;
+    var phone = (row.phone || '').trim();
+    var email = (row.email || '').trim();
+    var regStatus = (row.registration_status || '').trim() || 'confirmed';
+    var payStatus = (row.payment_status || '').trim() || 'paid';
+
+    if (!fullName) addError('Thiếu full_name');
+    if (!isValidImportGender(gender)) addError('gender phải là male hoặc female');
+    if (!isValidImportRating(amzRating)) addError('amz_rating không phải số hợp lệ');
+
+    if (normName) {
+      if (seenNames[normName]) addError('Trùng full_name với dòng #' + seenNames[normName] + ' trong cùng file CSV');
+      else seenNames[normName] = idx + 1;
+    }
+
+    var existingPlayer = normName ? players.find(function(p) { return normalizeImportName(p.full_name || p.name) === normName; }) : null;
+    if (existingPlayer) addWarning('Trùng full_name với VĐV đã có trong hệ thống (id: ' + existingPlayer.id + ') — MVP chưa tự động dùng lại/cập nhật');
+    if (phone) {
+      var existingPhone = players.find(function(p) { return p.phone && p.phone.replace(/\s/g, '') === phone.replace(/\s/g, ''); });
+      if (existingPhone) addWarning('Trùng số điện thoại với VĐV đã có trong hệ thống (id: ' + existingPhone.id + ')');
+    }
+
+    if (mode === 'B') {
+      if (!eventId) {
+        addError('Chưa chọn nội dung thi đấu (bắt buộc ở chế độ B)');
+      } else if (existingPlayer) {
+        var dupReg = registrations.find(function(r) { return r.event_id === eventId && r.player_1_id === existingPlayer.id; });
+        if (dupReg) addWarning('VĐV đã có registration cho nội dung thi đấu này (id: ' + dupReg.id + ')');
+      }
+    }
+
+    return {
+      stt: idx + 1,
+      full_name: fullName, gender: gender, amz_rating: amzRating, phone: phone, email: email,
+      note: row.note || '', registration_status: regStatus, payment_status: payStatus,
+      level: level, issues: issues
+    };
+  });
+
+  var summary = { total: results.length, ok: 0, warning: 0, error: 0 };
+  results.forEach(function(r) {
+    if (r.level === 'ok') summary.ok++;
+    else if (r.level === 'warning') summary.warning++;
+    else summary.error++;
+  });
+
+  if (mode === 'B' && eventId) {
+    var ev = events.find(function(e) { return e.id === eventId; });
+    if (ev && !isDoublesEvent(eventId)) {
+      summary.eventTypeWarning = 'Nội dung "' + ev.name + '" không phải nội dung đôi/mixed — vẫn cho phép test nếu Owner muốn, nhưng cần xác nhận đây đúng là event dự kiến dùng.';
+    }
+  }
+
+  if (expectedCount && parseInt(expectedCount) !== summary.total) {
+    summary.expectedCountMismatch = 'Số dòng import không khớp expectedCount. Vui lòng kiểm tra lại danh sách trước khi ghi dữ liệu. (Đọc được ' + summary.total + ' dòng, kỳ vọng ' + expectedCount + ')';
+  }
+
+  return { results: results, summary: summary };
+}
+
+function renderImportPreviewTable(results) {
+  var html = '';
+  results.forEach(function(r) {
+    var badgeClass = r.level === 'error' ? 'badge-red' : (r.level === 'warning' ? 'badge-orange' : 'badge-green');
+    var badgeText = r.level === 'error' ? 'Error' : (r.level === 'warning' ? 'Warning' : 'OK');
+    html += '<tr>' +
+      '<td>' + r.stt + '</td>' +
+      '<td>' + esc(r.full_name) + '</td>' +
+      '<td>' + esc(r.gender) + '</td>' +
+      '<td>' + esc(String(r.amz_rating)) + '</td>' +
+      '<td>' + esc(r.phone) + '</td>' +
+      '<td>' + esc(r.email) + '</td>' +
+      '<td>' + esc(r.registration_status) + '</td>' +
+      '<td>' + esc(r.payment_status) + '</td>' +
+      '<td><span class="badge ' + badgeClass + '">' + badgeText + '</span></td>' +
+      '<td style="font-size:12px;color:var(--muted);">' + esc(r.issues.join('; ')) + '</td>' +
+    '</tr>';
+  });
+  document.getElementById('imp-preview-table').innerHTML = html;
+}
+
+// Bấm "Parse & Preview" — chỉ đọc textarea, parse, validate, hiển thị preview. KHÔNG ghi Firestore.
+function previewImportCSV() {
+  var mode = document.getElementById('imp-mode').value;
+  var eventId = document.getElementById('imp-event').value;
+  var expectedCount = document.getElementById('imp-expected-count').value;
+  var csvText = document.getElementById('imp-csv-text').value;
+
+  var parsed = parseImportCSV(csvText);
+  var resultBox = document.getElementById('imp-result');
+  var bannerEl = document.getElementById('imp-banner');
+  resultBox.style.display = 'block';
+
+  if (parsed.error) {
+    bannerEl.style.background = 'rgba(239,68,68,0.12)'; bannerEl.style.color = 'var(--red)'; bannerEl.style.border = '1px solid var(--red)';
+    bannerEl.textContent = '✗ ' + parsed.error;
+    document.getElementById('imp-preview-table').innerHTML = '';
+    document.getElementById('imp-sum-total').textContent = '0';
+    document.getElementById('imp-sum-ok').textContent = '0';
+    document.getElementById('imp-sum-warn').textContent = '0';
+    document.getElementById('imp-sum-err').textContent = '0';
+    return;
+  }
+
+  var validated = validateImportRows(parsed.rows, mode, eventId, expectedCount);
+  renderImportPreviewTable(validated.results);
+
+  document.getElementById('imp-sum-total').textContent = validated.summary.total;
+  document.getElementById('imp-sum-ok').textContent = validated.summary.ok;
+  document.getElementById('imp-sum-warn').textContent = validated.summary.warning;
+  document.getElementById('imp-sum-err').textContent = validated.summary.error;
+  document.getElementById('imp-sum-mode').textContent = mode === 'B' ? 'B — VĐV + đăng ký' : 'A — Chỉ VĐV';
+  var evName = '—';
+  if (mode === 'B' && eventId) {
+    var ev = events.find(function(e) { return e.id === eventId; });
+    evName = ev ? ev.name : '—';
+  }
+  document.getElementById('imp-sum-event').textContent = evName;
+
+  var bannerMsgs = [];
+  var bannerLevel = 'ok';
+  if (validated.summary.error > 0) bannerLevel = 'error';
+  else if (validated.summary.warning > 0) bannerLevel = 'warning';
+
+  if (validated.summary.expectedCountMismatch) { bannerMsgs.push(validated.summary.expectedCountMismatch); bannerLevel = 'error'; }
+  if (validated.summary.eventTypeWarning) { bannerMsgs.push(validated.summary.eventTypeWarning); if (bannerLevel === 'ok') bannerLevel = 'warning'; }
+
+  if (bannerLevel === 'error') {
+    bannerEl.style.background = 'rgba(239,68,68,0.12)'; bannerEl.style.color = 'var(--red)'; bannerEl.style.border = '1px solid var(--red)';
+    bannerMsgs.unshift(validated.summary.error > 0
+      ? '✗ Có ' + validated.summary.error + ' dòng lỗi — không thể ghi dữ liệu cho tới khi sửa hết lỗi.'
+      : '✗ Không thể ghi dữ liệu — vui lòng sửa lỗi bên dưới trước khi tiếp tục.');
+  } else if (bannerLevel === 'warning') {
+    bannerEl.style.background = 'rgba(245,158,11,0.12)'; bannerEl.style.color = 'var(--orange)'; bannerEl.style.border = '1px solid var(--orange)';
+    bannerMsgs.unshift('⚠ Có cảnh báo cần xem lại trước khi ghi dữ liệu.');
+  } else {
+    bannerEl.style.background = 'rgba(34,197,94,0.12)'; bannerEl.style.color = 'var(--green)'; bannerEl.style.border = '1px solid var(--green)';
+    bannerMsgs.unshift('✓ Toàn bộ dòng hợp lệ.');
+  }
+  bannerEl.innerHTML = bannerMsgs.map(function(m) { return esc(m); }).join('<br>');
 }
 
 // === VIDEO MANAGEMENT ===
