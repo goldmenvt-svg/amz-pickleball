@@ -1013,7 +1013,7 @@ var _fsdb = firebase.firestore();
                 <tbody id="imp-preview-table"></tbody>
               </table>
             </div>
-            <button class="btn btn-outline" style="width:100%;margin-top:14px;" disabled title="Sẽ triển khai ở Commit 3">Ghi dữ liệu (sẽ triển khai ở Commit 3)</button>
+            <button class="btn btn-outline" id="btn-import-write" style="width:100%;margin-top:14px;" onclick="writeImportData()" disabled>Ghi dữ liệu</button>
           </div>
         </div>
       </div>
@@ -3715,6 +3715,7 @@ function previewImportCSV() {
   var parsed = parseImportCSV(csvText);
   var resultBox = document.getElementById('imp-result');
   var bannerEl = document.getElementById('imp-banner');
+  var writeBtn = document.getElementById('btn-import-write');
   resultBox.style.display = 'block';
 
   if (parsed.error) {
@@ -3725,6 +3726,7 @@ function previewImportCSV() {
     document.getElementById('imp-sum-ok').textContent = '0';
     document.getElementById('imp-sum-warn').textContent = '0';
     document.getElementById('imp-sum-err').textContent = '0';
+    if (writeBtn) writeBtn.disabled = true;
     return;
   }
 
@@ -3764,6 +3766,151 @@ function previewImportCSV() {
     bannerMsgs.unshift('✓ Toàn bộ dòng hợp lệ.');
   }
   bannerEl.innerHTML = bannerMsgs.map(function(m) { return esc(m); }).join('<br>');
+
+  if (writeBtn) {
+    var plan = computeImportWritePlan(validated.results, mode, eventId);
+    var canWrite = validated.summary.error === 0 && !validated.summary.expectedCountMismatch && plan.writableCount > 0;
+    writeBtn.disabled = !canWrite;
+  }
+}
+
+// Tính toán hành động ghi cho từng dòng (dry-run, KHÔNG ghi Firestore) — dùng chung cho bật/tắt nút Ghi dữ liệu và cho writeImportData() thực thi.
+// Chính sách MVP (đã Owner/ChatGPT chốt):
+//  - Mode A: player trùng full_name/phone hiện có → SKIP, không tạo, không update.
+//  - Mode B: player trùng → dùng lại player id; nếu player đó đã có registration cho đúng event này → SKIP registration; nếu chưa → tạo registration mới.
+//  - Không bao giờ update player/registration cũ.
+function computeImportWritePlan(results, mode, eventId) {
+  var plan = { rows: [], playersToCreate: 0, registrationsToCreate: 0, skippedDuplicatePlayer: 0, skippedDuplicateRegistration: 0, blockedError: 0 };
+  results.forEach(function(r) {
+    if (r.level === 'error') {
+      plan.blockedError++;
+      plan.rows.push(Object.assign({}, r, { action: 'blocked_error' }));
+      return;
+    }
+    var normName = normalizeImportName(r.full_name);
+    var existingPlayer = normName ? players.find(function(p) { return normalizeImportName(p.full_name || p.name) === normName; }) : null;
+
+    if (mode === 'A') {
+      if (existingPlayer) {
+        plan.skippedDuplicatePlayer++;
+        plan.rows.push(Object.assign({}, r, { action: 'skip_duplicate_player' }));
+      } else {
+        plan.playersToCreate++;
+        plan.rows.push(Object.assign({}, r, { action: 'create_player' }));
+      }
+    } else {
+      if (existingPlayer) {
+        var dupReg = registrations.find(function(reg) { return reg.event_id === eventId && reg.player_1_id === existingPlayer.id; });
+        if (dupReg) {
+          plan.skippedDuplicateRegistration++;
+          plan.rows.push(Object.assign({}, r, { action: 'skip_duplicate_registration', existingPlayerId: existingPlayer.id }));
+        } else {
+          plan.registrationsToCreate++;
+          plan.rows.push(Object.assign({}, r, { action: 'reuse_player_create_registration', existingPlayerId: existingPlayer.id }));
+        }
+      } else {
+        plan.playersToCreate++;
+        plan.registrationsToCreate++;
+        plan.rows.push(Object.assign({}, r, { action: 'create_player_create_registration' }));
+      }
+    }
+  });
+  plan.writableCount = plan.rows.filter(function(r) {
+    return r.action === 'create_player' || r.action === 'create_player_create_registration' || r.action === 'reuse_player_create_registration';
+  }).length;
+  return plan;
+}
+
+// Bấm "Ghi dữ liệu" — re-parse + re-validate lại từ trạng thái hiện tại (KHÔNG tin preview cũ trong DOM), rồi ghi Firestore qua batch sau khi Owner xác nhận.
+async function writeImportData() {
+  var mode = document.getElementById('imp-mode').value;
+  var eventId = document.getElementById('imp-event').value;
+  var expectedCount = document.getElementById('imp-expected-count').value;
+  var csvText = document.getElementById('imp-csv-text').value;
+  var writeBtn = document.getElementById('btn-import-write');
+
+  var parsed = parseImportCSV(csvText);
+  if (parsed.error) { showToastError('Không thể ghi — ' + parsed.error); return; }
+  if (mode === 'B' && !eventId) { showToastError('Chưa chọn nội dung thi đấu — bắt buộc ở chế độ B.'); return; }
+  if (!parsed.rows.length) { showToastError('Không có dữ liệu để ghi — CSV rỗng.'); return; }
+
+  var validated = validateImportRows(parsed.rows, mode, eventId, expectedCount);
+  if (validated.summary.error > 0) { showToastError('Còn ' + validated.summary.error + ' dòng lỗi — vui lòng bấm "Parse & Preview" lại và sửa lỗi trước khi ghi.'); return; }
+  if (validated.summary.expectedCountMismatch) { showToastError(validated.summary.expectedCountMismatch); return; }
+
+  var plan = computeImportWritePlan(validated.results, mode, eventId);
+  if (plan.writableCount === 0) { showToastError('Không có dòng nào để ghi — toàn bộ đã bị bỏ qua do trùng VĐV/registration.'); return; }
+
+  var importBatchId = 'imp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  var skipCount = plan.skippedDuplicatePlayer + plan.skippedDuplicateRegistration;
+  var confirmMsg = 'Bạn sắp ghi dữ liệu import vào Firestore.\n\n' +
+    '- Đây là thao tác ghi dữ liệu THẬT vào Firestore, không thể tự động hoàn tác.\n' +
+    '- Thao tác này KHÔNG tự động xuất dữ liệu lên website.\n' +
+    '- Không bấm "Xuất dữ liệu lên web" khi còn dữ liệu test.\n\n' +
+    'Số VĐV mới sẽ tạo: ' + plan.playersToCreate + '\n' +
+    (mode === 'B' ? 'Số registration mới sẽ tạo: ' + plan.registrationsToCreate + '\n' : '') +
+    'Số dòng bị bỏ qua do trùng: ' + skipCount +
+    (skipCount ? ' (' + plan.skippedDuplicatePlayer + ' trùng VĐV, ' + plan.skippedDuplicateRegistration + ' trùng registration)' : '') + '\n\n' +
+    'Batch ID: ' + importBatchId + '\n\n' +
+    'Bạn chắc chắn muốn tiếp tục?';
+  if (!confirm(confirmMsg)) return;
+
+  if (writeBtn) writeBtn.disabled = true;
+  showLoading(true);
+  try {
+    var nowIso = new Date().toISOString();
+    var ops = [];
+    plan.rows.forEach(function(r) {
+      if (r.action === 'create_player') {
+        var pRef = _fsdb.collection('players').doc();
+        ops.push({ ref: pRef, data: {
+          full_name: r.full_name, gender: r.gender, amz_rating: parseFloat(r.amz_rating),
+          phone: r.phone || '', email: r.email || '', note: r.note || '',
+          source: 'admin_import', import_batch_id: importBatchId, created_at: nowIso
+        }});
+      } else if (r.action === 'create_player_create_registration') {
+        var pRef2 = _fsdb.collection('players').doc();
+        ops.push({ ref: pRef2, data: {
+          full_name: r.full_name, gender: r.gender, amz_rating: parseFloat(r.amz_rating),
+          phone: r.phone || '', email: r.email || '', note: r.note || '',
+          source: 'admin_import', import_batch_id: importBatchId, created_at: nowIso
+        }});
+        var rRef = _fsdb.collection('registrations').doc();
+        ops.push({ ref: rRef, data: {
+          event_id: eventId, player_1_id: pRef2.id, player_2_id: null,
+          status: r.registration_status, payment_status: r.payment_status, checkin_status: 'pending', seed_number: null,
+          source: 'admin_import', import_batch_id: importBatchId, created_at: nowIso
+        }});
+      } else if (r.action === 'reuse_player_create_registration') {
+        var rRef2 = _fsdb.collection('registrations').doc();
+        ops.push({ ref: rRef2, data: {
+          event_id: eventId, player_1_id: r.existingPlayerId, player_2_id: null,
+          status: r.registration_status, payment_status: r.payment_status, checkin_status: 'pending', seed_number: null,
+          source: 'admin_import', import_batch_id: importBatchId, created_at: nowIso
+        }});
+      }
+      // 'skip_duplicate_player' / 'skip_duplicate_registration' / 'blocked_error' — không tạo thao tác ghi nào.
+    });
+
+    // Firestore giới hạn 500 writes/batch — chia nhỏ nếu vượt.
+    var chunkSize = 500;
+    for (var i = 0; i < ops.length; i += chunkSize) {
+      var chunk = ops.slice(i, i + chunkSize);
+      var batch = _fsdb.batch();
+      chunk.forEach(function(op) { batch.set(op.ref, op.data); });
+      await batch.commit();
+    }
+
+    toast('✓ Đã ghi import (batch ' + importBatchId + ') — ' + plan.playersToCreate + ' VĐV mới' +
+      (mode === 'B' ? ', ' + plan.registrationsToCreate + ' registration mới' : '') +
+      ', bỏ qua ' + skipCount + ' dòng trùng.');
+    await loadAll();
+  } catch (e) {
+    showToastError('Lỗi khi ghi import: ' + e.message);
+  } finally {
+    showLoading(false);
+    if (writeBtn) writeBtn.disabled = true;
+  }
 }
 
 // === VIDEO MANAGEMENT ===
