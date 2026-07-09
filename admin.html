@@ -811,6 +811,21 @@ var _fsdb = firebase.firestore();
       </div>
 
       <div class="card">
+        <div class="card-header"><h3>Giá thuê sân ngày thường — khung tối</h3></div>
+        <div class="card-body">
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Nhãn</label><input class="form-input" id="pr-weekday-evening-label" placeholder="Thứ 2 – Thứ 6"></div>
+            <div class="form-group"><label class="form-label">Giờ bắt đầu (HH:MM)</label><input class="form-input" id="pr-weekday-evening-start" placeholder="16:00"></div>
+            <div class="form-group"><label class="form-label">Giờ kết thúc (HH:MM)</label><input class="form-input" id="pr-weekday-evening-end" placeholder="22:00"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Giá / giờ (VNĐ)</label><input class="form-input" id="pr-weekday-evening-price" placeholder="200000"></div>
+            <div class="form-group"><label class="form-label">Hiển thị</label><label style="display:flex;align-items:center;gap:8px;height:38px;"><input type="checkbox" id="pr-weekday-evening-visible" checked> Hiện trên web</label></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-header"><h3>Giá thuê sân cuối tuần</h3></div>
         <div class="card-body">
           <div class="form-row-3">
@@ -826,31 +841,61 @@ var _fsdb = firebase.firestore();
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>Gói Social</h3></div>
+        <div class="card-header"><h3>Giá thuê sân cuối tuần — khung tối</h3></div>
         <div class="card-body">
           <div class="form-row-3">
-            <div class="form-group"><label class="form-label">Tên gói</label><input class="form-input" id="pr-social-name" placeholder="Social"></div>
-            <div class="form-group"><label class="form-label">Giá / tháng (VNĐ)</label><input class="form-input" id="pr-social-price" placeholder="350000"></div>
+            <div class="form-group"><label class="form-label">Nhãn</label><input class="form-input" id="pr-weekend-evening-label" placeholder="Thứ 7 – Chủ nhật"></div>
+            <div class="form-group"><label class="form-label">Giờ bắt đầu (HH:MM)</label><input class="form-input" id="pr-weekend-evening-start" placeholder="14:00"></div>
+            <div class="form-group"><label class="form-label">Giờ kết thúc (HH:MM)</label><input class="form-input" id="pr-weekend-evening-end" placeholder="23:00"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Giá / giờ (VNĐ)</label><input class="form-input" id="pr-weekend-evening-price" placeholder="180000"></div>
+            <div class="form-group"><label class="form-label">Hiển thị</label><label style="display:flex;align-items:center;gap:8px;height:38px;"><input type="checkbox" id="pr-weekend-evening-visible" checked> Hiện trên web</label></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Social Club</h3></div>
+        <div class="card-body">
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Tên gói</label><input class="form-input" id="pr-social-name" placeholder="Social Club"></div>
+            <div class="form-group"><label class="form-label">Giá / tháng (VNĐ)</label><input class="form-input" id="pr-social-price" placeholder="500000"></div>
             <div class="form-group"><label class="form-label">Đơn vị</label><input class="form-input" id="pr-social-period" placeholder="tháng"></div>
           </div>
           <div class="form-row">
-            <div class="form-group"><label class="form-label">Mô tả ngắn</label><input class="form-input" id="pr-social-desc" placeholder="Phù hợp người chơi thường xuyên, giao lưu cộng đồng."></div>
+            <div class="form-group"><label class="form-label">Mô tả ngắn</label><input class="form-input" id="pr-social-desc" placeholder="Tham gia các buổi social theo lịch AMZ, giao lưu cộng đồng, phù hợp người chơi thường xuyên."></div>
             <div class="form-group"><label class="form-label">Hiển thị</label><label style="display:flex;align-items:center;gap:8px;height:38px;"><input type="checkbox" id="pr-social-visible" checked> Hiện trên web</label></div>
           </div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>Xé vé</h3></div>
+        <div class="card-header"><h3>Xé vé social</h3></div>
         <div class="card-body">
           <div class="form-row-3">
-            <div class="form-group"><label class="form-label">Tên</label><input class="form-input" id="pr-walkin-name" placeholder="Xé vé"></div>
-            <div class="form-group"><label class="form-label">Giá / lần (VNĐ)</label><input class="form-input" id="pr-walkin-price" placeholder="40000"></div>
+            <div class="form-group"><label class="form-label">Tên</label><input class="form-input" id="pr-walkin-name" placeholder="Xé vé social"></div>
+            <div class="form-group"><label class="form-label">Giá / lần (VNĐ)</label><input class="form-input" id="pr-walkin-price" placeholder="50000"></div>
             <div class="form-group"><label class="form-label">Đơn vị</label><input class="form-input" id="pr-walkin-period" placeholder="lần"></div>
           </div>
           <div class="form-row">
-            <div class="form-group"><label class="form-label">Mô tả ngắn</label><input class="form-input" id="pr-walkin-desc" placeholder="Linh hoạt cho người chơi không thường xuyên."></div>
+            <div class="form-group"><label class="form-label">Mô tả ngắn</label><input class="form-input" id="pr-walkin-desc" placeholder="Dành cho người chơi tham gia lẻ từng buổi social."></div>
             <div class="form-group"><label class="form-label">Hiển thị</label><label style="display:flex;align-items:center;gap:8px;height:38px;"><input type="checkbox" id="pr-walkin-visible" checked> Hiện trên web</label></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Coaching 1-on-1</h3></div>
+        <div class="card-body">
+          <div class="form-row-3">
+            <div class="form-group"><label class="form-label">Tên</label><input class="form-input" id="pr-coaching-name" placeholder="Coaching 1-on-1"></div>
+            <div class="form-group"><label class="form-label">Giá / buổi (VNĐ)</label><input class="form-input" id="pr-coaching-price" placeholder="400000"></div>
+            <div class="form-group"><label class="form-label">Đơn vị</label><input class="form-input" id="pr-coaching-period" placeholder="buổi"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Mô tả ngắn</label><input class="form-input" id="pr-coaching-desc" placeholder="Huấn luyện cá nhân 1-1 cùng HLV, thiết kế lộ trình riêng theo trình độ."></div>
+            <div class="form-group"><label class="form-label">Hiển thị</label><label style="display:flex;align-items:center;gap:8px;height:38px;"><input type="checkbox" id="pr-coaching-visible" checked> Hiện trên web</label></div>
           </div>
         </div>
       </div>
@@ -3188,10 +3233,20 @@ function collectPricingForm() {
   var weekdayEnd   = val('pr-weekday-end');
   var weekdayPrice = val('pr-weekday-price');
 
+  var weekdayEveLabel = val('pr-weekday-evening-label');
+  var weekdayEveStart = val('pr-weekday-evening-start');
+  var weekdayEveEnd   = val('pr-weekday-evening-end');
+  var weekdayEvePrice = val('pr-weekday-evening-price');
+
   var weekendLabel = val('pr-weekend-label');
   var weekendStart = val('pr-weekend-start');
   var weekendEnd   = val('pr-weekend-end');
   var weekendPrice = val('pr-weekend-price');
+
+  var weekendEveLabel = val('pr-weekend-evening-label');
+  var weekendEveStart = val('pr-weekend-evening-start');
+  var weekendEveEnd   = val('pr-weekend-evening-end');
+  var weekendEvePrice = val('pr-weekend-evening-price');
 
   var socialName   = val('pr-social-name');
   var socialPrice  = val('pr-social-price');
@@ -3202,6 +3257,11 @@ function collectPricingForm() {
   var walkinPrice  = val('pr-walkin-price');
   var walkinPeriod = val('pr-walkin-period');
   var walkinDesc   = val('pr-walkin-desc');
+
+  var coachingName   = val('pr-coaching-name');
+  var coachingPrice  = val('pr-coaching-price');
+  var coachingPeriod = val('pr-coaching-period');
+  var coachingDesc   = val('pr-coaching-desc');
 
   var beginnerNote = val('pr-beginner-note');
   var priceNote    = val('pr-price-note');
@@ -3217,17 +3277,32 @@ function collectPricingForm() {
   if (validPricingTime(weekdayStart) && validPricingTime(weekdayEnd) && weekdayStart === weekdayEnd) errors.push('Giờ kết thúc ngày thường phải khác giờ bắt đầu');
   if (!validPricingNumber(weekdayPrice)) errors.push('Giá/giờ ngày thường phải là số nguyên dương');
 
+  if (!weekdayEveLabel) errors.push('Thiếu nhãn giá ngày thường (khung tối)');
+  if (!validPricingTime(weekdayEveStart)) errors.push('Giờ bắt đầu ngày thường (khung tối) phải đúng định dạng HH:MM');
+  if (!validPricingTime(weekdayEveEnd)) errors.push('Giờ kết thúc ngày thường (khung tối) phải đúng định dạng HH:MM');
+  if (validPricingTime(weekdayEveStart) && validPricingTime(weekdayEveEnd) && weekdayEveStart === weekdayEveEnd) errors.push('Giờ kết thúc ngày thường (khung tối) phải khác giờ bắt đầu');
+  if (!validPricingNumber(weekdayEvePrice)) errors.push('Giá/giờ ngày thường (khung tối) phải là số nguyên dương');
+
   if (!weekendLabel) errors.push('Thiếu nhãn giá cuối tuần');
   if (!validPricingTime(weekendStart)) errors.push('Giờ bắt đầu cuối tuần phải đúng định dạng HH:MM');
   if (!validPricingTime(weekendEnd)) errors.push('Giờ kết thúc cuối tuần phải đúng định dạng HH:MM');
   if (validPricingTime(weekendStart) && validPricingTime(weekendEnd) && weekendStart === weekendEnd) errors.push('Giờ kết thúc cuối tuần phải khác giờ bắt đầu');
   if (!validPricingNumber(weekendPrice)) errors.push('Giá/giờ cuối tuần phải là số nguyên dương');
 
-  if (!socialName) errors.push('Thiếu tên gói Social');
-  if (!validPricingNumber(socialPrice)) errors.push('Giá gói Social phải là số nguyên dương');
+  if (!weekendEveLabel) errors.push('Thiếu nhãn giá cuối tuần (khung tối)');
+  if (!validPricingTime(weekendEveStart)) errors.push('Giờ bắt đầu cuối tuần (khung tối) phải đúng định dạng HH:MM');
+  if (!validPricingTime(weekendEveEnd)) errors.push('Giờ kết thúc cuối tuần (khung tối) phải đúng định dạng HH:MM');
+  if (validPricingTime(weekendEveStart) && validPricingTime(weekendEveEnd) && weekendEveStart === weekendEveEnd) errors.push('Giờ kết thúc cuối tuần (khung tối) phải khác giờ bắt đầu');
+  if (!validPricingNumber(weekendEvePrice)) errors.push('Giá/giờ cuối tuần (khung tối) phải là số nguyên dương');
 
-  if (!walkinName) errors.push('Thiếu tên xé vé');
-  if (!validPricingNumber(walkinPrice)) errors.push('Giá xé vé phải là số nguyên dương');
+  if (!socialName) errors.push('Thiếu tên gói Social Club');
+  if (!validPricingNumber(socialPrice)) errors.push('Giá gói Social Club phải là số nguyên dương');
+
+  if (!walkinName) errors.push('Thiếu tên xé vé social');
+  if (!validPricingNumber(walkinPrice)) errors.push('Giá xé vé social phải là số nguyên dương');
+
+  if (!coachingName) errors.push('Thiếu tên coaching');
+  if (!validPricingNumber(coachingPrice)) errors.push('Giá coaching phải là số nguyên dương');
 
   if (!ctaPhone) errors.push('Thiếu số điện thoại');
   if (ctaFacebook && !validPricingUrl(ctaFacebook)) errors.push('Facebook phải bắt đầu bằng https://, hoặc để trống');
@@ -3240,10 +3315,13 @@ function collectPricingForm() {
     data: {
       courtPricing: {
         weekday: { label: weekdayLabel, startTime: weekdayStart, endTime: weekdayEnd, pricePerHour: Number(weekdayPrice), visible: checked('pr-weekday-visible') },
-        weekend: { label: weekendLabel, startTime: weekendStart, endTime: weekendEnd, pricePerHour: Number(weekendPrice), visible: checked('pr-weekend-visible') }
+        weekdayEvening: { label: weekdayEveLabel, startTime: weekdayEveStart, endTime: weekdayEveEnd, pricePerHour: Number(weekdayEvePrice), visible: checked('pr-weekday-evening-visible') },
+        weekend: { label: weekendLabel, startTime: weekendStart, endTime: weekendEnd, pricePerHour: Number(weekendPrice), visible: checked('pr-weekend-visible') },
+        weekendEvening: { label: weekendEveLabel, startTime: weekendEveStart, endTime: weekendEveEnd, pricePerHour: Number(weekendEvePrice), visible: checked('pr-weekend-evening-visible') }
       },
       socialPlan: { name: socialName, pricePerMonth: Number(socialPrice), period: socialPeriod || 'tháng', description: socialDesc, visible: checked('pr-social-visible') },
       walkInPass: { name: walkinName, pricePerVisit: Number(walkinPrice), period: walkinPeriod || 'lần', description: walkinDesc, visible: checked('pr-walkin-visible') },
+      coaching: { name: coachingName, pricePerSession: Number(coachingPrice), period: coachingPeriod || 'buổi', description: coachingDesc, visible: checked('pr-coaching-visible') },
       beginnerNote: beginnerNote,
       priceNote: priceNote,
       cta: {
@@ -3282,11 +3360,25 @@ async function loadPricingIntoForm() {
     document.getElementById('pr-weekday-price').value    = p.courtPricing.weekday.pricePerHour || '';
     document.getElementById('pr-weekday-visible').checked = p.courtPricing.weekday.visible !== false;
 
+    var weekdayEve = p.courtPricing.weekdayEvening || {};
+    document.getElementById('pr-weekday-evening-label').value    = weekdayEve.label || '';
+    document.getElementById('pr-weekday-evening-start').value    = weekdayEve.startTime || '';
+    document.getElementById('pr-weekday-evening-end').value      = weekdayEve.endTime || '';
+    document.getElementById('pr-weekday-evening-price').value    = weekdayEve.pricePerHour || '';
+    document.getElementById('pr-weekday-evening-visible').checked = weekdayEve.visible !== false;
+
     document.getElementById('pr-weekend-label').value    = p.courtPricing.weekend.label || '';
     document.getElementById('pr-weekend-start').value    = p.courtPricing.weekend.startTime || '';
     document.getElementById('pr-weekend-end').value      = p.courtPricing.weekend.endTime || '';
     document.getElementById('pr-weekend-price').value    = p.courtPricing.weekend.pricePerHour || '';
     document.getElementById('pr-weekend-visible').checked = p.courtPricing.weekend.visible !== false;
+
+    var weekendEve = p.courtPricing.weekendEvening || {};
+    document.getElementById('pr-weekend-evening-label').value    = weekendEve.label || '';
+    document.getElementById('pr-weekend-evening-start').value    = weekendEve.startTime || '';
+    document.getElementById('pr-weekend-evening-end').value      = weekendEve.endTime || '';
+    document.getElementById('pr-weekend-evening-price').value    = weekendEve.pricePerHour || '';
+    document.getElementById('pr-weekend-evening-visible').checked = weekendEve.visible !== false;
 
     document.getElementById('pr-social-name').value    = p.socialPlan.name || '';
     document.getElementById('pr-social-price').value   = p.socialPlan.pricePerMonth || '';
@@ -3299,6 +3391,13 @@ async function loadPricingIntoForm() {
     document.getElementById('pr-walkin-period').value  = p.walkInPass.period || '';
     document.getElementById('pr-walkin-desc').value    = p.walkInPass.description || '';
     document.getElementById('pr-walkin-visible').checked = p.walkInPass.visible !== false;
+
+    var coaching = p.coaching || {};
+    document.getElementById('pr-coaching-name').value    = coaching.name || '';
+    document.getElementById('pr-coaching-price').value   = coaching.pricePerSession || '';
+    document.getElementById('pr-coaching-period').value  = coaching.period || '';
+    document.getElementById('pr-coaching-desc').value    = coaching.description || '';
+    document.getElementById('pr-coaching-visible').checked = coaching.visible !== false;
 
     document.getElementById('pr-beginner-note').value  = p.beginnerNote || '';
     document.getElementById('pr-price-note').value     = p.priceNote || '';
