@@ -149,3 +149,27 @@ Sau khi dữ liệu test đủ đúng 32 VĐV hợp lệ:
 
 - **Owner/BTC:** xác nhận dữ liệu test, duyệt preview trước khi cho phép lưu thật, quyết định thời điểm dùng cho giải thật.
 - **Claude Code:** hỗ trợ chuẩn bị dữ liệu test khi được yêu cầu rõ ràng, không tự ý tạo/xóa dữ liệu thật, không tự ý bấm các nút ghi dữ liệu trong quá trình audit/kiểm thử.
+
+---
+
+## Kết quả test giả TEST_AUTO_PAIRING
+
+Ngày test: 2026-07-09
+
+Kết quả:
+- Tạo dữ liệu test bằng UI admin: pass.
+- 32 VĐV test đăng ký cá nhân: pass.
+- Preview auto pairing ra đủ 16 cặp: pass.
+- Xác nhận bảng preview có đủ dòng 1–16: pass.
+- Lưu kết quả ghép cặp vào Firestore: pass.
+- Sau khi lưu, 16 cặp được dùng làm đội/cặp thi đấu: pass.
+- Chia bảng preview thành 4 bảng A/B/C/D, mỗi bảng 4 cặp: pass.
+- Xác nhận tạo lịch thi đấu vòng bảng: pass.
+- Tổng số trận vòng bảng: 24 trận: pass.
+
+Ghi chú:
+- Test thực hiện trên event TEST_AUTO_PAIRING, không phải giải thật.
+- Chưa bấm Xuất dữ liệu lên web.
+- Chưa dùng dữ liệu giải thật.
+- Trước khi dùng cho giải thật vẫn phải backup/export players và registrations.
+- Cần xóa hoặc cô lập dữ liệu TEST trước khi export web.
