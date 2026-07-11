@@ -1798,7 +1798,36 @@ async function saveEvent() {
   } catch(e) { showToastError('Lỗi: ' + e.message); } finally { showLoading(false); }
 }
 
+// Helper thuần — đếm dữ liệu phụ thuộc của 1 event trước khi cho phép xóa.
+// Đếm TẤT CẢ registration có event_id trùng, bất kể status (kể cả rejected/merged/thiếu status/status lạ) —
+// vì với việc xóa event, "rejected không chiếm chỗ" không áp dụng: registration rejected vẫn tham chiếu event_id,
+// xóa event vẫn làm nó mồ côi. Chính sách này khác chủ đích với findOccupyingRegistrations() trong saveReg2().
+function getEventDeleteDependencies(registrationsArr, groupsArr, matchesArr, eventId) {
+  var registrationCount = (registrationsArr || []).filter(function(r) { return r && r.event_id === eventId; }).length;
+  var groupCount = (groupsArr || []).filter(function(g) { return g && g.event_id === eventId; }).length;
+  var matchCount = (matchesArr || []).filter(function(m) { return m && m.event_id === eventId; }).length;
+  return {
+    registrationCount: registrationCount,
+    groupCount: groupCount,
+    matchCount: matchCount,
+    hasDependencies: (registrationCount + groupCount + matchCount) > 0
+  };
+}
+
 async function deleteEvent(id) {
+  var deps = getEventDeleteDependencies(registrations, groups, matches, id);
+  if (deps.hasDependencies) {
+    var ev = events.find(function(x) { return x.id === id; });
+    var evLabel = (ev && ev.name) ? ('"' + ev.name + '"') : 'này';
+    alert(
+      'Không thể xóa nội dung thi đấu ' + evLabel + ' — vẫn còn dữ liệu liên quan:\n\n' +
+      '- Đăng ký: ' + deps.registrationCount + '\n' +
+      '- Bảng đấu (groups): ' + deps.groupCount + '\n' +
+      '- Trận đấu (matches): ' + deps.matchCount + '\n\n' +
+      'Vui lòng xóa hoặc xử lý các dữ liệu liên quan này trước khi xóa nội dung thi đấu.'
+    );
+    return;
+  }
   if (!confirm('Xóa nội dung thi đấu này?')) return;
   showLoading(true);
   try {
