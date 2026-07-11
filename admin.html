@@ -1617,7 +1617,41 @@ async function savePlayer() {
   } catch(e) { showToastError('Lỗi lưu VĐV: ' + e.message); } finally { showLoading(false); }
 }
 
+// Helper thuần — đếm dữ liệu phụ thuộc của 1 VĐV trước khi cho phép xóa.
+// Đếm TẤT CẢ registration có player_1_id hoặc player_2_id trùng playerId, bất kể status
+// (kể cả rejected/merged/thiếu status/status lạ) — cùng lý do với getEventDeleteDependencies():
+// registration rejected vẫn tham chiếu playerId, xóa player vẫn làm nó mồ côi.
+// totalRegistrationCount đếm theo DOCUMENT DUY NHẤT (1 registration tự ghép cùng playerId ở cả
+// player_1_id lẫn player_2_id chỉ tính 1 document), trong khi player1/player2RegistrationCount
+// đếm theo VAI TRÒ nên vẫn có thể cùng là 1 cho registration đó.
+function getPlayerDeleteDependencies(registrationsArr, playerId) {
+  var regs = registrationsArr || [];
+  var player1RegistrationCount = regs.filter(function(r) { return r && r.player_1_id === playerId; }).length;
+  var player2RegistrationCount = regs.filter(function(r) { return r && r.player_2_id === playerId; }).length;
+  var totalRegistrationCount = regs.filter(function(r) {
+    return r && (r.player_1_id === playerId || r.player_2_id === playerId);
+  }).length;
+  return {
+    player1RegistrationCount: player1RegistrationCount,
+    player2RegistrationCount: player2RegistrationCount,
+    totalRegistrationCount: totalRegistrationCount,
+    hasDependencies: totalRegistrationCount > 0
+  };
+}
+
 async function deletePlayer(id) {
+  var deps = getPlayerDeleteDependencies(registrations, id);
+  if (deps.hasDependencies) {
+    var playerLabel = getPlayerNameById(id);
+    alert(
+      'Không thể xóa VĐV ' + playerLabel + ' — vẫn còn đăng ký tham chiếu VĐV này:\n\n' +
+      '- Đăng ký với vai trò VĐV 1: ' + deps.player1RegistrationCount + '\n' +
+      '- Đăng ký với vai trò VĐV 2: ' + deps.player2RegistrationCount + '\n' +
+      '- Tổng số đăng ký liên quan (duy nhất): ' + deps.totalRegistrationCount + '\n\n' +
+      'Vui lòng kiểm tra tab Đăng ký giải để xử lý các đăng ký liên quan trước khi xóa VĐV.'
+    );
+    return;
+  }
   if (!confirm('Xóa VĐV này?')) return;
   showLoading(true);
   try {
