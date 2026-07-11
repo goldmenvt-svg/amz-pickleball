@@ -1898,15 +1898,58 @@ function onReg2EventChange() {
   if (p2Hint) p2Hint.style.display = doubles ? 'block' : 'none';
 }
 
+// Helper thuần — tìm registration khác trong registrationsArr đang "chiếm chỗ" trùng với player1Id/player2Id, trong cùng eventId.
+// "Chiếm chỗ" = cùng event_id, khác id với excludeRegistrationId (registration đang sửa, nếu có), và status !== 'rejected'
+// (status thiếu/null/undefined vẫn tính là chiếm chỗ, vì !== 'rejected' đúng trong mọi trường hợp đó).
+// So khớp cả 2 VĐV đang nhập với cả 2 vị trí player_1_id/player_2_id của từng registration khác — chỉ dùng đúng chính sách Owner đã chốt.
+function findOccupyingRegistrations(registrationsArr, eventId, player1Id, player2Id, excludeRegistrationId) {
+  var conflicts = [];
+  (registrationsArr || []).forEach(function(r) {
+    if (!r || r.id === excludeRegistrationId) return;
+    if (r.event_id !== eventId) return;
+    if (r.status === 'rejected') return;
+    if (player1Id && (r.player_1_id === player1Id || r.player_2_id === player1Id)) {
+      conflicts.push({ playerId: player1Id, registration: r });
+    }
+    if (player2Id && (r.player_1_id === player2Id || r.player_2_id === player2Id)) {
+      conflicts.push({ playerId: player2Id, registration: r });
+    }
+  });
+  return conflicts;
+}
+
+function getPlayerNameById(playerId) {
+  var p = players.find(function(x) { return x.id === playerId; });
+  return (p && (p.full_name || p.name)) || ('VĐV #' + playerId);
+}
+
 async function saveReg2() {
   var id = document.getElementById('r2-id').value;
   var evId = document.getElementById('r2-event').value;
   var p1Id = document.getElementById('r2-p1').value;
+  var p2Id = document.getElementById('r2-p2').value || null;
   if (!evId || !p1Id) { alert('Chọn nội dung thi đấu và VĐV 1'); return; }
+
+  if (p1Id && p2Id && p1Id === p2Id) {
+    alert('Không thể chọn cùng một VĐV cho cả VĐV 1 và VĐV 2.');
+    return;
+  }
+
+  var conflicts = findOccupyingRegistrations(registrations, evId, p1Id, p2Id, id || null);
+  if (conflicts.length) {
+    var conflictNames = conflicts.map(function(c) { return getPlayerNameById(c.playerId); });
+    var uniqueConflictNames = conflictNames.filter(function(n, idx) { return conflictNames.indexOf(n) === idx; });
+    alert(
+      'Không thể lưu — VĐV ' + uniqueConflictNames.join(', ') + ' đã có đăng ký khác đang hoạt động trong cùng nội dung thi đấu này.\n\n' +
+      'Vui lòng kiểm tra tab Đăng ký giải trước khi tiếp tục.'
+    );
+    return;
+  }
+
   var data = {
     event_id: evId,
     player_1_id: p1Id,
-    player_2_id: document.getElementById('r2-p2').value || null,
+    player_2_id: p2Id,
     payment_status: document.getElementById('r2-payment').value,
     checkin_status: 'pending',
     seed_number: parseInt(document.getElementById('r2-seed').value) || null,
