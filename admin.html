@@ -3229,7 +3229,43 @@ async function pushVideosToGitHub() {
 }
 
 // === EXPORT DATA TO WEB ===
+
+// Pre-export validation thuần (không đọc/ghi Firestore) — phát hiện dữ liệu TEST trước khi xuất lên web.
+// Chỉ kiểm tra đúng 2 field mà exportDataToWeb() đang thực sự dùng để xuất: tournaments[].name và players[].full_name (hoặc .name — tương thích ngược, cùng field export dùng ở dòng "p.full_name || p.name").
+// Hiện tại tournaments/players không có field "mã" (code) riêng nào trong schema — chỉ có field tên, nên chỉ kiểm tra tên.
+// Nhận diện tiền tố TEST_ / "TEST " / TEST- / TEST– / TEST— ở đầu chuỗi (không phân biệt hoa/thường), không khớp nếu "test" chỉ nằm giữa một tên thật (VD "Testino Nguyễn", "Nguyễn Test Văn" không bị đánh dấu).
+var TEST_NAME_PREFIX_RE = /^test(?:$|[\s_\-–—])/i;
+
+function isTestNamePrefix(name) {
+  var s = (name === null || name === undefined) ? '' : String(name).trim();
+  return TEST_NAME_PREFIX_RE.test(s);
+}
+
+function detectTestDataForExport(tournamentsArr, playersArr) {
+  var testTournaments = (tournamentsArr || [])
+    .filter(function(t) { return isTestNamePrefix(t && t.name); })
+    .map(function(t) { return String(t.name === null || t.name === undefined ? '' : t.name).trim(); });
+  var testPlayers = (playersArr || [])
+    .filter(function(p) { return isTestNamePrefix(p && (p.full_name || p.name)); })
+    .map(function(p) { var n = p.full_name || p.name; return String(n === null || n === undefined ? '' : n).trim(); });
+  return {
+    hasTest: testTournaments.length > 0 || testPlayers.length > 0,
+    testTournaments: testTournaments,
+    testPlayers: testPlayers
+  };
+}
+
 async function exportDataToWeb() {
+  var testCheck = detectTestDataForExport(tournaments, players);
+  if (testCheck.hasTest) {
+    alert(
+      'KHÔNG THỂ XUẤT DỮ LIỆU LÊN WEB — phát hiện dữ liệu nghi TEST.\n\n' +
+      'Giải đấu nghi TEST (' + testCheck.testTournaments.length + '): ' + (testCheck.testTournaments.join(', ') || '—') + '\n' +
+      'VĐV nghi TEST (' + testCheck.testPlayers.length + '): ' + (testCheck.testPlayers.join(', ') || '—') + '\n\n' +
+      'Vui lòng xóa hoặc đổi tên dữ liệu TEST ở trên trước khi xuất dữ liệu lên web.'
+    );
+    return;
+  }
   var playerCount = players.length;
   var tournCount  = tournaments.length;
   if (!confirm(
