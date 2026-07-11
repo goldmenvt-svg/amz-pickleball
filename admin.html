@@ -1743,8 +1743,31 @@ async function saveTournament() {
   } catch(e) { showToastError('Lỗi: ' + e.message); } finally { showLoading(false); }
 }
 
+// Helper thuần — đếm dữ liệu phụ thuộc của 1 giải đấu trước khi cho phép xóa.
+// Chỉ đếm events có tournament_id trùng (bất kể status hay field nào khác) — vì tournament chỉ
+// phụ thuộc trực tiếp vào events; registrations/groups/matches đã được deleteEvent() chặn xóa
+// riêng, nên quy trình an toàn là dọn events (và dependency của từng event) trước, tournament sau.
+function getTournamentDeleteDependencies(eventsArr, tournamentId) {
+  var eventCount = (eventsArr || []).filter(function(e) { return e && e.tournament_id === tournamentId; }).length;
+  return {
+    eventCount: eventCount,
+    hasDependencies: eventCount > 0
+  };
+}
+
 async function deleteTournament(id) {
-  if (!confirm('Xóa giải đấu này? (Sẽ không xóa events và registrations liên quan)')) return;
+  var deps = getTournamentDeleteDependencies(events, id);
+  if (deps.hasDependencies) {
+    var t = tournaments.find(function(x) { return x.id === id; });
+    var tLabel = (t && t.name) ? ('"' + t.name + '"') : 'này';
+    alert(
+      'Không thể xóa giải đấu ' + tLabel + ' — vẫn còn nội dung thi đấu liên quan:\n\n' +
+      '- Nội dung thi đấu: ' + deps.eventCount + '\n\n' +
+      'Vui lòng vào tab Nội dung thi đấu để xóa hoặc xử lý các nội dung liên quan trước khi xóa giải đấu.'
+    );
+    return;
+  }
+  if (!confirm('Xóa giải đấu này?')) return;
   showLoading(true);
   try {
     await _fsdb.collection('tournaments').doc(id).delete();
