@@ -2091,7 +2091,60 @@ async function checkinReg(regId) {
   } catch(e) { showToastError('Lỗi: ' + e.message); } finally { showLoading(false); }
 }
 
+// Helper thuần — đếm dữ liệu phụ thuộc của 1 registration trước khi cho phép xóa.
+// matchReferenceCount: đếm theo DOCUMENT match duy nhất (registrationId có thể trùng cả team_a_id
+// lẫn winner_id trong cùng 1 match, vẫn chỉ tính 1).
+// mergedSourceReferenceCount: 1 nếu chính registration này là nguồn đã merge (status==='merged'
+// HOẶC có merged_into khác rỗng) — kể cả khi merged_into trỏ tới registration không còn tồn tại,
+// vì đó là dữ liệu merge hỏng cần giữ lại để kiểm tra, không phải lý do để cho phép xóa.
+// mergedTargetReferenceCount: đếm registration KHÁC (loại trừ chính nó, phòng self-reference lỗi)
+// có merged_into === registrationId.
+function getRegistrationDeleteDependencies(registrationsArr, matchesArr, registrationId) {
+  var regs = registrationsArr || [];
+  var mats = matchesArr || [];
+
+  var matchReferenceCount = mats.filter(function(m) {
+    return m && (m.team_a_id === registrationId || m.team_b_id === registrationId || m.winner_id === registrationId);
+  }).length;
+
+  var currentReg = regs.filter(function(r) { return r && r.id === registrationId; })[0];
+  var mergedSourceReferenceCount = 0;
+  if (currentReg) {
+    var hasMergedInto = currentReg.merged_into !== null && currentReg.merged_into !== undefined && currentReg.merged_into !== '';
+    if (currentReg.status === 'merged' || hasMergedInto) {
+      mergedSourceReferenceCount = 1;
+    }
+  }
+
+  var mergedTargetReferenceCount = regs.filter(function(r) {
+    return r && r.id !== registrationId && r.merged_into === registrationId;
+  }).length;
+
+  var totalDependencyCount = matchReferenceCount + mergedSourceReferenceCount + mergedTargetReferenceCount;
+  return {
+    matchReferenceCount: matchReferenceCount,
+    mergedSourceReferenceCount: mergedSourceReferenceCount,
+    mergedTargetReferenceCount: mergedTargetReferenceCount,
+    totalDependencyCount: totalDependencyCount,
+    hasDependencies: totalDependencyCount > 0
+  };
+}
+
 async function deleteReg2(regId) {
+  var deps = getRegistrationDeleteDependencies(registrations, matches, regId);
+  if (deps.hasDependencies) {
+    var teamLabel = getTeamName(regId);
+    alert(
+      'Không thể xóa đăng ký ' + (teamLabel && teamLabel !== '?' ? '"' + teamLabel + '"' : 'này') + ' — vẫn còn dữ liệu liên quan:\n\n' +
+      '- Số trận đấu tham chiếu: ' + deps.matchReferenceCount + '\n' +
+      '- Là nguồn đã ghép cặp (merged): ' + (deps.mergedSourceReferenceCount > 0 ? 'Có' : 'Không') + '\n' +
+      '- Số đăng ký khác đang merge vào đăng ký này: ' + deps.mergedTargetReferenceCount + '\n\n' +
+      'Nếu còn trận đấu liên quan, hãy xử lý tại tab Chia bảng.\n' +
+      'Chỉ reset bảng đấu khi chưa có tỷ số hoặc kết quả; nếu đã có kết quả, không reset cho đến khi có cơ chế hoàn tác Elo an toàn.\n' +
+      'Không xóa trực tiếp đăng ký đã tham gia Auto Pairing/ghép cặp — vui lòng kiểm tra dữ liệu merge trước.'
+    );
+    return;
+  }
   if (!confirm('Xóa đăng ký này?')) return;
   showLoading(true);
   try {
