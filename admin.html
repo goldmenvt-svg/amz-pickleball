@@ -3611,6 +3611,465 @@ function planMatchResultCorrection(matchId, matchData, action, newScoreA, newSco
   };
 }
 
+// ============================================================================
+// Task 6B1-A — Helper THUẦN chuẩn bị cho writer submit tỷ số (Task 6B1-B, chưa triển khai).
+// Không gọi _fsdb/_auth, không đọc DOM, không alert/toast/render, không sửa object/mảng đầu vào.
+// CHƯA nối vào submitScore()/commitScoreAndEloTransaction() — chỉ tính toán thuần.
+// ============================================================================
+
+// 5 action cho vòng đời "submit tỷ số" — 3 giá trị correction khớp CHÍNH XÁC RESULT_CORRECTION_ACTIONS
+// hiện có (không tạo action chung 'CORRECTION'); INITIAL_SUBMIT/RESUBMIT_AFTER_VOID chỉ dùng trong
+// nhóm helper submit tỷ số (6B1), không dùng trong planMatchResultCorrection() (6A).
+var RESULT_REVISION_ACTIONS = {
+  INITIAL_SUBMIT: 'INITIAL_SUBMIT',
+  RESUBMIT_AFTER_VOID: 'RESUBMIT_AFTER_VOID',
+  CORRECT_SCORE_SAME_WINNER: RESULT_CORRECTION_ACTIONS.CORRECT_SCORE_SAME_WINNER,
+  CORRECT_RESULT_CHANGE_WINNER: RESULT_CORRECTION_ACTIONS.CORRECT_RESULT_CHANGE_WINNER,
+  VOID_RESULT: RESULT_CORRECTION_ACTIONS.VOID_RESULT
+};
+
+// Validate 1 operationId đã được sinh sẵn (không tự sinh ở đây) — chỉ chấp nhận string khác rỗng
+// sau khi trim; output hợp lệ luôn dùng giá trị ĐÃ TRIM để mọi nơi khác trong chuỗi (revision doc,
+// player update) dùng chung 1 giá trị chuẩn hoá, không lặp lại trim rải rác.
+function validateResultOperationId(operationId) {
+  if (typeof operationId !== 'string') return { ok: false, reason: 'invalid_operation_id', operationId: null };
+  var trimmed = operationId.trim();
+  if (trimmed === '') return { ok: false, reason: 'invalid_operation_id', operationId: null };
+  return { ok: true, reason: 'ok', operationId: trimmed };
+}
+
+// Sinh operationId an toàn — ưu tiên crypto.randomUUID(); fallback dựng UUID v4 thủ công từ
+// crypto.getRandomValues() (set đúng version nibble = 4 và variant 2 bit cao = 10) khi randomUUID
+// không tồn tại; KHÔNG bao giờ dùng Math.random() (không đủ entropy cho idempotency key) hay
+// timestamp đơn lẻ (có thể trùng giữa 2 tab cùng mili-giây). Không side-effect ngoài việc đọc crypto
+// và trả string — không sửa global crypto.
+function createResultOperationId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    var bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    var hex = [];
+    for (var i = 0; i < 16; i++) hex.push((bytes[i] + 0x100).toString(16).slice(1));
+    return hex[0] + hex[1] + hex[2] + hex[3] + '-' + hex[4] + hex[5] + '-' + hex[6] + hex[7] + '-' +
+      hex[8] + hex[9] + '-' + hex[10] + hex[11] + hex[12] + hex[13] + hex[14] + hex[15];
+  }
+  throw new Error('Không thể sinh operation ID an toàn: môi trường thiếu crypto.randomUUID và crypto.getRandomValues.');
+}
+
+// Xác định action + số revision tiếp theo từ trạng thái match HIỆN TẠI (đọc authoritative) — KHÔNG
+// thay thế getScoreTransactionMatchState() (writer 6B1-B phải gọi CẢ HAI, đây chỉ lo phần vòng đời
+// revision). "Initial sạch" chỉ đúng khi CẢ 4 field liên quan đều thiếu/null cùng lúc — bất kỳ tổ hợp
+// nào có 1 field "mồ côi" (vd. có last_result_action nhưng không có result_revision) đều bị chặn
+// invalid_resubmit_state thay vì đoán ý — dữ liệu nửa vời không được âm thầm coi là 1 trong 2 trạng
+// thái hợp lệ. Dùng lại getNextResultRevision()/formatResultRevisionId() không đổi.
+function getScoreResultRevisionState(matchData) {
+  var isPlainObject = function(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); };
+  if (!isPlainObject(matchData)) return { ok: false, reason: 'invalid_match_state' };
+
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v.trim() !== ''; };
+  var isNullish = function(v) { return v === undefined || v === null; };
+
+  var resultRevision = matchData.result_revision;
+  var lastResultAction = matchData.last_result_action;
+  var lastResultOperationId = matchData.last_result_operation_id;
+  var eloLastOperationId = matchData.elo_last_operation_id;
+
+  var revisionMissing = isNullish(resultRevision);
+  var actionMissing = isNullish(lastResultAction);
+  var lastOpMissing = isNullish(lastResultOperationId);
+  var eloOpMissing = isNullish(eloLastOperationId);
+
+  if (revisionMissing && actionMissing && lastOpMissing && eloOpMissing) {
+    return {
+      ok: true,
+      reason: 'ok',
+      action: RESULT_REVISION_ACTIONS.INITIAL_SUBMIT,
+      currentRevision: null,
+      nextRevision: 1,
+      revisionDocId: formatResultRevisionId(1),
+      previousRevision: null
+    };
+  }
+
+  if (revisionMissing) {
+    // result_revision thiếu nhưng còn ít nhất 1 trong 3 field kia khác thiếu/null -> không phải
+    // initial sạch cũng không đủ điều kiện resubmit (thiếu chính result_revision).
+    return { ok: false, reason: 'invalid_resubmit_state' };
+  }
+
+  var revCheck = getNextResultRevision(resultRevision);
+  if (!revCheck.ok) return { ok: false, reason: 'invalid_result_revision' };
+
+  var validResubmit =
+    lastResultAction === RESULT_REVISION_ACTIONS.VOID_RESULT &&
+    isNonEmptyString(lastResultOperationId) &&
+    isNonEmptyString(eloLastOperationId) &&
+    lastResultOperationId === eloLastOperationId;
+
+  if (!validResubmit) return { ok: false, reason: 'invalid_resubmit_state' };
+
+  return {
+    ok: true,
+    reason: 'ok',
+    action: RESULT_REVISION_ACTIONS.RESUBMIT_AFTER_VOID,
+    currentRevision: revCheck.currentRevision,
+    nextRevision: revCheck.nextRevision,
+    revisionDocId: formatResultRevisionId(revCheck.nextRevision),
+    previousRevision: revCheck.currentRevision
+  };
+}
+
+// operation_type nào bắt buộc có elo_last_match_id (match/correction gắn với 1 trận cụ thể) và loại
+// nào bắt buộc match_id phải là null (manual/void không gắn 1 trận cụ thể duy nhất).
+var ELO_OPERATION_TYPES_WITH_MATCH_ID = ['match', 'correction'];
+var ELO_OPERATION_TYPES_WITHOUT_MATCH_ID = ['manual', 'void'];
+var VALID_ELO_OPERATION_TYPES = ELO_OPERATION_TYPES_WITH_MATCH_ID.concat(ELO_OPERATION_TYPES_WITHOUT_MATCH_ID);
+
+// Đọc trạng thái "chuỗi version" hiện tại của 1 player — legacy (chưa từng có elo_version) chỉ hợp lệ
+// khi TOÀN BỘ field nguồn gốc khác cũng thiếu/null (nếu chỉ thiếu version mà vẫn còn source metadata
+// thì dữ liệu mâu thuẫn, không được coi là legacy sạch). elo_last_updated_at chỉ được yêu cầu TỒN TẠI
+// (hasOwnProperty) trên player đã versioned — giá trị không được dùng để tính toán trong helper thuần
+// này, có thể là Timestamp thật hoặc null tuỳ dữ liệu test.
+function getScorePlayerEloChainState(playerData) {
+  var isPlainObject = function(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); };
+  if (!isPlainObject(playerData)) return { ok: false, reason: 'missing_player' };
+
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v.trim() !== ''; };
+  var isNullish = function(v) { return v === undefined || v === null; };
+
+  var hasVersion = Object.prototype.hasOwnProperty.call(playerData, 'elo_version');
+  if (!hasVersion) {
+    var sourceFieldsClean =
+      isNullish(playerData.elo_last_operation_type) &&
+      isNullish(playerData.elo_last_operation_id) &&
+      isNullish(playerData.elo_last_match_id) &&
+      isNullish(playerData.elo_last_updated_at);
+    if (!sourceFieldsClean) return { ok: false, reason: 'invalid_player_elo_chain' };
+    return { ok: true, reason: 'ok', isLegacy: true, currentVersion: 0, nextVersion: 1 };
+  }
+
+  var version = playerData.elo_version;
+  var versionValid = typeof version === 'number' && isFinite(version) && Number.isInteger(version) && version >= 0;
+  if (!versionValid) return { ok: false, reason: 'invalid_player_elo_chain' };
+
+  var opType = playerData.elo_last_operation_type;
+  if (VALID_ELO_OPERATION_TYPES.indexOf(opType) === -1) return { ok: false, reason: 'invalid_player_elo_chain' };
+
+  if (!isNonEmptyString(playerData.elo_last_operation_id)) return { ok: false, reason: 'invalid_player_elo_chain' };
+
+  var lastMatchId = playerData.elo_last_match_id;
+  if (ELO_OPERATION_TYPES_WITH_MATCH_ID.indexOf(opType) !== -1) {
+    if (!isNonEmptyString(lastMatchId)) return { ok: false, reason: 'invalid_player_elo_chain' };
+  } else if (lastMatchId !== null) {
+    return { ok: false, reason: 'invalid_player_elo_chain' };
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(playerData, 'elo_last_updated_at')) {
+    return { ok: false, reason: 'invalid_player_elo_chain' };
+  }
+
+  return { ok: true, reason: 'ok', isLegacy: false, currentVersion: version, nextVersion: version + 1 };
+}
+
+// Gắn metadata version/nguồn gốc vào plan Elo đã tính sẵn (planScoreAndEloTransaction() không đổi) —
+// đối chiếu LẠI với dữ liệu player authoritative (không tin tưởng mù plan đã đúng): oldElo trong plan
+// phải khớp elo hiện tại thật của player, và chuỗi version của player phải hợp lệ trước khi cho phép
+// tính version tiếp theo. Structural check (malformed_elo_metadata) + duplicate được gộp 1 vòng lặp,
+// existence/mismatch/chain được gộp vòng lặp thứ 2 — cùng cấu trúc 2-vòng-lặp với
+// getMatchCorrectionEloChainState() ở trên để nhất quán trong file.
+function enrichScoreAndEloPlanWithChain(matchId, plan, playersById, operationId) {
+  var opCheck = validateResultOperationId(operationId);
+  if (!opCheck.ok) return { ok: false, reason: 'invalid_operation_id' };
+
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v.trim() !== ''; };
+  if (!isNonEmptyString(matchId)) return { ok: false, reason: 'invalid_match_state' };
+
+  var isPlainObject = function(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); };
+  if (!isPlainObject(plan) || plan.ok !== true || !Array.isArray(plan.playerEloUpdates)) {
+    return { ok: false, reason: 'invalid_match_state' };
+  }
+
+  var isFiniteAtLeast100 = function(v) { return typeof v === 'number' && isFinite(v) && v >= 100; };
+  var i, item;
+  var seenIds = [];
+  for (i = 0; i < plan.playerEloUpdates.length; i++) {
+    item = plan.playerEloUpdates[i];
+    var isCleanItem =
+      item && isNonEmptyString(item.playerId) &&
+      isFiniteAtLeast100(item.oldElo) &&
+      isFiniteAtLeast100(item.newElo) &&
+      item.appliedDelta === (item.newElo - item.oldElo);
+    if (!isCleanItem) return { ok: false, reason: 'malformed_elo_metadata' };
+    if (seenIds.indexOf(item.playerId) !== -1) return { ok: false, reason: 'duplicate_player' };
+    seenIds.push(item.playerId);
+  }
+
+  var playersMap = playersById || {};
+  var chainByPlayerId = {};
+  for (i = 0; i < plan.playerEloUpdates.length; i++) {
+    item = plan.playerEloUpdates[i];
+    var playerData = playersMap[item.playerId];
+    if (!playerData) return { ok: false, reason: 'missing_player' };
+
+    var eloCheck = getPlayerTransactionElo(playerData);
+    if (!eloCheck.ok || eloCheck.elo !== item.oldElo) return { ok: false, reason: 'player_elo_mismatch' };
+
+    var chainCheck = getScorePlayerEloChainState(playerData);
+    if (!chainCheck.ok) return { ok: false, reason: 'invalid_player_elo_chain' };
+
+    chainByPlayerId[item.playerId] = chainCheck;
+  }
+
+  var eloPlayerUpdates = [];
+  var playerUpdates = [];
+  for (i = 0; i < plan.playerEloUpdates.length; i++) {
+    item = plan.playerEloUpdates[i];
+    var chain = chainByPlayerId[item.playerId];
+    eloPlayerUpdates.push({
+      player_id: item.playerId,
+      old_elo: item.oldElo,
+      new_elo: item.newElo,
+      applied_delta: item.appliedDelta,
+      elo_version_before: chain.currentVersion,
+      elo_version_after: chain.nextVersion,
+      elo_operation_id: opCheck.operationId
+    });
+    playerUpdates.push({
+      playerId: item.playerId,
+      eloScore: item.newElo,
+      eloVersion: chain.nextVersion,
+      eloLastOperationType: 'match',
+      eloLastOperationId: opCheck.operationId,
+      eloLastMatchId: matchId
+    });
+  }
+
+  return { ok: true, reason: 'ok', operationId: opCheck.operationId, eloPlayerUpdates: eloPlayerUpdates, playerUpdates: playerUpdates };
+}
+
+// Snapshot đúng 13 field schema kết quả trận (dùng cho previous_result/new_result trong revision
+// document) — deep-clone đủ cho schema này (mảng ID 1 lớp + mảng object elo_player_updates 1 lớp
+// lồng nhau), không trả thẳng reference từ matchData, mọi undefined chuẩn hoá thành null (Firestore
+// SDK throw nếu set() gặp field undefined — không được để lọt field nào).
+function buildScoreResultSnapshot(matchData) {
+  var src = matchData || {};
+  var normalize = function(v) { return v === undefined ? null : v; };
+
+  var cloneIdArray = function(arr) {
+    if (!Array.isArray(arr)) return normalize(arr);
+    return arr.slice();
+  };
+  var cloneUpdatesArray = function(arr) {
+    if (!Array.isArray(arr)) return normalize(arr);
+    return arr.map(function(u) {
+      if (!u || typeof u !== 'object') return normalize(u);
+      var clone = {};
+      Object.keys(u).forEach(function(k) { clone[k] = normalize(u[k]); });
+      return clone;
+    });
+  };
+
+  return {
+    status: normalize(src.status),
+    score_a: normalize(src.score_a),
+    score_b: normalize(src.score_b),
+    winner_id: normalize(src.winner_id),
+    elo_applied: normalize(src.elo_applied),
+    elo_delta: normalize(src.elo_delta),
+    elo_player_ids_a: cloneIdArray(src.elo_player_ids_a),
+    elo_player_ids_b: cloneIdArray(src.elo_player_ids_b),
+    elo_player_updates: cloneUpdatesArray(src.elo_player_updates),
+    result_revision: normalize(src.result_revision),
+    last_result_operation_id: normalize(src.last_result_operation_id),
+    elo_last_operation_id: normalize(src.elo_last_operation_id),
+    last_result_action: normalize(src.last_result_action)
+  };
+}
+
+// Xác thực danh tính admin để ghi vào revision document — KHÔNG fallback 'admin' (khác với hiển thị
+// UI thuần tuý ở nơi khác trong file), KHÔNG dùng displayName thay uid/email vì displayName có thể
+// trống/không duy nhất. Thiếu currentUser thật (uid/email rỗng) phải abort, không đoán.
+function getResultAdminIdentityState(userData) {
+  var isPlainObject = function(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); };
+  if (!isPlainObject(userData)) return { ok: false, reason: 'missing_admin_identity' };
+
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v.trim() !== ''; };
+  if (!isNonEmptyString(userData.uid) || !isNonEmptyString(userData.email)) {
+    return { ok: false, reason: 'missing_admin_identity' };
+  }
+  return { ok: true, reason: 'ok', adminUid: userData.uid.trim(), adminEmail: userData.email.trim() };
+}
+
+// Quét đệ quy tìm undefined ở bất kỳ cấp nào — dùng làm lưới an toàn cuối cùng trước khi
+// buildScoreResultRevisionData() trả revisionData thành công (Firestore SDK throw nếu set() gặp
+// undefined ở bất kỳ độ sâu nào, kể cả lồng trong object/array con). CHỈ đệ quy vào plain object
+// (prototype === Object.prototype hoặc null) và Array — mọi object có prototype khác (Date,
+// firebase.firestore.FieldValue/Timestamp sentinel, class instance tuỳ ý) bị coi là OPAQUE: trả về
+// false ngay, không soi nội bộ. Bắt buộc vì FieldValue.serverTimestamp() mang field private nội bộ
+// (vd. _delegate/_methodName) không phải dữ liệu thật của app — soi vào đó là sai ý nghĩa sentinel,
+// và document thật luôn hợp lệ chứa các sentinel này.
+function containsUndefinedDeep(value) {
+  if (value === undefined) return true;
+  if (value === null) return false;
+  if (Array.isArray(value)) {
+    for (var i = 0; i < value.length; i++) {
+      if (containsUndefinedDeep(value[i])) return true;
+    }
+    return false;
+  }
+  if (typeof value !== 'object') return false;
+  var proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return false;
+  var keys = Object.keys(value);
+  for (var j = 0; j < keys.length; j++) {
+    if (containsUndefinedDeep(value[keys[j]])) return true;
+  }
+  return false;
+}
+
+// Build revision document đầy đủ cho INITIAL_SUBMIT/RESUBMIT_AFTER_VOID — CỐ Ý không nhận action
+// correction/void (Task 6C sẽ có builder riêng). revisionState phải là output SUCCESS của
+// getScoreResultRevisionState(); nếu revisionState là output FAILURE hợp lệ (có field reason nằm
+// trong 3 reason revision đã biết), forward nguyên reason đó ra ngoài thay vì đoán 1 reason chung
+// chung — giúp writer 6B1-B không phải tra cứu 2 lần. invalid_match_state được dùng làm bucket
+// chung cho mọi lỗi cấu trúc input KHÔNG thuộc operationId/revision/admin/elo (matchId, matchData,
+// event_id/team ids, shape newResult, createdAt thiếu/null, hoặc revisionData cuối cùng vẫn còn sót
+// undefined) — nhất quán với cách getScoreTransactionMatchState()/validateMatchResultCorrectionInput()
+// đã dùng invalid_match_state làm bucket rộng. revisionState.ok===true KHÔNG được tin mù — còn phải
+// khớp đúng bất biến số học/tham chiếu chéo với matchData (chống caller tự dựng object giả).
+function buildScoreResultRevisionData(params) {
+  var p = params || {};
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v.trim() !== ''; };
+  var isPlainObject = function(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); };
+
+  var opCheck = validateResultOperationId(p.operationId);
+  if (!opCheck.ok) return { ok: false, reason: 'invalid_operation_id' };
+
+  if (!isNonEmptyString(p.matchId) || !isPlainObject(p.matchData)) return { ok: false, reason: 'invalid_match_state' };
+  if (!isNonEmptyString(p.matchData.event_id) || !isNonEmptyString(p.matchData.team_a_id) ||
+      !isNonEmptyString(p.matchData.team_b_id) || p.matchData.team_a_id === p.matchData.team_b_id) {
+    return { ok: false, reason: 'invalid_match_state' };
+  }
+
+  var revisionState = p.revisionState;
+  var knownRevisionFailureReasons = ['invalid_match_state', 'invalid_result_revision', 'invalid_resubmit_state'];
+  if (!isPlainObject(revisionState) || revisionState.ok !== true) {
+    if (isPlainObject(revisionState) && knownRevisionFailureReasons.indexOf(revisionState.reason) !== -1) {
+      return { ok: false, reason: revisionState.reason };
+    }
+    return { ok: false, reason: 'invalid_resubmit_state' };
+  }
+  var validActions = [RESULT_REVISION_ACTIONS.INITIAL_SUBMIT, RESULT_REVISION_ACTIONS.RESUBMIT_AFTER_VOID];
+  if (validActions.indexOf(revisionState.action) === -1) return { ok: false, reason: 'invalid_resubmit_state' };
+
+  // revisionState.ok===true không đủ — còn phải tự khớp lại đúng bất biến số học của chính action đó,
+  // và (với resubmit) khớp chéo với matchData.last_result_action thật — không tin caller đã gọi đúng
+  // getScoreResultRevisionState() để tạo ra object này.
+  if (revisionState.action === RESULT_REVISION_ACTIONS.INITIAL_SUBMIT) {
+    var initialInvariantsOk =
+      revisionState.currentRevision === null &&
+      revisionState.nextRevision === 1 &&
+      revisionState.previousRevision === null &&
+      revisionState.revisionDocId === '00000001';
+    if (!initialInvariantsOk) return { ok: false, reason: 'invalid_resubmit_state' };
+  } else {
+    var cr = revisionState.currentRevision;
+    var resubmitInvariantsOk =
+      typeof cr === 'number' && isFinite(cr) && Number.isInteger(cr) && cr >= 1 &&
+      revisionState.previousRevision === cr &&
+      revisionState.nextRevision === cr + 1 &&
+      revisionState.revisionDocId === formatResultRevisionId(revisionState.nextRevision) &&
+      p.matchData.last_result_action === 'VOID_RESULT';
+    if (!resubmitInvariantsOk) return { ok: false, reason: 'invalid_resubmit_state' };
+  }
+
+  var adminIdentity = p.adminIdentity;
+  if (!isPlainObject(adminIdentity) || adminIdentity.ok !== true ||
+      !isNonEmptyString(adminIdentity.adminUid) || !isNonEmptyString(adminIdentity.adminEmail)) {
+    return { ok: false, reason: 'missing_admin_identity' };
+  }
+
+  // newResult phải là 1 kết quả trận "sạch" theo đúng nghĩa submit tỷ số (không phải correction/void):
+  // completed, elo đã áp, điểm hợp lệ không hòa, winner_id khớp đúng team thắng theo điểm — dùng lại
+  // validateScoreForTransaction() không đổi. Không giới thiệu reason mới — mọi lỗi shape newResult
+  // đều gộp vào invalid_match_state, cùng bucket với các lỗi shape newResult khác của hàm này.
+  if (!isPlainObject(p.newResult)) return { ok: false, reason: 'invalid_match_state' };
+  if (p.newResult.status !== 'completed' || p.newResult.elo_applied !== true) {
+    return { ok: false, reason: 'invalid_match_state' };
+  }
+  var newResultScoreCheck = validateScoreForTransaction(p.newResult.score_a, p.newResult.score_b);
+  if (!newResultScoreCheck.ok) return { ok: false, reason: 'invalid_match_state' };
+  var expectedWinnerId = p.newResult.score_a > p.newResult.score_b ? p.matchData.team_a_id : p.matchData.team_b_id;
+  if (p.newResult.winner_id !== expectedWinnerId) return { ok: false, reason: 'invalid_match_state' };
+
+  if (!Array.isArray(p.eloPlayerUpdates)) return { ok: false, reason: 'malformed_elo_metadata' };
+
+  var isCleanPlayerChangeSource = p.eloPlayerUpdates.every(function(u) {
+    return u && typeof u === 'object' &&
+      isNonEmptyString(u.player_id) &&
+      typeof u.old_elo === 'number' && isFinite(u.old_elo) &&
+      typeof u.new_elo === 'number' && isFinite(u.new_elo) &&
+      typeof u.elo_version_before === 'number' && isFinite(u.elo_version_before) &&
+      typeof u.elo_version_after === 'number' && isFinite(u.elo_version_after);
+  });
+  if (!isCleanPlayerChangeSource) return { ok: false, reason: 'malformed_elo_metadata' };
+
+  // createdAt: bắt buộc khác undefined VÀ khác null (revision thật luôn phải có timestamp — null
+  // không được coi là "chưa có" hợp lệ như nhiều field khác trong file). Không clone/spread — giữ
+  // NGUYÊN reference/value được truyền vào (bắt buộc cho sentinel FieldValue/Timestamp opaque).
+  if (p.createdAt === undefined || p.createdAt === null) return { ok: false, reason: 'invalid_match_state' };
+
+  // Bốn field vòng đời trên new_result KHÔNG được tin từ params.newResult (caller có thể truyền sai/cũ)
+  // — builder tự áp giá trị authoritative đã validate ở trên. Copy nông sang object MỚI trước khi ghi
+  // đè để không mutate params.newResult gốc.
+  var normalizedNewResult = Object.assign({}, p.newResult, {
+    result_revision: revisionState.nextRevision,
+    last_result_operation_id: opCheck.operationId,
+    elo_last_operation_id: opCheck.operationId,
+    last_result_action: revisionState.action
+  });
+
+  var previousResult = revisionState.action === RESULT_REVISION_ACTIONS.INITIAL_SUBMIT
+    ? null
+    : buildScoreResultSnapshot(p.matchData);
+
+  var playerChanges = p.eloPlayerUpdates.map(function(u) {
+    return {
+      player_id: u.player_id,
+      elo_before: u.old_elo,
+      elo_after: u.new_elo,
+      elo_version_before: u.elo_version_before,
+      elo_version_after: u.elo_version_after
+    };
+  });
+
+  var revisionData = {
+    match_id: p.matchId,
+    event_id: p.matchData.event_id,
+    team_a_id: p.matchData.team_a_id,
+    team_b_id: p.matchData.team_b_id,
+    revision_number: revisionState.nextRevision,
+    previous_revision: revisionState.previousRevision,
+    operation_id: opCheck.operationId,
+    action: revisionState.action,
+    reason: null,
+    admin_uid: adminIdentity.adminUid,
+    admin_email: adminIdentity.adminEmail,
+    previous_result: previousResult,
+    new_result: buildScoreResultSnapshot(normalizedNewResult),
+    player_changes: playerChanges,
+    created_at: p.createdAt
+  };
+
+  if (containsUndefinedDeep(revisionData)) return { ok: false, reason: 'invalid_match_state' };
+
+  return { ok: true, reason: 'ok', revisionData: revisionData };
+}
+
 async function generateKnockout() {
   var evId = document.getElementById('scores-event').value;
   if (!evId) return;
