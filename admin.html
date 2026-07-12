@@ -2527,9 +2527,67 @@ async function confirmBracket() {
   } catch(e) { showToastError('Lỗi: ' + e.message); } finally { showLoading(false); }
 }
 
+// Helper thuần — phân loại match của 1 event thành 3 nhóm loại trừ nhau trước khi cho phép reset bracket.
+// "Clean scheduled": chưa đấu, 4 field trạng thái/kết quả sạch tuyệt đối (không xét team_a_id/team_b_id —
+// match vòng bảng chưa chơi có đội, hoặc placeholder bán kết/chung kết chưa có đội, đều hợp lệ để reset).
+// "Clean completed": đã hoàn tất đúng luồng submitScore() — đủ team, score là số hữu hạn, không hòa,
+// winner_id khớp đúng bên có điểm cao hơn. score = 0 vẫn hợp lệ (isFinite(0) === true).
+// Mọi match không khớp chính xác 1 trong 2 nhóm trên (thiếu field, sai kiểu, dữ liệu mâu thuẫn...) đều
+// rơi vào "inconsistent" — coi là cần bảo vệ, không tự suy đoán là an toàn để reset.
+function getBracketResetDependencies(matchesArr, eventId) {
+  var mats = (matchesArr || []).filter(function(m) { return m && m.event_id === eventId; });
+
+  function hasValue(v) { return v !== null && v !== undefined && v !== ''; }
+  function isFiniteNumber(v) { return typeof v === 'number' && isFinite(v); }
+
+  function isCleanScheduled(m) {
+    return m.status === 'scheduled' && m.score_a === null && m.score_b === null && m.winner_id === null;
+  }
+
+  function isCleanCompleted(m) {
+    if (m.status !== 'completed') return false;
+    if (!hasValue(m.team_a_id) || !hasValue(m.team_b_id)) return false;
+    if (!isFiniteNumber(m.score_a) || !isFiniteNumber(m.score_b)) return false;
+    if (m.score_a === m.score_b) return false;
+    if (!hasValue(m.winner_id)) return false;
+    if (m.score_a > m.score_b && m.winner_id !== m.team_a_id) return false;
+    if (m.score_b > m.score_a && m.winner_id !== m.team_b_id) return false;
+    return true;
+  }
+
+  var scheduledMatchCount = 0;
+  var completedMatchCount = 0;
+  var inconsistentMatchCount = 0;
+  mats.forEach(function(m) {
+    if (isCleanScheduled(m)) { scheduledMatchCount++; }
+    else if (isCleanCompleted(m)) { completedMatchCount++; }
+    else { inconsistentMatchCount++; }
+  });
+
+  return {
+    totalMatchCount: mats.length,
+    scheduledMatchCount: scheduledMatchCount,
+    completedMatchCount: completedMatchCount,
+    inconsistentMatchCount: inconsistentMatchCount,
+    hasProtectedResults: (completedMatchCount + inconsistentMatchCount) > 0
+  };
+}
+
 async function resetBracket() {
   var evId = _bracketEventId;
   if (!evId) return;
+  var deps = getBracketResetDependencies(matches, evId);
+  if (deps.hasProtectedResults) {
+    alert(
+      'Không thể reset bảng đấu — vẫn còn kết quả cần bảo vệ:\n\n' +
+      '- Tổng số trận: ' + deps.totalMatchCount + '\n' +
+      '- Số trận đã hoàn tất hợp lệ: ' + deps.completedMatchCount + '\n' +
+      '- Số trận có dữ liệu không nhất quán: ' + deps.inconsistentMatchCount + '\n\n' +
+      'Reset sẽ xóa toàn bộ tỷ số/kết quả của các trận này, nhưng hệ thống hiện KHÔNG có cơ chế hoàn tác Elo đã cộng/trừ.\n' +
+      'Vui lòng kiểm tra lại dữ liệu (tab Nhập tỷ số) trước khi reset, thay vì tiếp tục thao tác này.'
+    );
+    return;
+  }
   if (!confirm('Reset toàn bộ bảng đấu và lịch thi đấu của nội dung này?')) return;
   showLoading(true);
   try {
