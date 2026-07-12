@@ -2842,12 +2842,20 @@ async function submitScore(matchId) {
     m.elo_delta = result.eloDelta;
     m.elo_player_ids_a = result.playerIdsA.slice();
     m.elo_player_ids_b = result.playerIdsB.slice();
-    m.elo_player_updates = result.playerEloUpdates.map(function(u) {
-      return { player_id: u.playerId, old_elo: u.oldElo, new_elo: u.newElo, applied_delta: u.appliedDelta };
-    });
-    result.playerEloUpdates.forEach(function(u) {
+    m.elo_player_updates = result.eloPlayerUpdates.map(function(u) { return Object.assign({}, u); });
+    m.result_revision = result.resultRevision;
+    m.last_result_operation_id = result.operationId;
+    m.elo_last_operation_id = result.operationId;
+    m.last_result_action = result.action;
+    result.playerUpdates.forEach(function(u) {
       var localPlayer = players.find(function(p) { return p.id === u.playerId; });
-      if (localPlayer) localPlayer.elo_score = u.newElo;
+      if (localPlayer) {
+        localPlayer.elo_score = u.eloScore;
+        localPlayer.elo_version = u.eloVersion;
+        localPlayer.elo_last_operation_type = u.eloLastOperationType;
+        localPlayer.elo_last_operation_id = u.eloLastOperationId;
+        localPlayer.elo_last_match_id = u.eloLastMatchId;
+      }
     });
     renderScores(); renderEloTable(); toast('Đã lưu tỷ số!');
   } catch(e) {
@@ -3037,7 +3045,15 @@ var SCORE_TRANSACTION_MESSAGES = {
   missing_player: 'Không tìm thấy hồ sơ VĐV liên quan. Vui lòng kiểm tra dữ liệu.',
   invalid_player_data: 'Dữ liệu Elo của VĐV không hợp lệ. Vui lòng kiểm tra trước khi tiếp tục.',
   duplicate_player: 'Phát hiện cùng một VĐV xuất hiện ở cả hai đội. Vui lòng kiểm tra dữ liệu đăng ký.',
-  transaction_failed: 'Lỗi khi lưu tỷ số và Elo. Vui lòng thử lại.'
+  transaction_failed: 'Lỗi khi lưu tỷ số và Elo. Vui lòng thử lại.',
+  // Task 6B1-B — reason mới cho operation ID/revision lifecycle/Elo version chain.
+  invalid_operation_id: 'Mã thao tác kết quả không hợp lệ. Vui lòng tải lại trang và thử lại.',
+  invalid_result_revision: 'Lịch sử phiên bản kết quả của trận không hợp lệ. Không thể lưu tỷ số.',
+  invalid_player_elo_chain: 'Lịch sử Elo của vận động viên không hợp lệ. Không thể lưu kết quả.',
+  duplicate_operation: 'Thao tác này đã được ghi nhận hoặc đang được xử lý. Vui lòng tải lại dữ liệu.',
+  revision_conflict: 'Phiên bản lịch sử kết quả đã tồn tại. Vui lòng tải lại dữ liệu trước khi thử lại.',
+  invalid_resubmit_state: 'Trạng thái trận sau khi hủy kết quả không hợp lệ. Không thể ghi kết quả mới.',
+  missing_admin_identity: 'Không xác định được tài khoản quản trị. Vui lòng đăng nhập lại.'
 };
 
 // Tạo Error mang theo reason máy-đọc-được (submitScore() dùng reason này để tra message đúng, không
@@ -3050,25 +3066,66 @@ function createScoreTransactionError(reason, originalError) {
   return err;
 }
 
-// Ghi tỷ số + Elo nguyên tử trong 1 Firestore transaction — match và toàn bộ player Elo cùng commit
-// hoặc cùng thất bại. Đọc authoritative trực tiếp từ Firestore trong transaction (KHÔNG dùng mảng
-// matches/registrations/players local để quyết định) — loại bỏ race giữa 2 tab/2 admin đã audit ở
-// Task 5-AUDIT. Callback có thể bị Firestore tự động chạy lại khi phát hiện xung đột đọc-ghi; vì vậy
-// callback tuyệt đối không được sửa local state / alert / toast / render / showLoading / đọc DOM.
-async function commitScoreAndEloTransaction(matchId, scoreA, scoreB) {
+// Ghi tỷ số + Elo + result revision nguyên tử trong 1 Firestore transaction — match, toàn bộ player
+// Elo/version chain, và revision document (append-only) cùng commit hoặc cùng thất bại. Đọc
+// authoritative trực tiếp từ Firestore trong transaction (KHÔNG dùng mảng matches/registrations/
+// players local để quyết định) — loại bỏ race giữa 2 tab/2 admin đã audit ở Task 5-AUDIT. Callback có
+// thể bị Firestore tự động chạy lại khi phát hiện xung đột đọc-ghi; vì vậy callback tuyệt đối không
+// được sửa local state / alert / toast / render / showLoading / đọc DOM / tạo operationId / đọc lại
+// _auth.currentUser — operationId và admin identity phải ổn định qua mọi lần retry nên được resolve
+// MỘT LẦN DUY NHẤT bên ngoài callback, truyền vào qua closure.
+//
+// operationId (tham số thứ 4) chỉ dành cho test deterministic — production submitScore() luôn gọi
+// bằng 3 argument, để hàm tự sinh operationId qua createResultOperationId().
+async function commitScoreAndEloTransaction(matchId, scoreA, scoreB, operationId) {
   var scoreCheck = validateScoreForTransaction(scoreA, scoreB);
   if (!scoreCheck.ok) throw createScoreTransactionError(scoreCheck.reason);
+
+  // --- Resolve operationId ổn định — CHỈ một lần, trước runTransaction, không bao giờ trong callback. ---
+  var rawOperationId;
+  if (operationId === undefined) {
+    try {
+      rawOperationId = createResultOperationId();
+    } catch (genErr) {
+      throw createScoreTransactionError('invalid_operation_id', genErr);
+    }
+  } else {
+    rawOperationId = operationId;
+  }
+  var operationIdCheck = validateResultOperationId(rawOperationId);
+  if (!operationIdCheck.ok) throw createScoreTransactionError('invalid_operation_id');
+  var stableOperationId = operationIdCheck.operationId;
+
+  // --- Resolve admin identity — CHỈ một lần, trước runTransaction, không đọc lại _auth.currentUser
+  // trong callback (currentUser không đổi giữa các lần retry của cùng 1 lượt submit). ---
+  var adminIdentity = getResultAdminIdentityState(_auth.currentUser);
+  if (!adminIdentity.ok) throw createScoreTransactionError('missing_admin_identity');
 
   var matchRef = _fsdb.collection('matches').doc(matchId);
 
   return _fsdb.runTransaction(async function(transaction) {
-    // --- Pha đọc authoritative: mọi transaction.get() phải hoàn tất trước transaction.update() đầu tiên. ---
+    // --- Pha đọc authoritative: mọi transaction.get() phải hoàn tất trước transaction.update()/set() đầu tiên. ---
     var matchSnap = await transaction.get(matchRef);
     if (!matchSnap.exists) throw createScoreTransactionError('match_not_found');
     var matchData = matchSnap.data();
 
+    // Idempotency guard cho ĐÚNG operationId này (không phải cơ chế chặn 2 tab dùng 2 operationId
+    // khác nhau — trường hợp đó do Firestore transaction conflict-retry + match-state guard bên dưới
+    // phân xử). Nếu match đã ghi xong với chính operationId này (vd. client bị timeout không nhận
+    // response dù server đã commit), coi là duplicate thay vì already_completed để phân biệt rõ.
+    var hasSameOperationId = typeof matchData.last_result_operation_id === 'string' &&
+      matchData.last_result_operation_id.trim() === stableOperationId;
+    if (hasSameOperationId) throw createScoreTransactionError('duplicate_operation');
+
     var matchCheck = getScoreTransactionMatchState(matchData);
     if (!matchCheck.ok) throw createScoreTransactionError(matchCheck.reason);
+
+    var revisionState = getScoreResultRevisionState(matchData);
+    if (!revisionState.ok) throw createScoreTransactionError(revisionState.reason);
+
+    var revisionRef = matchRef.collection('result_revisions').doc(revisionState.revisionDocId);
+    var revisionSnap = await transaction.get(revisionRef);
+    if (revisionSnap.exists) throw createScoreTransactionError('revision_conflict');
 
     var regARef = _fsdb.collection('registrations').doc(matchData.team_a_id);
     var regBRef = _fsdb.collection('registrations').doc(matchData.team_b_id);
@@ -3103,11 +3160,17 @@ async function commitScoreAndEloTransaction(matchId, scoreA, scoreB) {
     var plan = planScoreAndEloTransaction(matchData, regAData, regBData, playersById, scoreA, scoreB);
     if (!plan.ok) throw createScoreTransactionError(plan.reason);
 
-    var eloPlayerUpdates = plan.playerEloUpdates.map(function(u) {
-      return { player_id: u.playerId, old_elo: u.oldElo, new_elo: u.newElo, applied_delta: u.appliedDelta };
+    var enriched = enrichScoreAndEloPlanWithChain(matchId, plan, playersById, stableOperationId);
+    if (!enriched.ok) throw createScoreTransactionError(enriched.reason);
+
+    // eloPlayerUpdates dạng cũ (camelCase, 4 field) — GIỮ để return object tương thích ngược với
+    // submitScore() cũ (key playerEloUpdates); không dùng để ghi Firestore nữa (match write dùng
+    // enriched.eloPlayerUpdates snake_case đầy đủ version/operation bên dưới).
+    var legacyPlayerEloUpdates = plan.playerEloUpdates.map(function(u) {
+      return { playerId: u.playerId, oldElo: u.oldElo, newElo: u.newElo, appliedDelta: u.appliedDelta };
     });
 
-    transaction.update(matchRef, {
+    var matchWriteData = {
       score_a: scoreA,
       score_b: scoreB,
       winner_id: plan.winnerId,
@@ -3117,12 +3180,40 @@ async function commitScoreAndEloTransaction(matchId, scoreA, scoreB) {
       elo_applied_at: firebase.firestore.FieldValue.serverTimestamp(),
       elo_player_ids_a: plan.playerIdsA.slice(),
       elo_player_ids_b: plan.playerIdsB.slice(),
-      elo_player_updates: eloPlayerUpdates
+      elo_player_updates: enriched.eloPlayerUpdates.map(function(u) { return Object.assign({}, u); }),
+      result_revision: revisionState.nextRevision,
+      last_result_operation_id: stableOperationId,
+      elo_last_operation_id: stableOperationId,
+      last_result_action: revisionState.action
+    };
+
+    var revisionBuild = buildScoreResultRevisionData({
+      matchId: matchId,
+      matchData: matchData,
+      revisionState: revisionState,
+      operationId: stableOperationId,
+      adminIdentity: adminIdentity,
+      newResult: matchWriteData,
+      eloPlayerUpdates: enriched.eloPlayerUpdates,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    if (!revisionBuild.ok) throw createScoreTransactionError(revisionBuild.reason);
+
+    // --- Write phase: match -> players -> revision (append-only, chỉ set(), không merge/update/delete). ---
+    transaction.update(matchRef, matchWriteData);
+
+    enriched.playerUpdates.forEach(function(u) {
+      transaction.update(_fsdb.collection('players').doc(u.playerId), {
+        elo_score: u.eloScore,
+        elo_version: u.eloVersion,
+        elo_last_operation_type: u.eloLastOperationType,
+        elo_last_operation_id: u.eloLastOperationId,
+        elo_last_match_id: u.eloLastMatchId,
+        elo_last_updated_at: firebase.firestore.FieldValue.serverTimestamp()
+      });
     });
 
-    plan.playerEloUpdates.forEach(function(u) {
-      transaction.update(_fsdb.collection('players').doc(u.playerId), { elo_score: u.newElo });
-    });
+    transaction.set(revisionRef, revisionBuild.revisionData);
 
     return {
       matchId: matchId,
@@ -3133,9 +3224,14 @@ async function commitScoreAndEloTransaction(matchId, scoreA, scoreB) {
       eloDelta: plan.eloDelta,
       playerIdsA: plan.playerIdsA.slice(),
       playerIdsB: plan.playerIdsB.slice(),
-      playerEloUpdates: plan.playerEloUpdates.map(function(u) {
-        return { playerId: u.playerId, oldElo: u.oldElo, newElo: u.newElo, appliedDelta: u.appliedDelta };
-      })
+      playerEloUpdates: legacyPlayerEloUpdates,
+
+      operationId: stableOperationId,
+      action: revisionState.action,
+      resultRevision: revisionState.nextRevision,
+      revisionDocId: revisionState.revisionDocId,
+      eloPlayerUpdates: enriched.eloPlayerUpdates,
+      playerUpdates: enriched.playerUpdates
     };
   }).catch(function(e) {
     if (e && e.scoreTransactionReason) throw e;
