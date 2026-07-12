@@ -3143,6 +3143,474 @@ async function commitScoreAndEloTransaction(matchId, scoreA, scoreB) {
   });
 }
 
+// ============================================================================
+// Task 6A — Helper THUẦN cho sửa/hủy kết quả trận (chưa nối runtime/UI/writer).
+// Không gọi _fsdb, không đọc DOM, không alert/toast/render, không sửa object/mảng đầu vào.
+// Chỉ tính toán từ dữ liệu truyền vào và trả về kết quả mới — làm nền tảng cho transaction
+// writer correction/void ở Task 6C (chưa triển khai). getMatchCorrectionRosterState() và
+// getMatchCorrectionBracketState() CỐ Ý không được planMatchResultCorrection() gọi — 2 helper
+// này độc lập, để Task 6C writer tự gọi authoritative riêng (đọc registration/event/final match
+// trực tiếp từ Firestore trong transaction, không qua planner này).
+// ============================================================================
+
+var RESULT_CORRECTION_ACTIONS = {
+  CORRECT_SCORE_SAME_WINNER: 'CORRECT_SCORE_SAME_WINNER',
+  CORRECT_RESULT_CHANGE_WINNER: 'CORRECT_RESULT_CHANGE_WINNER',
+  VOID_RESULT: 'VOID_RESULT'
+};
+
+// Số ký tự tối thiểu của lý do sửa/hủy — hằng số phụ trợ cho validateMatchResultCorrectionInput(),
+// không phải 1 trong 8 helper được duyệt, chỉ là config nội bộ.
+var RESULT_CORRECTION_REASON_MIN_LENGTH = 10;
+
+// Số revision tiếp theo cho 1 match. undefined/null (match chưa từng completed) → thành công với
+// currentRevision:null, nextRevision:1 — KHÔNG coi là lỗi. Integer hợp lệ >=1 → thành công, +1.
+// Mọi giá trị khác (0, âm, float, string, NaN, Infinity, object, array, boolean) → ok:false,
+// KHÔNG fallback ngầm về revision 1 — dữ liệu hỏng phải được caller phát hiện tường minh thay vì
+// bị âm thầm coi như "chưa có revision nào".
+function getNextResultRevision(currentRevision) {
+  if (currentRevision === undefined || currentRevision === null) {
+    return { ok: true, reason: 'ok', currentRevision: null, nextRevision: 1 };
+  }
+  var isValidCurrent = typeof currentRevision === 'number' && isFinite(currentRevision) &&
+    Number.isInteger(currentRevision) && currentRevision >= 1;
+  if (isValidCurrent) {
+    return { ok: true, reason: 'ok', currentRevision: currentRevision, nextRevision: currentRevision + 1 };
+  }
+  return { ok: false, reason: 'invalid_result_revision', currentRevision: currentRevision, nextRevision: null };
+}
+
+// Format revision number thành doc ID zero-pad TỐI THIỂU 8 chữ số — KHÔNG đặt maximum, revision
+// vượt 8 chữ số vẫn hợp lệ và giữ nguyên độ dài thật (không truncate). Chỉ nhận integer >= 1, sai
+// kiểu/giá trị trả về null, không throw — đúng phong cách helper thuần hiện có.
+function formatResultRevisionId(revisionNumber) {
+  var isValid = typeof revisionNumber === 'number' && isFinite(revisionNumber) &&
+    Number.isInteger(revisionNumber) && revisionNumber >= 1;
+  if (!isValid) return null;
+  var s = String(revisionNumber);
+  while (s.length < 8) s = '0' + s;
+  return s;
+}
+
+// Validate toàn bộ input của 1 thao tác correction/void, BAO GỒM CẢ trạng thái match HIỆN TẠI
+// (trước khi sửa) — match phải "sạch" (completed, đủ team hợp lệ, điểm/winner hiện tại nhất quán
+// với nhau) mới được xem xét sửa/hủy tiếp; dữ liệu match hỏng phải bị chặn ở đây, không để lọt
+// xuống bước tính Elo. Không sửa matchData (chỉ đọc).
+function validateMatchResultCorrectionInput(matchData, action, newScoreA, newScoreB, reason, operationId) {
+  var validActions = [
+    RESULT_CORRECTION_ACTIONS.CORRECT_SCORE_SAME_WINNER,
+    RESULT_CORRECTION_ACTIONS.CORRECT_RESULT_CHANGE_WINNER,
+    RESULT_CORRECTION_ACTIONS.VOID_RESULT
+  ];
+  if (validActions.indexOf(action) === -1) return { ok: false, reason: 'invalid_action' };
+
+  var trimmedReason = typeof reason === 'string' ? reason.trim() : null;
+  if (trimmedReason === null || trimmedReason.length < RESULT_CORRECTION_REASON_MIN_LENGTH) {
+    return { ok: false, reason: 'invalid_reason' };
+  }
+
+  var trimmedOperationId = typeof operationId === 'string' ? operationId.trim() : null;
+  if (trimmedOperationId === null || trimmedOperationId === '') {
+    return { ok: false, reason: 'invalid_operation_id' };
+  }
+
+  if (!matchData) return { ok: false, reason: 'match_not_found' };
+
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v !== ''; };
+  var isCleanNonNegativeInt = function(v) {
+    return typeof v === 'number' && isFinite(v) && Number.isInteger(v) && v >= 0;
+  };
+  var matchStructurallyClean =
+    matchData.status === 'completed' &&
+    isNonEmptyString(matchData.team_a_id) &&
+    isNonEmptyString(matchData.team_b_id) &&
+    matchData.team_a_id !== matchData.team_b_id &&
+    isCleanNonNegativeInt(matchData.score_a) &&
+    isCleanNonNegativeInt(matchData.score_b) &&
+    matchData.score_a !== matchData.score_b;
+  if (!matchStructurallyClean) return { ok: false, reason: 'invalid_match_state' };
+
+  var expectedCurrentWinner = matchData.score_a > matchData.score_b ? matchData.team_a_id : matchData.team_b_id;
+  if (matchData.winner_id !== expectedCurrentWinner) return { ok: false, reason: 'invalid_match_state' };
+
+  if (action === RESULT_CORRECTION_ACTIONS.VOID_RESULT) {
+    var scoreAEmpty = newScoreA === undefined || newScoreA === null;
+    var scoreBEmpty = newScoreB === undefined || newScoreB === null;
+    if (!scoreAEmpty || !scoreBEmpty) return { ok: false, reason: 'invalid_score' };
+    return { ok: true, reason: 'ok' };
+  }
+
+  var scoreCheck = validateScoreForTransaction(newScoreA, newScoreB);
+  if (!scoreCheck.ok) return { ok: false, reason: scoreCheck.reason };
+
+  var newWinnerId = newScoreA > newScoreB ? matchData.team_a_id : matchData.team_b_id;
+  var winnerChanged = newWinnerId !== matchData.winner_id;
+
+  if (action === RESULT_CORRECTION_ACTIONS.CORRECT_SCORE_SAME_WINNER) {
+    if (winnerChanged) return { ok: false, reason: 'winner_changed_unexpectedly' };
+  } else {
+    if (!winnerChanged) return { ok: false, reason: 'winner_not_changed' };
+  }
+
+  return { ok: true, reason: 'ok' };
+}
+
+// So đội hình HIỆN TẠI (đọc authoritative từ registration truyền vào) với snapshot đội hình đã lưu
+// trên match lúc submit gốc (elo_player_ids_a/b) — SO CHÍNH XÁC cả số lượng, giá trị VÀ THỨ TỰ
+// (không set/sort — đảo vị trí player_1_id/player_2_id của cùng 1 cặp đôi vẫn phải bị coi là khác,
+// vì thứ tự có thể mang ý nghĩa nghiệp vụ, không chỉ là tập hợp). Độc lập với
+// planMatchResultCorrection() — Task 6C writer tự gọi riêng, authoritative, không qua planner.
+function getMatchCorrectionRosterState(matchData, regAData, regBData) {
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v !== ''; };
+  var isCleanIdArray = function(arr) {
+    if (!Array.isArray(arr) || (arr.length !== 1 && arr.length !== 2)) return false;
+    for (var i = 0; i < arr.length; i++) {
+      if (!isNonEmptyString(arr[i])) return false;
+    }
+    if (arr.length === 2 && arr[0] === arr[1]) return false;
+    return true;
+  };
+
+  var storedIdsA = matchData && matchData.elo_player_ids_a;
+  var storedIdsB = matchData && matchData.elo_player_ids_b;
+  if (!isCleanIdArray(storedIdsA) || !isCleanIdArray(storedIdsB)) {
+    return { ok: false, reason: 'legacy_no_elo_metadata' };
+  }
+
+  var regACheck = getRegistrationTransactionTeamState(regAData, matchData.event_id);
+  if (!regACheck.ok) return { ok: false, reason: regACheck.reason };
+  var regBCheck = getRegistrationTransactionTeamState(regBData, matchData.event_id);
+  if (!regBCheck.ok) return { ok: false, reason: regBCheck.reason };
+
+  var currentIdsA = regACheck.playerIds;
+  var currentIdsB = regBCheck.playerIds;
+
+  var sameExactSequence = function(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  };
+  if (!sameExactSequence(currentIdsA, storedIdsA)) return { ok: false, reason: 'roster_changed' };
+  if (!sameExactSequence(currentIdsB, storedIdsB)) return { ok: false, reason: 'roster_changed' };
+
+  var allCurrentIds = currentIdsA.concat(currentIdsB);
+  var uniqueIds = allCurrentIds.filter(function(v, i, a) { return a.indexOf(v) === i; });
+  if (uniqueIds.length !== allCurrentIds.length) return { ok: false, reason: 'duplicate_player' };
+
+  return { ok: true, reason: 'ok', currentPlayerIdsA: currentIdsA, currentPlayerIdsB: currentIdsB };
+}
+
+// Chứng minh match đang xét là thao tác Elo MỚI NHẤT của MỌI player liên quan — điều kiện bắt buộc
+// trước khi cho phép correction/void (Task 6-AUDIT-DESIGN mục 7: không thể hoàn tác đúng nếu đã có
+// thao tác Elo khác xảy ra sau match này). Do transaction.get() của Firestore Web SDK chỉ nhận
+// DocumentReference (không nhận Query — không thể quét toàn bộ collection matches bên trong
+// transaction), cách duy nhất chứng minh "chưa có gì đổi" là so trạng thái HIỆN TẠI của player với
+// đúng giá trị match này đã ghi ra lúc áp Elo. CHỈ match.elo_last_operation_id được dùng để so —
+// match.last_result_operation_id (revision/audit, tách riêng theo đúng quyết định của Owner) KHÔNG
+// liên quan tới việc xác minh chuỗi Elo và không được đọc ở đây.
+function getMatchCorrectionEloChainState(matchId, matchData, playersById) {
+  if (!matchData) return { ok: false, reason: 'legacy_no_elo_chain' };
+
+  var updates = matchData.elo_player_updates;
+  if (!Array.isArray(updates) || updates.length === 0) return { ok: false, reason: 'legacy_no_elo_chain' };
+
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v !== ''; };
+  var matchOperationId = matchData.elo_last_operation_id;
+  if (!isNonEmptyString(matchOperationId)) return { ok: false, reason: 'legacy_no_elo_chain' };
+
+  var seenPlayerIds = [];
+  var i, u;
+  for (i = 0; i < updates.length; i++) {
+    u = updates[i];
+    var isCleanEntry =
+      u && isNonEmptyString(u.player_id) &&
+      typeof u.old_elo === 'number' && isFinite(u.old_elo) &&
+      typeof u.new_elo === 'number' && isFinite(u.new_elo) &&
+      typeof u.elo_version_after === 'number' && isFinite(u.elo_version_after) && Number.isInteger(u.elo_version_after);
+    if (!isCleanEntry) return { ok: false, reason: 'malformed_elo_metadata' };
+    if (seenPlayerIds.indexOf(u.player_id) !== -1) return { ok: false, reason: 'duplicate_player' };
+    seenPlayerIds.push(u.player_id);
+  }
+
+  var playersMap = playersById || {};
+  for (i = 0; i < updates.length; i++) {
+    u = updates[i];
+    var player = playersMap[u.player_id];
+    if (!player) return { ok: false, reason: 'missing_player' };
+
+    var eloMatches = typeof player.elo_score === 'number' && isFinite(player.elo_score) && player.elo_score === u.new_elo;
+    var versionMatches = player.elo_version === u.elo_version_after;
+    var matchIdMatches = player.elo_last_match_id === matchId;
+    var operationIdMatches = player.elo_last_operation_id === matchOperationId;
+    var operationTypeOk = player.elo_last_operation_type === 'match' || player.elo_last_operation_type === 'correction';
+
+    if (!eloMatches || !versionMatches || !matchIdMatches || !operationIdMatches || !operationTypeOk) {
+      return { ok: false, reason: 'later_elo_change' };
+    }
+  }
+  return { ok: true, reason: 'ok' };
+}
+
+// Kiểm tra tính toàn vẹn metadata bracket trên event + dependency downstream — đọc authoritative
+// qua eventData/finalMatchData do caller đã transaction.get() từ ID biết trước (event.final_match_id),
+// KHÔNG quét local matches[] (Task 6-DESIGN-ADDENDUM mục 1). Độc lập với planMatchResultCorrection()
+// — Task 6C writer tự gọi riêng, authoritative, không qua planner. Mọi nhánh return đều cùng shape
+// {ok, reason, currentBracketRevision, requiresFinalRead} để caller xử lý đồng nhất, không cần biết
+// nhánh nào đã trả về. Field bắt buộc trên event (bracket_revision/knockout_generated/
+// knockout_match_ids/final_match_id) được kiểm tra TỒN TẠI bằng hasOwnProperty — không dùng `||`/
+// `!==undefined` vì sẽ che giấu field thiếu thật sự khỏi field có giá trị null hợp lệ (final_match_id
+// null là hợp lệ, nhưng field phải tồn tại). knockout_match_ids không bao giờ bị sort/mutate.
+// requiresFinalRead chỉ true khi round_type là 'semifinal' VÀ event.final_match_id khác null — từ đó
+// trở xuống, MỌI nhánh (kể cả invalid_bracket_state) đều phải giữ requiresFinalRead:true vì việc đọc
+// final match là bắt buộc để chứng minh an toàn, bất kể kết quả đọc có hợp lệ hay không.
+function getMatchCorrectionBracketState(matchData, eventData, finalMatchData, expectedBracketRevision) {
+  var isPlainObject = function(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); };
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v !== ''; };
+  var isNullOrNonEmptyString = function(v) { return v === null || isNonEmptyString(v); };
+
+  if (!isPlainObject(eventData)) {
+    return { ok: false, reason: 'missing_event', currentBracketRevision: null, requiresFinalRead: false };
+  }
+
+  var requiredEventFields = ['bracket_revision', 'knockout_generated', 'knockout_match_ids', 'final_match_id'];
+  for (var fi = 0; fi < requiredEventFields.length; fi++) {
+    if (!Object.prototype.hasOwnProperty.call(eventData, requiredEventFields[fi])) {
+      return {
+        ok: false,
+        reason: 'legacy_no_bracket_metadata',
+        currentBracketRevision: Number.isInteger(eventData.bracket_revision) ? eventData.bracket_revision : null,
+        requiresFinalRead: false
+      };
+    }
+  }
+
+  var bracketRevisionValid = Number.isInteger(eventData.bracket_revision) && eventData.bracket_revision >= 0;
+  var knockoutGeneratedValid = typeof eventData.knockout_generated === 'boolean';
+  var knockoutMatchIdsValid = Array.isArray(eventData.knockout_match_ids);
+  if (knockoutMatchIdsValid) {
+    for (var ki = 0; ki < eventData.knockout_match_ids.length; ki++) {
+      if (!isNonEmptyString(eventData.knockout_match_ids[ki])) { knockoutMatchIdsValid = false; break; }
+    }
+    if (knockoutMatchIdsValid) {
+      var uniqueKnockoutIds = eventData.knockout_match_ids.filter(function(v, i, a) { return a.indexOf(v) === i; });
+      if (uniqueKnockoutIds.length !== eventData.knockout_match_ids.length) knockoutMatchIdsValid = false;
+    }
+  }
+  var finalMatchIdFieldValid = isNullOrNonEmptyString(eventData.final_match_id);
+
+  if (!bracketRevisionValid || !knockoutGeneratedValid || !knockoutMatchIdsValid || !finalMatchIdFieldValid) {
+    return {
+      ok: false,
+      reason: 'invalid_bracket_state',
+      currentBracketRevision: Number.isInteger(eventData.bracket_revision) ? eventData.bracket_revision : null,
+      requiresFinalRead: false
+    };
+  }
+
+  // Từ đây trở xuống, eventData.bracket_revision đã xác nhận là integer >= 0 hợp lệ.
+  // expectedBracketRevision BẮT BUỘC phải là integer >= 0 — không còn nhánh "bỏ qua" khi
+  // undefined/null; caller luôn phải chứng minh đã đọc đúng bracket_revision hiện tại trước khi
+  // được xét tiếp các bước sau (event lock/match/round-type dependency).
+  if (!Number.isInteger(expectedBracketRevision) || expectedBracketRevision < 0) {
+    return { ok: false, reason: 'invalid_bracket_state', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: false };
+  }
+  if (expectedBracketRevision !== eventData.bracket_revision) {
+    return { ok: false, reason: 'bracket_changed', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: false };
+  }
+
+  if (eventData.status === 'closed') {
+    return { ok: false, reason: 'event_locked', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: false };
+  }
+
+  var matchValid =
+    isPlainObject(matchData) &&
+    isNonEmptyString(matchData.team_a_id) &&
+    isNonEmptyString(matchData.team_b_id) &&
+    matchData.team_a_id !== matchData.team_b_id &&
+    (matchData.round_type === 'group' || matchData.round_type === 'semifinal' || matchData.round_type === 'final');
+  if (!matchValid) {
+    return { ok: false, reason: 'invalid_bracket_state', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: false };
+  }
+
+  if (matchData.round_type === 'group') {
+    if (eventData.knockout_generated === true) {
+      return { ok: false, reason: 'downstream_dependency', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: false };
+    }
+    return { ok: true, reason: 'ok', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: false };
+  }
+
+  if (matchData.round_type === 'semifinal') {
+    if (eventData.final_match_id === null) {
+      return { ok: true, reason: 'ok', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: false };
+    }
+
+    if (!isPlainObject(finalMatchData)) {
+      return { ok: false, reason: 'invalid_bracket_state', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: true };
+    }
+
+    if (Object.prototype.hasOwnProperty.call(finalMatchData, 'id')) {
+      var idValid = isNonEmptyString(finalMatchData.id) && finalMatchData.id === eventData.final_match_id;
+      if (!idValid) {
+        return { ok: false, reason: 'invalid_bracket_state', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: true };
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(finalMatchData, 'round_type') && finalMatchData.round_type !== 'final') {
+      return { ok: false, reason: 'invalid_bracket_state', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: true };
+    }
+
+    var finalTeamsTypeValid = isNullOrNonEmptyString(finalMatchData.team_a_id) && isNullOrNonEmptyString(finalMatchData.team_b_id);
+    if (!finalTeamsTypeValid) {
+      return { ok: false, reason: 'invalid_bracket_state', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: true };
+    }
+    if (finalMatchData.team_a_id !== null && finalMatchData.team_a_id === finalMatchData.team_b_id) {
+      return { ok: false, reason: 'invalid_bracket_state', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: true };
+    }
+
+    var referencesSourceTeam =
+      finalMatchData.team_a_id === matchData.team_a_id || finalMatchData.team_a_id === matchData.team_b_id ||
+      finalMatchData.team_b_id === matchData.team_a_id || finalMatchData.team_b_id === matchData.team_b_id;
+    if (referencesSourceTeam) {
+      return { ok: false, reason: 'downstream_dependency', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: true };
+    }
+
+    return { ok: true, reason: 'ok', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: true };
+  }
+
+  // round_type === 'final' — nhánh còn lại duy nhất sau bước matchValid. Không có downstream nào
+  // trong schema hiện tại.
+  return { ok: true, reason: 'ok', currentBracketRevision: eventData.bracket_revision, requiresFinalRead: false };
+}
+
+// Planner thuần cấp cao nhất — CHỈ gọi validateMatchResultCorrectionInput() và
+// getMatchCorrectionEloChainState() (KHÔNG gọi roster/bracket — 2 helper đó độc lập, Task 6C writer
+// tự gọi authoritative riêng ngoài planner này). Baseline Elo LUÔN là elo_player_updates[].old_elo
+// GỐC (bất biến qua nhiều lần correction — chỉ new_elo/applied_delta/elo_version_after bị ghi đè
+// mỗi lần), KHÔNG bao giờ dùng elo hiện tại của player làm baseline TÍNH TOÁN — chỉ dùng elo_version
+// hiện tại của player (playersById[pid].elo_version) làm điểm xuất phát cho version MỚI (đã được
+// getMatchCorrectionEloChainState() chứng minh khớp với elo_version_after trên match). KHÔNG gọi
+// _fsdb, không đọc DOM, không sửa object/mảng đầu vào.
+function planMatchResultCorrection(matchId, matchData, action, newScoreA, newScoreB, reason, operationId, playersById) {
+  var inputCheck = validateMatchResultCorrectionInput(matchData, action, newScoreA, newScoreB, reason, operationId);
+  if (!inputCheck.ok) return { ok: false, reason: inputCheck.reason };
+
+  var eloChainCheck = getMatchCorrectionEloChainState(matchId, matchData, playersById);
+  if (!eloChainCheck.ok) return { ok: false, reason: eloChainCheck.reason };
+
+  var playerIdsA = matchData.elo_player_ids_a.slice();
+  var playerIdsB = matchData.elo_player_ids_b.slice();
+
+  var oldEloById = {};
+  matchData.elo_player_updates.forEach(function(u) { oldEloById[u.player_id] = u.old_elo; });
+
+  var playersMap = playersById || {};
+
+  var previousResult = {
+    score_a: matchData.score_a,
+    score_b: matchData.score_b,
+    winner_id: matchData.winner_id,
+    status: matchData.status,
+    elo_applied: matchData.elo_applied,
+    elo_delta: matchData.elo_delta,
+    elo_last_operation_id: matchData.elo_last_operation_id,
+    elo_player_ids_a: playerIdsA.slice(),
+    elo_player_ids_b: playerIdsB.slice(),
+    elo_player_updates: matchData.elo_player_updates.map(function(u) {
+      return { player_id: u.player_id, old_elo: u.old_elo, new_elo: u.new_elo, applied_delta: u.applied_delta, elo_version_after: u.elo_version_after };
+    })
+  };
+
+  var correctedResult, playerEloUpdates, eloChanged, matchFieldsToDelete;
+
+  if (action === RESULT_CORRECTION_ACTIONS.VOID_RESULT) {
+    eloChanged = true;
+    playerEloUpdates = matchData.elo_player_updates.map(function(u) {
+      var currentVersion = playersMap[u.player_id].elo_version;
+      return {
+        playerId: u.player_id,
+        oldElo: u.old_elo,
+        newElo: u.old_elo,
+        appliedDelta: u.old_elo - u.new_elo,
+        eloVersionBefore: currentVersion,
+        eloVersionAfter: currentVersion + 1,
+        eloOperationId: operationId
+      };
+    });
+    correctedResult = {
+      score_a: null,
+      score_b: null,
+      winner_id: null,
+      status: 'scheduled',
+      elo_applied: false,
+      elo_last_operation_id: operationId
+    };
+    matchFieldsToDelete = ['elo_delta', 'elo_applied_at', 'elo_player_ids_a', 'elo_player_ids_b', 'elo_player_updates'];
+  } else {
+    var winnerId = newScoreA > newScoreB ? matchData.team_a_id : matchData.team_b_id;
+
+    if (action === RESULT_CORRECTION_ACTIONS.CORRECT_SCORE_SAME_WINNER) {
+      eloChanged = false;
+      playerEloUpdates = [];
+      correctedResult = {
+        score_a: newScoreA,
+        score_b: newScoreB,
+        winner_id: winnerId,
+        status: 'completed',
+        elo_applied: true,
+        elo_last_operation_id: matchData.elo_last_operation_id
+      };
+      matchFieldsToDelete = [];
+    } else {
+      eloChanged = true;
+      var teamAElo = averageTeamEloForTransaction(playerIdsA, oldEloById);
+      var teamBElo = averageTeamEloForTransaction(playerIdsB, oldEloById);
+      var resultA = newScoreA > newScoreB ? 1 : 0;
+      var eloRes = calcElo(teamAElo, teamBElo, resultA);
+      var eloDelta = eloRes.delta;
+
+      playerEloUpdates = [];
+      playerIdsA.forEach(function(pid) {
+        var oldElo = oldEloById[pid];
+        var newElo = Math.max(100, oldElo + eloDelta);
+        var currentVersion = playersMap[pid].elo_version;
+        playerEloUpdates.push({ playerId: pid, oldElo: oldElo, newElo: newElo, appliedDelta: newElo - oldElo, eloVersionBefore: currentVersion, eloVersionAfter: currentVersion + 1, eloOperationId: operationId });
+      });
+      playerIdsB.forEach(function(pid) {
+        var oldElo = oldEloById[pid];
+        var newElo = Math.max(100, oldElo - eloDelta);
+        var currentVersion = playersMap[pid].elo_version;
+        playerEloUpdates.push({ playerId: pid, oldElo: oldElo, newElo: newElo, appliedDelta: newElo - oldElo, eloVersionBefore: currentVersion, eloVersionAfter: currentVersion + 1, eloOperationId: operationId });
+      });
+
+      correctedResult = {
+        score_a: newScoreA,
+        score_b: newScoreB,
+        winner_id: winnerId,
+        status: 'completed',
+        elo_applied: true,
+        elo_delta: eloDelta,
+        elo_last_operation_id: operationId
+      };
+      matchFieldsToDelete = [];
+    }
+  }
+
+  return {
+    ok: true,
+    reason: 'ok',
+    action: action,
+    operationId: operationId,
+    previousResult: previousResult,
+    correctedResult: correctedResult,
+    winnerChanged: correctedResult.winner_id !== matchData.winner_id,
+    eloChanged: eloChanged,
+    playerEloUpdates: playerEloUpdates,
+    matchFieldsToDelete: matchFieldsToDelete
+  };
+}
+
 async function generateKnockout() {
   var evId = document.getElementById('scores-event').value;
   if (!evId) return;
