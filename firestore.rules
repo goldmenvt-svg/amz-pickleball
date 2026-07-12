@@ -110,7 +110,7 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
     match /elo_history/{id} {
-      allow read:   if true;
+      allow read:   if isAdmin();
       allow create: if isAdmin();
       allow update, delete: if false;
     }
