@@ -2871,6 +2871,166 @@ async function updateEloForMatch(m, resultA) {
   }
 }
 
+// ============================================================================
+// Task 5B-1 — Helper THUẦN cho transaction lưu tỷ số + Elo (chưa nối vào submitScore()).
+// Không gọi _fsdb, không đọc DOM, không alert/toast/render, không sửa object/mảng đầu vào.
+// Toàn bộ hàm dưới đây chỉ tính toán từ dữ liệu truyền vào và trả về kết quả mới.
+// Mục đích: chuẩn bị logic validate + lập kế hoạch sẽ được Task 5B-2 dùng bên trong
+// _fsdb.runTransaction(...). Chưa thay đổi hành vi runtime hiện tại của submitScore()/updateEloForMatch().
+// ============================================================================
+
+// Validate tỷ số thuần — không phụ thuộc match/registration/player.
+function validateScoreForTransaction(scoreA, scoreB) {
+  var isCleanNonNegativeInt = function(v) {
+    return typeof v === 'number' && isFinite(v) && Number.isInteger(v) && v >= 0;
+  };
+  if (!isCleanNonNegativeInt(scoreA) || !isCleanNonNegativeInt(scoreB)) {
+    return { ok: false, reason: 'invalid_score' };
+  }
+  if (scoreA === scoreB) return { ok: false, reason: 'tied_score' };
+  return { ok: true, reason: 'ok' };
+}
+
+// Validate trạng thái match đọc được (từ transaction.get() ở Task 5B-2) — match completed (kể cả
+// legacy thiếu elo_applied) luôn bị chặn ở nhánh already_completed vì status được kiểm tra trước
+// elo_applied. Field result undefined KHÔNG được xem là sạch — chỉ đúng null mới hợp lệ.
+function getScoreTransactionMatchState(matchData) {
+  if (!matchData) return { ok: false, reason: 'match_not_found' };
+  if (matchData.status === 'completed') return { ok: false, reason: 'already_completed' };
+  if (matchData.elo_applied === true) return { ok: false, reason: 'elo_already_applied' };
+  var eloAppliedClean = matchData.elo_applied === undefined || matchData.elo_applied === null || matchData.elo_applied === false;
+  if (!eloAppliedClean) return { ok: false, reason: 'invalid_match_state' };
+
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v !== ''; };
+  var isClean =
+    matchData.status === 'scheduled' &&
+    matchData.score_a === null &&
+    matchData.score_b === null &&
+    matchData.winner_id === null &&
+    isNonEmptyString(matchData.event_id) &&
+    isNonEmptyString(matchData.team_a_id) &&
+    isNonEmptyString(matchData.team_b_id) &&
+    matchData.team_a_id !== matchData.team_b_id;
+  if (!isClean) return { ok: false, reason: 'invalid_match_state' };
+  return { ok: true, reason: 'ok' };
+}
+
+// Validate 1 registration đóng vai trò 1 đội trong trận — trả về playerIds (1 phần tử cho singles,
+// 2 phần tử cho doubles). Không bắt buộc 2 người/đội — đúng hành vi confirmBracket()/getTeamElo() hiện có.
+function getRegistrationTransactionTeamState(regData, expectedEventId) {
+  if (!regData) return { ok: false, reason: 'missing_registration' };
+  var isNonEmptyString = function(v) { return typeof v === 'string' && v !== ''; };
+
+  if (regData.event_id !== expectedEventId) return { ok: false, reason: 'invalid_registration_data' };
+  if (regData.status !== 'confirmed') return { ok: false, reason: 'invalid_registration_data' };
+  var mergedIntoClean = regData.merged_into === undefined || regData.merged_into === null || regData.merged_into === '';
+  if (!mergedIntoClean) return { ok: false, reason: 'invalid_registration_data' };
+  if (!isNonEmptyString(regData.player_1_id)) return { ok: false, reason: 'invalid_registration_data' };
+
+  var p2Raw = regData.player_2_id;
+  var p2Empty = p2Raw === undefined || p2Raw === null || p2Raw === '';
+  if (p2Empty) {
+    return { ok: true, reason: 'ok', playerIds: [regData.player_1_id] };
+  }
+  if (!isNonEmptyString(p2Raw)) return { ok: false, reason: 'invalid_registration_data' };
+  if (p2Raw === regData.player_1_id) return { ok: false, reason: 'invalid_registration_data' };
+  return { ok: true, reason: 'ok', playerIds: [regData.player_1_id, p2Raw] };
+}
+
+// Đọc Elo hiện tại của 1 player — field thiếu/null mặc định 1000 (player mới chưa có elo_score);
+// field tồn tại nhưng sai kiểu/không hữu hạn/dưới 100 bị coi là dữ liệu hỏng, KHÔNG âm thầm fallback.
+function getPlayerTransactionElo(playerData) {
+  if (!playerData) return { ok: false, reason: 'missing_player' };
+  var raw = playerData.elo_score;
+  if (raw === undefined || raw === null) return { ok: true, reason: 'ok', elo: 1000 };
+  if (typeof raw === 'number' && isFinite(raw) && raw >= 100) {
+    return { ok: true, reason: 'ok', elo: raw };
+  }
+  return { ok: false, reason: 'invalid_player_data' };
+}
+
+// Trung bình Elo 1 đội — 1 người thì lấy nguyên elo người đó (không làm tròn, đúng getTeamElo() hiện
+// có với đội cá nhân); 2 người thì Math.round trung bình cộng, đúng công thức getTeamElo() cho đội đôi.
+function averageTeamEloForTransaction(playerIds, eloById) {
+  if (playerIds.length === 1) return eloById[playerIds[0]];
+  var sum = playerIds.reduce(function(s, pid) { return s + eloById[pid]; }, 0);
+  return Math.round(sum / playerIds.length);
+}
+
+// Planner thuần — gọi lại toàn bộ helper phía trên (không giả định caller đã validate), tính đúng
+// công thức Elo hiện có (calcElo() không đổi, K=32, minimum 100), trả về plan đầy đủ để Task 5B-2
+// dùng bên trong transaction.update(). KHÔNG ghi Firestore, KHÔNG sửa bất kỳ object/mảng đầu vào nào.
+function planScoreAndEloTransaction(matchData, regAData, regBData, playersById, scoreA, scoreB) {
+  var scoreCheck = validateScoreForTransaction(scoreA, scoreB);
+  if (!scoreCheck.ok) return { ok: false, reason: scoreCheck.reason };
+
+  var matchCheck = getScoreTransactionMatchState(matchData);
+  if (!matchCheck.ok) return { ok: false, reason: matchCheck.reason };
+
+  var regACheck = getRegistrationTransactionTeamState(regAData, matchData.event_id);
+  if (!regACheck.ok) return { ok: false, reason: regACheck.reason };
+  var regBCheck = getRegistrationTransactionTeamState(regBData, matchData.event_id);
+  if (!regBCheck.ok) return { ok: false, reason: regBCheck.reason };
+
+  var playerIdsA = regACheck.playerIds;
+  var playerIdsB = regBCheck.playerIds;
+
+  // Duplicate-player policy: cùng player trong 1 đội đã bị chặn ở getRegistrationTransactionTeamState
+  // (player_1_id !== player_2_id), nhưng vẫn kiểm tra lại toàn cục ở đây để bắt trường hợp cùng player
+  // xuất hiện ở CẢ HAI đội (registration khác nhau nhưng trỏ chung 1 player) — sub-helper từng đội
+  // không có khả năng nhìn thấy đội còn lại.
+  var allPlayerIds = playerIdsA.concat(playerIdsB);
+  var uniqueIds = allPlayerIds.filter(function(v, i, a) { return a.indexOf(v) === i; });
+  if (uniqueIds.length !== allPlayerIds.length) {
+    return { ok: false, reason: 'duplicate_player' };
+  }
+
+  var playersMap = playersById || {};
+  var eloById = {};
+  for (var i = 0; i < allPlayerIds.length; i++) {
+    var pid = allPlayerIds[i];
+    var eloCheck = getPlayerTransactionElo(playersMap[pid]);
+    if (!eloCheck.ok) return { ok: false, reason: eloCheck.reason };
+    eloById[pid] = eloCheck.elo;
+  }
+
+  var teamAElo = averageTeamEloForTransaction(playerIdsA, eloById);
+  var teamBElo = averageTeamEloForTransaction(playerIdsB, eloById);
+  var resultA = scoreA > scoreB ? 1 : 0;
+  var eloRes = calcElo(teamAElo, teamBElo, resultA);
+  var eloDelta = eloRes.delta;
+  var winnerId = scoreA > scoreB ? matchData.team_a_id : matchData.team_b_id;
+
+  // eloDelta: delta lý thuyết CÓ DẤU của đội A do calcElo() trả về (không đổi khi chạm sàn).
+  // appliedDelta: thay đổi Elo THỰC TẾ của từng player sau khi áp Math.max(100, ...) — luôn bằng
+  // đúng newElo - oldElo. Không chạm sàn: đội A appliedDelta === eloDelta, đội B appliedDelta === -eloDelta.
+  // Chạm sàn (oldElo + delta lý thuyết < 100): appliedDelta nhỏ hơn về độ lớn, có thể bằng 0 nếu oldElo đã là 100.
+  var playerEloUpdates = [];
+  playerIdsA.forEach(function(pid) {
+    var oldElo = eloById[pid];
+    var newElo = Math.max(100, oldElo + eloDelta);
+    playerEloUpdates.push({ playerId: pid, oldElo: oldElo, newElo: newElo, appliedDelta: newElo - oldElo });
+  });
+  playerIdsB.forEach(function(pid) {
+    var oldElo = eloById[pid];
+    var newElo = Math.max(100, oldElo - eloDelta);
+    playerEloUpdates.push({ playerId: pid, oldElo: oldElo, newElo: newElo, appliedDelta: newElo - oldElo });
+  });
+
+  return {
+    ok: true,
+    reason: 'ok',
+    winnerId: winnerId,
+    resultA: resultA,
+    teamAElo: teamAElo,
+    teamBElo: teamBElo,
+    eloDelta: eloDelta,
+    playerIdsA: playerIdsA,
+    playerIdsB: playerIdsB,
+    playerEloUpdates: playerEloUpdates
+  };
+}
+
 async function generateKnockout() {
   var evId = document.getElementById('scores-event').value;
   if (!evId) return;
