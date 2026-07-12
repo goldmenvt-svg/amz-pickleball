@@ -73,6 +73,15 @@ service cloud.firestore {
     match /matches/{matchId} {
       allow read: if true;
       allow write: if isAdmin();
+
+      // Task 6E: lịch sử sửa/hủy kết quả (result_revisions) — append-only, chỉ admin tạo, không ai
+      // sửa/xóa được qua client rules kể cả admin. Rule của document cha /matches/{matchId} KHÔNG
+      // tự áp dụng cho subcollection này — phải khai báo match riêng.
+      match /result_revisions/{revisionId} {
+        allow read: if isAdmin();
+        allow create: if isAdmin();
+        allow update, delete: if false;
+      }
     }
 
     // TD-04: bổ sung rule cho các collection app-nextjs / schema dùng.
