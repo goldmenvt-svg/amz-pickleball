@@ -2787,13 +2787,50 @@ function calcElo(rA, rB, resultA) {
   return {newA: rA + delta, newB: rB - delta, delta: delta};
 }
 
+// Trạng thái in-flight local (chỉ tồn tại trong phiên trình duyệt hiện tại) — chặn cùng 1 client gửi
+// trùng submitScore() cho cùng 1 matchId trong lúc lệnh trước đó chưa hoàn tất. KHÔNG giải quyết
+// concurrency giữa 2 tab/2 admin khác nhau — đó là phạm vi của Task 5B (Firestore transaction + marker).
+var _scoreSubmitInFlight = Object.create(null);
+
+// Helper thuần — quyết định 1 lần submit tỷ số có được phép tiếp tục hay không, theo đúng thứ tự ưu
+// tiên: thiếu match > đang gửi dở > đã completed > elo đã áp dụng (đọc trước, chưa ghi ở Task 5A) >
+// status không phải 'scheduled'. Match completed cũ (legacy) không có elo_applied vẫn bị chặn qua
+// nhánh already_completed vì status luôn được kiểm tra trước elo_applied.
+function getScoreSubmissionGuardState(match, isInFlight) {
+  if (!match) return { canSubmit: false, reason: 'missing_match' };
+  if (isInFlight) return { canSubmit: false, reason: 'in_flight' };
+  if (match.status === 'completed') return { canSubmit: false, reason: 'already_completed' };
+  if (match.elo_applied === true) return { canSubmit: false, reason: 'elo_already_applied' };
+  if (match.status !== 'scheduled') return { canSubmit: false, reason: 'invalid_status' };
+  return { canSubmit: true, reason: 'ok' };
+}
+
+var SCORE_SUBMIT_GUARD_MESSAGES = {
+  missing_match: 'Không tìm thấy trận đấu. Vui lòng tải lại trang.',
+  in_flight: 'Trận đấu này đang được lưu. Vui lòng chờ, không gửi lại.',
+  already_completed: 'Trận đấu này đã có kết quả. Không thể ghi đè tỷ số hoặc áp dụng Elo thêm lần nữa.',
+  elo_already_applied: 'Elo của trận đấu này đã được áp dụng. Không thể gửi lại kết quả.',
+  invalid_status: 'Trạng thái trận đấu không hợp lệ để nhập tỷ số. Vui lòng kiểm tra dữ liệu trước.'
+};
+
 async function submitScore(matchId) {
-  var sa = parseInt(document.getElementById('sa-' + matchId).value);
-  var sb = parseInt(document.getElementById('sb-' + matchId).value);
-  if (isNaN(sa) || isNaN(sb) || (sa === sb)) { alert('Nhập điểm hợp lệ — hai đội không được hòa'); return; }
   var m = matches.find(function(x) { return x.id === matchId; });
-  if (!m) return;
+  var guard = getScoreSubmissionGuardState(m, _scoreSubmitInFlight[matchId] === true);
+  if (!guard.canSubmit) {
+    alert(SCORE_SUBMIT_GUARD_MESSAGES[guard.reason] || 'Không thể lưu tỷ số.');
+    return;
+  }
+  var saEl = document.getElementById('sa-' + matchId);
+  var sbEl = document.getElementById('sb-' + matchId);
+  if (!saEl || !sbEl) {
+    alert('Không tìm thấy ô nhập tỷ số. Vui lòng tải lại trang.');
+    return;
+  }
+  var sa = parseInt(saEl.value);
+  var sb = parseInt(sbEl.value);
+  if (isNaN(sa) || isNaN(sb) || (sa === sb)) { alert('Nhập điểm hợp lệ — hai đội không được hòa'); return; }
   var winnerId = sa > sb ? m.team_a_id : m.team_b_id;
+  _scoreSubmitInFlight[matchId] = true;
   showLoading(true);
   try {
     await _fsdb.collection('matches').doc(matchId).update({
@@ -2802,7 +2839,10 @@ async function submitScore(matchId) {
     m.score_a = sa; m.score_b = sb; m.winner_id = winnerId; m.status = 'completed';
     await updateEloForMatch(m, sa > sb ? 1 : 0);
     renderScores(); renderEloTable(); toast('Đã lưu tỷ số!');
-  } catch(e) { showToastError('Lỗi: ' + e.message); } finally { showLoading(false); }
+  } catch(e) { showToastError('Lỗi: ' + e.message); } finally {
+    delete _scoreSubmitInFlight[matchId];
+    showLoading(false);
+  }
 }
 
 async function updateEloForMatch(m, resultA) {
