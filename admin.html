@@ -3819,10 +3819,12 @@ function getScoreResultRevisionState(matchData) {
   };
 }
 
-// operation_type nào bắt buộc có elo_last_match_id (match/correction gắn với 1 trận cụ thể) và loại
-// nào bắt buộc match_id phải là null (manual/void không gắn 1 trận cụ thể duy nhất).
-var ELO_OPERATION_TYPES_WITH_MATCH_ID = ['match', 'correction'];
-var ELO_OPERATION_TYPES_WITHOUT_MATCH_ID = ['manual', 'void'];
+// operation_type nào bắt buộc có elo_last_match_id (match/correction/void đều gắn với đúng 1 trận cụ
+// thể — void KHÔNG xoá dấu vết trận nguồn, chỉ đảo Elo về baseline của CHÍNH trận đó, nên vẫn phải giữ
+// match ID để chuỗi nguồn gốc còn truy vết được) và loại nào bắt buộc match_id phải là null (chỉ
+// manual — điều chỉnh Elo thủ công không gắn với 1 trận cụ thể nào).
+var ELO_OPERATION_TYPES_WITH_MATCH_ID = ['match', 'correction', 'void'];
+var ELO_OPERATION_TYPES_WITHOUT_MATCH_ID = ['manual'];
 var VALID_ELO_OPERATION_TYPES = ELO_OPERATION_TYPES_WITH_MATCH_ID.concat(ELO_OPERATION_TYPES_WITHOUT_MATCH_ID);
 
 // Đọc trạng thái "chuỗi version" hiện tại của 1 player — legacy (chưa từng có elo_version) chỉ hợp lệ
