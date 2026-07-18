@@ -6,5 +6,57 @@
         "@gongrzhe/server-gmail-autoauth-mcp"
       ]
     }
+  },
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./app-nextjs/.env.local)",
+      "Read(./secrets/**)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/id_rsa)",
+      "Read(./**/id_ed25519)",
+      "Read(./data/players.json)",
+      "Bash(rm -rf *)",
+      "Bash(rm -r *)",
+      "Bash(git push *)",
+      "Bash(vercel deploy *)",
+      "Bash(vercel --prod *)",
+      "Bash(npm publish *)",
+      "Bash(pnpm publish *)",
+      "Bash(yarn publish *)"
+    ],
+    "ask": [
+      "WebFetch",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(iwr *)",
+      "Bash(Invoke-WebRequest *)",
+      "Bash(npx *)",
+      "Bash(npm install *)",
+      "Bash(npm i *)",
+      "Bash(npm ci *)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm dlx *)",
+      "Bash(yarn add *)",
+      "Bash(yarn install *)",
+      "Bash(yarn dlx *)",
+      "Bash(codegraph init *)",
+      "Bash(vercel *)",
+      "Bash(firebase *)",
+      "Bash(npm run lint)",
+      "Bash(npm run build)",
+      "Bash(git commit *)",
+      "Bash(npm test *)",
+      "Bash(npm run test *)",
+      "Edit(./app-nextjs/**)",
+      "Write(./app-nextjs/**)",
+      "Edit(./data/players.json)",
+      "Write(./data/players.json)"
+    ]
   }
 }
