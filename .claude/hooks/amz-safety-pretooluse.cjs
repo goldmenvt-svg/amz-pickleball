@@ -281,24 +281,58 @@ function tokenizeArgs(s) {
   return tokens;
 }
 
-// Strip leading `VAR=value` environment-variable assignments (possibly several) before the real
-// command, e.g. `FOO=bar BAZ=qux git push` -> `git push`. Consistent with the documented behavior
-// of Claude Code's own permission-rule `if` matcher ("Leading VAR=value assignments are stripped
-// before matching"). Only plain `NAME=value` tokens (no spaces in value, no quotes) are stripped;
-// anything more complex is left as-is and will simply fail to resolve to a known binary (safe).
-function stripLeadingAssignments(segment) {
-  let s = segment.trim();
-  const assignRe = /^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/;
-  let guard = 0;
-  while (assignRe.test(s) && guard < 10) {
-    s = s.replace(assignRe, '');
-    guard += 1;
+// Quote/escape-aware POSIX word scanner: returns the raw text (including quotes/escapes) of the
+// first shell word in `s` - i.e. up to the first *unquoted* whitespace or end of string. A quote
+// left open, or a trailing backslash with nothing to escape, is reported ambiguous rather than
+// guessed at.
+function scanPosixWord(s) {
+  let i = 0;
+  let inS = false;
+  let inD = false;
+  const n = s.length;
+  while (i < n) {
+    const c = s[i];
+    if (!inS && !inD && /\s/.test(c)) break;
+    if (c === '\\' && !inS) {
+      if (i + 1 >= n) return { ambiguous: true };
+      i += 2;
+      continue;
+    }
+    if (c === "'" && !inD) { inS = !inS; i += 1; continue; }
+    if (c === '"' && !inS) { inD = !inD; i += 1; continue; }
+    i += 1;
   }
-  return s;
+  if (inS || inD) return { ambiguous: true };
+  return { word: s.slice(0, i), endIndex: i };
 }
 
-function extractBinaryAndRest(segment) {
-  const trimmed = stripLeadingAssignments(segment).trim();
+// Strip leading `VAR=value` POSIX environment-variable assignments (possibly several) before the
+// real command, e.g. `FOO=bar BAZ="q u x" git push` -> `git push`. Quote-aware: the value portion
+// may contain quoted/escaped spaces like any other shell word (`A="x y" cmd`, `A=x\ y cmd`). Only
+// a bare, unquoted `NAME=` prefix counts as an assignment; a word that doesn't start that way (or
+// whose quoting can't be resolved) stops the strip immediately rather than guessing. Non-POSIX
+// dialects have no such prefix syntax, so their segments pass through unchanged.
+function stripLeadingAssignments(segment, dialect) {
+  let s = segment.trim();
+  if (dialect !== 'posix') return { seg: s, ambiguous: false };
+  let guard = 0;
+  while (s.length > 0 && guard < 10) {
+    const w = scanPosixWord(s);
+    if (w.ambiguous) return { ambiguous: true };
+    if (!/^[A-Za-z_][A-Za-z0-9_]*=/.test(w.word)) break;
+    const remainder = s.slice(w.endIndex);
+    const ws = /^\s+/.exec(remainder);
+    if (!ws) { s = ''; break; }
+    s = remainder.slice(ws[0].length);
+    guard += 1;
+  }
+  return { seg: s, ambiguous: false };
+}
+
+function extractBinaryAndRest(segment, dialect) {
+  const stripped = stripLeadingAssignments(segment, dialect);
+  if (stripped.ambiguous) return { ambiguous: true };
+  const trimmed = stripped.seg.trim();
   if (!trimmed) return null;
   let m = /^"([^"]+)"\s*(.*)$/.exec(trimmed) || /^'([^']+)'\s*(.*)$/.exec(trimmed);
   let first;
@@ -445,13 +479,19 @@ function resolveEffective(segment, dialect, depth) {
   if (depth > MAX_WRAPPER_DEPTH) return { ambiguous: true };
   if (hasComplexMarkers(segment, dialect)) return { ambiguous: true };
   if (hasUnbalancedQuotes(segment, dialect)) return { ambiguous: true };
-  const stripped = tryStripWrapper(segment);
+  // Assignment-stripping must happen before wrapper-stripping at each layer, not only once at the
+  // end: `A="x y" env git push` / `A="x y" bash -lc "npm publish"` only resolve to their true
+  // effective binary if the leading assignment is peeled off before `env`/`bash -lc` is recognized.
+  const assign = stripLeadingAssignments(segment, dialect);
+  if (assign.ambiguous) return { ambiguous: true };
+  const afterAssign = assign.seg;
+  const stripped = tryStripWrapper(afterAssign);
   if (stripped) {
     if (stripped.ambiguous) return { ambiguous: true };
     const nextDialect = stripped.dialect || dialect;
     return resolveEffective(stripped.seg, nextDialect, depth + 1);
   }
-  return { segment, dialect };
+  return { segment: afterAssign, dialect };
 }
 
 // ===================== Rule-specific classifiers =====================
@@ -534,6 +574,10 @@ function classifyGit(rest, ctx) {
   if (subcommand === 'config') return classifyGitConfig(subRestTokens);
   if (subcommand === 'remote') return classifyGitRemote(subRestTokens);
 
+  // git commit is a recognized ASK family (shared baseline: Bash(git commit *)) that a wrapper
+  // can hide from the literal-prefix matcher - always ask here too, direct or wrapped.
+  if (subcommand === 'commit') return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git command requires manual approval.' });
+
   return deferResult();
 }
 
@@ -569,11 +613,15 @@ function classifyGitRemote(tokens) {
   return deferResult();
 }
 
+// Vercel/Firebase are recognized ASK families in the shared permission baseline (Bash(vercel *),
+// Bash(firebase *)) covering any subcommand - but that literal-prefix rule only matches an
+// unwrapped tool_input.command. Any non-deploy subcommand must still ask here, direct or wrapped,
+// so a wrapper can't silently fall through to defer.
 function classifyVercel(rest) {
   const tokens = tokenizeArgs(rest);
   if (tokens[0] === 'deploy') return denyResult(RULE.PROD_DEPLOY);
   if (tokens.indexOf('--prod') !== -1) return denyResult(RULE.PROD_DEPLOY);
-  return deferResult();
+  return askResult(RULE.PROD_DEPLOY, { safeMessage: 'Needs approval: this Vercel command requires manual approval.' });
 }
 
 function classifyFirebase(rest) {
@@ -586,7 +634,7 @@ function classifyFirebase(rest) {
   }
   const subcommand = tokens[i];
   if (subcommand === 'deploy') return denyResult(RULE.PROD_DEPLOY);
-  return deferResult();
+  return askResult(RULE.PROD_DEPLOY, { safeMessage: 'Needs approval: this Firebase command requires manual approval.' });
 }
 
 function classifyPackageManager(bin, rest, ctx) {
@@ -604,6 +652,11 @@ function classifyPackageManager(bin, rest, ctx) {
   if (subcommand === 'run' || subcommand === 'run-script') {
     const scriptName = tokens[i + 1];
     return classifyPackageScript(scriptName, prefixPath, ctx);
+  }
+  // test/build are a recognized ASK family (shared baseline has explicit Bash(npm test *) etc.
+  // rules) that a wrapper can hide from the literal-prefix matcher - always ask here too.
+  if (subcommand === 'test' || subcommand === 'build') {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a package manager test/build command.' });
   }
   return deferResult();
 }
@@ -732,21 +785,6 @@ function classifyInlineInterpreter(bin, rest, segment) {
 const EGRESS_BINARIES = new Set(['curl', 'wget', 'invoke-webrequest', 'iwr', 'invoke-restmethod', 'irm', 'scp', 'sftp']);
 const UPLOAD_FLAGS = ['-d', '--data', '--data-binary', '--data-raw', '-f', '--form', '-t', '--upload-file', '--post-file', '--body-file', '-infile'];
 
-function isLoopbackHost(host) {
-  if (!host) return false;
-  const h = host.toLowerCase();
-  if (h === 'localhost') return true;
-  if (h === '::1' || h === '[::1]') return true;
-  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
-  return false;
-}
-
-function extractHost(segment) {
-  const m = /https?:\/\/([^\/\s:'"]+)/i.exec(segment);
-  if (m) return m[1];
-  return null;
-}
-
 function classifyEgress(bin, rest, dialect) {
   if (!EGRESS_BINARIES.has(bin)) return null;
   const tokens = tokenizeArgs(rest);
@@ -772,9 +810,11 @@ function classifyEgress(bin, rest, dialect) {
     return askResult(RULE.EGRESS);
   }
 
-  const host = extractHost(rest);
-  if (host && isLoopbackHost(host)) return deferResult();
-  return askResult(RULE.EGRESS);
+  // Recognized network-egress family: always ask, direct or wrapped, regardless of destination.
+  // A wrapped form (`bash -lc "curl ..."`, `cmd /c curl ...`) never matches the shared
+  // Bash(curl *)-style ask rule since that matches on the literal tool_input.command prefix; the
+  // hook must not silently defer through a wrapper just because the resolved host is loopback.
+  return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: this network command requires manual approval regardless of destination.' });
 }
 
 const TAMPER_MUTATION_BINARIES = new Set(['rm', 'rmdir', 'del', 'erase', 'remove-item', 'ri', 'mv', 'move', 'ren', 'rename', 'cp', 'copy', 'copy-item', 'move-item', 'set-content', 'add-content', 'out-file']);
@@ -803,7 +843,8 @@ function classifyRedirectionTamper(segment, ctx) {
 // ===================== Segment / command classification =====================
 
 function classifyEffectiveBinary(segment, dialect, ctx) {
-  const be = extractBinaryAndRest(segment);
+  const be = extractBinaryAndRest(segment, dialect);
+  if (be && be.ambiguous) return askResult(RULE.COMPLEX);
   if (!be) return deferResult();
   const bin = basenameOf(be.first);
   const rest = be.rest;
@@ -837,8 +878,8 @@ function classifyEffectiveBinary(segment, dialect, ctx) {
   // PowerShell invocation operator `&` — target must be a literal string/path to resolve;
   // a variable ($x) or bare subexpression ((...)) target cannot be resolved statically.
   if (dialect === 'powershell' && bin === '&') {
-    const inner = extractBinaryAndRest(rest);
-    if (!inner) return askResult(RULE.COMPLEX);
+    const inner = extractBinaryAndRest(rest, dialect);
+    if (!inner || inner.ambiguous) return askResult(RULE.COMPLEX);
     if (/^\$/.test(inner.first) || inner.first.startsWith('(')) return askResult(RULE.COMPLEX);
     return classifyEffectiveBinary(rest, dialect, ctx);
   }
