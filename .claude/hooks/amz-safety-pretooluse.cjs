@@ -312,11 +312,13 @@ function scanPosixWord(s) {
 // a bare, unquoted `NAME=` prefix counts as an assignment; a word that doesn't start that way (or
 // whose quoting can't be resolved) stops the strip immediately rather than guessing. Non-POSIX
 // dialects have no such prefix syntax, so their segments pass through unchanged.
+const MAX_LEADING_ASSIGNMENTS = 10;
+
 function stripLeadingAssignments(segment, dialect) {
   let s = segment.trim();
   if (dialect !== 'posix') return { seg: s, ambiguous: false };
   let guard = 0;
-  while (s.length > 0 && guard < 10) {
+  while (s.length > 0 && guard < MAX_LEADING_ASSIGNMENTS) {
     const w = scanPosixWord(s);
     if (w.ambiguous) return { ambiguous: true };
     if (!/^[A-Za-z_][A-Za-z0-9_]*=/.test(w.word)) break;
@@ -325,6 +327,15 @@ function stripLeadingAssignments(segment, dialect) {
     if (!ws) { s = ''; break; }
     s = remainder.slice(ws[0].length);
     guard += 1;
+  }
+  // Fail-closed at the cap: if a further assignment-shaped word still remains after stripping
+  // MAX_LEADING_ASSIGNMENTS, do not silently treat it as the executable (wrong) and do not let it
+  // fall through to defer (unsafe) - this exceeds what the conservative scanner will resolve with
+  // confidence, so it must ask instead.
+  if (guard >= MAX_LEADING_ASSIGNMENTS && s.length > 0) {
+    const w2 = scanPosixWord(s);
+    if (w2.ambiguous) return { ambiguous: true };
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w2.word)) return { ambiguous: true };
   }
   return { seg: s, ambiguous: false };
 }
@@ -468,14 +479,19 @@ function tryStripWrapper(segment) {
   if ((m = /^(?:bash|sh)\s+(?:-lc|-c)\s+(?:--\s+)?(.+)$/i.exec(s))) return { seg: unquoteOnce(m[1]), dialect: 'posix' };
   if ((m = /^(?:powershell(?:\.exe)?|pwsh(?:\.exe)?)\s+(?:-Command|-c)\s+(.+)$/i.exec(s))) return { seg: unquoteOnce(m[1]), dialect: 'powershell' };
 
-  if ((m = /^npx\s+(?:-y\s+|--yes\s+)?(.+)$/i.exec(s))) return { seg: m[1] };
-  if ((m = /^pnpm\s+dlx\s+(.+)$/i.exec(s))) return { seg: m[1] };
-  if ((m = /^yarn\s+dlx\s+(.+)$/i.exec(s))) return { seg: m[1] };
+  // npx / pnpm dlx / yarn dlx are package runners, not plain wrappers: the payload is arbitrary
+  // and often not a binary the scanner recognizes at all. They are still stripped like a wrapper
+  // so the payload can be classified (a deny-worthy payload like `vercel --prod` must still deny),
+  // but tagged `packageRunner: true` so resolveEffective/classifySegment can apply the ask-floor
+  // required for this family (never silently defer just because the payload is unrecognized).
+  if ((m = /^npx\s+(?:-y\s+|--yes\s+)?(.+)$/i.exec(s))) return { seg: m[1], packageRunner: true };
+  if ((m = /^pnpm\s+dlx\s+(.+)$/i.exec(s))) return { seg: m[1], packageRunner: true };
+  if ((m = /^yarn\s+dlx\s+(.+)$/i.exec(s))) return { seg: m[1], packageRunner: true };
 
   return null;
 }
 
-function resolveEffective(segment, dialect, depth) {
+function resolveEffective(segment, dialect, depth, viaPackageRunner) {
   if (depth > MAX_WRAPPER_DEPTH) return { ambiguous: true };
   if (hasComplexMarkers(segment, dialect)) return { ambiguous: true };
   if (hasUnbalancedQuotes(segment, dialect)) return { ambiguous: true };
@@ -489,9 +505,10 @@ function resolveEffective(segment, dialect, depth) {
   if (stripped) {
     if (stripped.ambiguous) return { ambiguous: true };
     const nextDialect = stripped.dialect || dialect;
-    return resolveEffective(stripped.seg, nextDialect, depth + 1);
+    const nextViaPR = !!viaPackageRunner || !!stripped.packageRunner;
+    return resolveEffective(stripped.seg, nextDialect, depth + 1, nextViaPR);
   }
-  return { segment: afterAssign, dialect };
+  return { segment: afterAssign, dialect, viaPackageRunner: !!viaPackageRunner };
 }
 
 // ===================== Rule-specific classifiers =====================
@@ -658,6 +675,21 @@ function classifyPackageManager(bin, rest, ctx) {
   if (subcommand === 'test' || subcommand === 'build') {
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a package manager test/build command.' });
   }
+  // install/add/ci are a recognized ASK family (shared baseline: Bash(npm install *), Bash(npm i
+  // *), Bash(npm ci *), Bash(pnpm install *), Bash(pnpm add *), Bash(yarn add *), Bash(yarn
+  // install *)) that a wrapper can hide from the literal-prefix matcher - always ask here too.
+  const INSTALL_SUBCOMMANDS = { npm: ['install', 'i', 'ci'], pnpm: ['install', 'add'], yarn: ['add', 'install'] };
+  if (INSTALL_SUBCOMMANDS[bin] && INSTALL_SUBCOMMANDS[bin].indexOf(subcommand) !== -1) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this installs/adds package dependencies.' });
+  }
+  return deferResult();
+}
+
+// codegraph init is a recognized ASK family (shared baseline: Bash(codegraph init *)) that a
+// wrapper can hide from the literal-prefix matcher - always ask here too.
+function classifyCodegraph(rest) {
+  const tokens = tokenizeArgs(rest);
+  if (tokens[0] === 'init') return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this initializes a CodeGraph index.' });
   return deferResult();
 }
 
@@ -862,6 +894,7 @@ function classifyEffectiveBinary(segment, dialect, ctx) {
   if (bin === 'vercel') return classifyVercel(rest);
   if (bin === 'firebase' || bin === 'firebase-tools') return classifyFirebase(rest);
   if (bin === 'npm' || bin === 'pnpm' || bin === 'yarn') return classifyPackageManager(bin, rest, ctx);
+  if (bin === 'codegraph') return classifyCodegraph(rest);
 
   if (bin === 'rm' && dialect !== 'powershell') return classifyPosixRm(rest);
   if (['rmdir', 'rd', 'del', 'erase', 'remove-item', 'ri', 'rm'].indexOf(bin) !== -1) return classifyDeleteAlias(rest);
@@ -890,9 +923,16 @@ function classifyEffectiveBinary(segment, dialect, ctx) {
 function classifySegment(rawSegment, dialect, ctx) {
   if (hasComplexMarkers(rawSegment, dialect)) return askResult(RULE.COMPLEX);
   if (hasUnbalancedQuotes(rawSegment, dialect)) return askResult(RULE.COMPLEX);
-  const resolved = resolveEffective(rawSegment, dialect, 0);
+  const resolved = resolveEffective(rawSegment, dialect, 0, false);
   if (resolved.ambiguous) return askResult(RULE.COMPLEX);
-  return classifyEffectiveBinary(resolved.segment, resolved.dialect, ctx);
+  const result = classifyEffectiveBinary(resolved.segment, resolved.dialect, ctx);
+  // Package-runner invariant (npx / pnpm dlx / yarn dlx): always at least ask, regardless of
+  // payload. A protected-action payload already denies/asks on its own merits and passes through
+  // unchanged; only an otherwise-unrecognized payload (which would defer) is floored to ask.
+  if (resolved.viaPackageRunner && result.decision === 'defer') {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a package-runner command with an unresolved payload.' });
+  }
+  return result;
 }
 
 function classifyCommandString(raw, initialDialect, ctx) {
@@ -1025,6 +1065,7 @@ module.exports = {
   classifyVercel,
   classifyFirebase,
   classifyPackageManager,
+  classifyCodegraph,
   classifyPackageScript,
   classifyPosixRm,
   classifyDeleteAlias,

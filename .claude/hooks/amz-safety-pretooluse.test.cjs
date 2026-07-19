@@ -371,6 +371,30 @@ test('28.neg. unterminated quote inside leading assignment -> ask COMPLEX (ambig
   assertDecision(classifyBash('A="unterminated git push'), 'ask', hook.RULE.COMPLEX);
 });
 
+// ===================== 30. R2 Blocker 1: assignment-cap fail-closed =====================
+// The scanner strips at most MAX_LEADING_ASSIGNMENTS (10) leading VAR=value words. Reaching the
+// cap while a further assignment-shaped word still remains must never be treated as "that word is
+// the executable" (wrong) and must never fall through to defer (unsafe) - it must ask.
+
+test('30.1. exactly 10 assignments then git push -> deny (cap allows exactly 10, then resolves normally)', () => {
+  const cmd = 'A1=x A2=x A3=x A4=x A5=x A6=x A7=x A8=x A9=x A10=x git push';
+  assertDecision(classifyBash(cmd), 'deny', hook.RULE.GIT_PUSH);
+});
+test('30.2. 11 assignments then git push -> ask, not defer, not misread as executable', () => {
+  const cmd = 'A1=x A2=x A3=x A4=x A5=x A6=x A7=x A8=x A9=x A10=x A11=x git push';
+  assertDecision(classifyBash(cmd), 'ask', hook.RULE.COMPLEX);
+});
+test('30.3. 11 mixed-quoted assignments then firebase deploy -> ask or deny, never defer', () => {
+  const cmd = 'A1="x y" A2=\'a b\' A3=c\\ d A4=x A5=x A6=x A7=x A8=x A9=x A10=x A11=x firebase deploy';
+  const r = classifyBash(cmd);
+  assert.notEqual(r.decision, 'defer');
+  assert.ok(r.decision === 'ask' || r.decision === 'deny');
+});
+test('30.4. 11 assignments then unrecognized executable -> ask (exceeds cap), not defer', () => {
+  const cmd = 'A1=x A2=x A3=x A4=x A5=x A6=x A7=x A8=x A9=x A10=x A11=x ls';
+  assertDecision(classifyBash(cmd), 'ask', hook.RULE.COMPLEX);
+});
+
 // ===================== 13. Vercel =====================
 
 test('13. vercel deploy -> deny', () => { assertDecision(classifyBash('vercel deploy'), 'deny', hook.RULE.PROD_DEPLOY); });
@@ -569,6 +593,71 @@ test('29c. wrapped: bash -lc "firebase deploy" still denies, not merely asks', (
 });
 test('29c. wrapped: bash -lc "vercel --prod" still denies, not merely asks', () => {
   assertDecision(classifyBash('bash -lc "vercel --prod"'), 'deny', hook.RULE.PROD_DEPLOY);
+});
+
+// ===================== 31. R2 Blocker 2: complete shared ASK-family coverage =====================
+// Every remaining Bash ASK family in the shared baseline (npm install/i/ci, pnpm install/add,
+// yarn install/add, npx/pnpm dlx/yarn dlx package runners, codegraph init) must ask direct or
+// wrapped, closing the same literal-prefix-match gap as R1's curl/vercel/firebase/npm-test/git-commit fix.
+
+// -- install/add/ci family: direct + wrapped --
+test('31. npm ci direct -> ask', () => { assertDecision(classifyBash('npm ci'), 'ask', hook.RULE.COMPLEX); });
+test('31. npm ci wrapped via bash -lc -> ask', () => { assertDecision(classifyBash('bash -lc "npm ci"'), 'ask', hook.RULE.COMPLEX); });
+test('31. npm ci wrapped via cmd /c -> ask', () => { assertDecision(classifyBash('cmd /c npm ci'), 'ask', hook.RULE.COMPLEX); });
+test('31. npm ci wrapped via powershell -Command -> ask', () => { assertDecision(classifyBash('powershell -Command "npm ci"'), 'ask', hook.RULE.COMPLEX); });
+
+test('31. npm install package direct -> ask', () => { assertDecision(classifyBash('npm install package'), 'ask', hook.RULE.COMPLEX); });
+test('31. npm install package wrapped -> ask', () => { assertDecision(classifyBash('bash -lc "npm install package"'), 'ask', hook.RULE.COMPLEX); });
+test('31. npm i shorthand -> ask', () => { assertDecision(classifyBash('npm i'), 'ask', hook.RULE.COMPLEX); });
+
+test('31. pnpm add package direct -> ask', () => { assertDecision(classifyBash('pnpm add package'), 'ask', hook.RULE.COMPLEX); });
+test('31. pnpm add package wrapped -> ask', () => { assertDecision(classifyBash('bash -lc "pnpm add package"'), 'ask', hook.RULE.COMPLEX); });
+test('31. pnpm install direct -> ask', () => { assertDecision(classifyBash('pnpm install'), 'ask', hook.RULE.COMPLEX); });
+
+test('31. yarn install direct -> ask', () => { assertDecision(classifyBash('yarn install'), 'ask', hook.RULE.COMPLEX); });
+test('31. yarn install wrapped -> ask', () => { assertDecision(classifyBash('bash -lc "yarn install"'), 'ask', hook.RULE.COMPLEX); });
+test('31. yarn add package direct -> ask', () => { assertDecision(classifyBash('yarn add package'), 'ask', hook.RULE.COMPLEX); });
+
+// -- package-runner family: direct + wrapped, unrecognized payload floors to ask (never defer) --
+test('31. npx eslint . direct -> ask (unrecognized payload, package-runner floor)', () => {
+  assertDecision(classifyBash('npx eslint .'), 'ask', hook.RULE.COMPLEX);
+});
+test('31. npx eslint . wrapped -> ask', () => {
+  assertDecision(classifyBash('bash -lc "npx eslint ."'), 'ask', hook.RULE.COMPLEX);
+});
+test('31. pnpm dlx prettier . direct -> ask', () => {
+  assertDecision(classifyBash('pnpm dlx prettier .'), 'ask', hook.RULE.COMPLEX);
+});
+test('31. pnpm dlx prettier . wrapped -> ask', () => {
+  assertDecision(classifyBash('bash -lc "pnpm dlx prettier ."'), 'ask', hook.RULE.COMPLEX);
+});
+test('31. yarn dlx some-tool direct -> ask', () => {
+  assertDecision(classifyBash('yarn dlx some-tool'), 'ask', hook.RULE.COMPLEX);
+});
+test('31. yarn dlx some-tool wrapped -> ask', () => {
+  assertDecision(classifyBash('bash -lc "yarn dlx some-tool"'), 'ask', hook.RULE.COMPLEX);
+});
+
+// -- codegraph init: direct + wrapped --
+test('31. codegraph init project direct -> ask', () => {
+  assertDecision(classifyBash('codegraph init project'), 'ask', hook.RULE.COMPLEX);
+});
+test('31. codegraph init project wrapped -> ask', () => {
+  assertDecision(classifyBash('bash -lc "codegraph init project"'), 'ask', hook.RULE.COMPLEX);
+});
+test('31. codegraph explore (non-init subcommand) -> defer, not over-broadened', () => {
+  assertDecision(classifyBash('codegraph explore "foo"'), 'defer');
+});
+
+// -- package-runner deny precedence: protected payload still denies, not merely asks --
+test('31. deny precedence: A="x y" npx vercel --prod -> deny', () => {
+  assertDecision(classifyBash('A="x y" npx vercel --prod'), 'deny', hook.RULE.PROD_DEPLOY);
+});
+test('31. deny precedence: bash -lc "pnpm dlx firebase-tools deploy" -> deny', () => {
+  assertDecision(classifyBash('bash -lc "pnpm dlx firebase-tools deploy"'), 'deny', hook.RULE.PROD_DEPLOY);
+});
+test('31. deny precedence: A=x yarn dlx vercel deploy -> deny', () => {
+  assertDecision(classifyBash('A=x yarn dlx vercel deploy'), 'deny', hook.RULE.PROD_DEPLOY);
 });
 
 // ===================== 24. Unknown executable -> defer =====================
@@ -778,4 +867,31 @@ test('IO: wrapped ask-family command resolves through real process -> ask JSON, 
   assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('SHOULD_NOT_LEAK'));
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('curl'));
+});
+
+// ===================== R2 direct hook I/O: assignment-cap and package-runner cases =====================
+
+test('IO: 11 leading assignments then git push resolves through real process -> ask JSON, no defer', () => {
+  const fixture = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'A1=x A2=x A3=x A4=x A5=x A6=x A7=x A8=x A9=x A10=x A11=x git push' },
+    cwd: 'C:/repo',
+  });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  assert.notEqual(r.stdout, '', 'must not silently defer past the assignment cap');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+});
+
+test('IO: package-runner with unrecognized payload resolves through real process -> ask JSON, no raw command in reason', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'npx some-secret-tool-name-SHOULD_NOT_LEAK' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('SHOULD_NOT_LEAK'));
 });
