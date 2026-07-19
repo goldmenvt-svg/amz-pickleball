@@ -618,6 +618,51 @@ test('31. yarn install direct -> ask', () => { assertDecision(classifyBash('yarn
 test('31. yarn install wrapped -> ask', () => { assertDecision(classifyBash('bash -lc "yarn install"'), 'ask', hook.RULE.COMPLEX); });
 test('31. yarn add package direct -> ask', () => { assertDecision(classifyBash('yarn add package'), 'ask', hook.RULE.COMPLEX); });
 
+// ===================== 32. R3: bare `yarn` implicit install =====================
+// Bare `yarn` (no subcommand) is functionally `yarn install` per real yarn semantics - must ask
+// direct or wrapped, not defer just because there's no explicit subcommand token.
+
+test('32. bare yarn direct -> ask, not defer', () => {
+  assertDecision(classifyBash('yarn'), 'ask', hook.RULE.COMPLEX);
+});
+test('32. bare yarn wrapped via bash -lc -> ask', () => {
+  assertDecision(classifyBash('bash -lc "yarn"'), 'ask', hook.RULE.COMPLEX);
+});
+test('32. bare yarn wrapped via cmd /c -> ask', () => {
+  assertDecision(classifyBash('cmd /c yarn'), 'ask', hook.RULE.COMPLEX);
+});
+test('32. bare yarn wrapped via powershell -Command -> ask', () => {
+  assertDecision(classifyBash('powershell -Command "yarn"'), 'ask', hook.RULE.COMPLEX);
+});
+test('32. bare yarn with leading quoted assignment -> ask', () => {
+  assertDecision(classifyBash('A="x y" yarn'), 'ask', hook.RULE.COMPLEX);
+});
+
+// -- regression: explicit subcommands and package-runner payloads still behave as before --
+test('32. yarn install still asks (unaffected by bare-yarn fix)', () => {
+  assertDecision(classifyBash('yarn install'), 'ask', hook.RULE.COMPLEX);
+});
+test('32. yarn add still asks (unaffected by bare-yarn fix)', () => {
+  assertDecision(classifyBash('yarn add'), 'ask', hook.RULE.COMPLEX);
+});
+test('32. yarn dlx vercel --prod still denies (unaffected by bare-yarn fix)', () => {
+  assertDecision(classifyBash('yarn dlx vercel --prod'), 'deny', hook.RULE.PROD_DEPLOY);
+});
+test('32. yarn dlx firebase-tools deploy still denies (unaffected by bare-yarn fix)', () => {
+  assertDecision(classifyBash('yarn dlx firebase-tools deploy'), 'deny', hook.RULE.PROD_DEPLOY);
+});
+
+// -- negative cases: must not hard-deny --
+test('32.neg. echo yarn -> defer (basename is echo, not yarn)', () => {
+  assertDecision(classifyBash('echo yarn'), 'defer');
+});
+test('32.neg. echo "yarn install" -> defer (basename is echo)', () => {
+  assertDecision(classifyBash('echo "yarn install"'), 'defer');
+});
+test('32.neg. my-yarn-tool -> defer (not the yarn binary)', () => {
+  assertDecision(classifyBash('my-yarn-tool'), 'defer');
+});
+
 // -- package-runner family: direct + wrapped, unrecognized payload floors to ask (never defer) --
 test('31. npx eslint . direct -> ask (unrecognized payload, package-runner floor)', () => {
   assertDecision(classifyBash('npx eslint .'), 'ask', hook.RULE.COMPLEX);
@@ -894,4 +939,17 @@ test('IO: package-runner with unrecognized payload resolves through real process
   const parsed = JSON.parse(r.stdout);
   assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('SHOULD_NOT_LEAK'));
+});
+
+// ===================== R3 direct hook I/O: bare yarn =====================
+
+test('IO: bash -lc "yarn" resolves through real process -> ask JSON, no stderr, no raw command in reason', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'bash -lc "yarn"' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('bash'));
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('yarn'));
 });

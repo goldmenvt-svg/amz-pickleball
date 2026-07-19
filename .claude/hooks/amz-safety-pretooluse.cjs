@@ -682,6 +682,11 @@ function classifyPackageManager(bin, rest, ctx) {
   if (INSTALL_SUBCOMMANDS[bin] && INSTALL_SUBCOMMANDS[bin].indexOf(subcommand) !== -1) {
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this installs/adds package dependencies.' });
   }
+  // Bare `yarn` (no subcommand, only optional flags) implicitly runs `yarn install` per real yarn
+  // semantics - must ask like the explicit form, not silently defer for lack of a subcommand token.
+  if (bin === 'yarn' && subcommand === undefined) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this installs/adds package dependencies.' });
+  }
   return deferResult();
 }
 
