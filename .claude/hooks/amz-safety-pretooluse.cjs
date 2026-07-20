@@ -13,6 +13,7 @@ const os = require('os');
 const MAX_COMMAND_LENGTH = 4000;
 const MAX_FILE_PATH_LENGTH = 1024;
 const MAX_SEGMENTS = 20;
+const MAX_TOTAL_SEGMENTS = 40;
 const MAX_WRAPPER_DEPTH = 6;
 const MAX_PACKAGE_JSON_SIZE = 10 * 1024;
 
@@ -306,6 +307,43 @@ function scanPosixWord(s) {
   return { word: s.slice(0, i), endIndex: i };
 }
 
+// Cook a single raw POSIX word (already isolated at word boundaries, e.g. via scanPosixWord) into
+// its semantic value: single-quotes are fully literal (no escapes inside), double-quotes allow
+// backslash to escape `$` `` ` `` `"` `\` and newline (any other backslash sequence inside double
+// quotes keeps the backslash literally, matching real bash), and outside any quotes a backslash
+// escapes the very next character unconditionally (including a literal space). Returns
+// {ok:true, cooked} or {ambiguous:true} if a quote is left open or a trailing backslash has
+// nothing to escape - this is the actual semantic value, used where "does this raw token literally
+// equal .env" is the wrong question to ask (e.g. `.e\nv` cooks to `.env`).
+function cookPosixWord(raw) {
+  let out = '';
+  let inS = false;
+  let inD = false;
+  const n = raw.length;
+  let i = 0;
+  while (i < n) {
+    const c = raw[i];
+    if (inS) {
+      if (c === "'") { inS = false; i += 1; continue; }
+      out += c; i += 1; continue;
+    }
+    if (inD) {
+      if (c === '"') { inD = false; i += 1; continue; }
+      if (c === '\\' && i + 1 < n && /[$`"\\\n]/.test(raw[i + 1])) { out += raw[i + 1]; i += 2; continue; }
+      out += c; i += 1; continue;
+    }
+    if (c === "'") { inS = true; i += 1; continue; }
+    if (c === '"') { inD = true; i += 1; continue; }
+    if (c === '\\') {
+      if (i + 1 >= n) return { ambiguous: true };
+      out += raw[i + 1]; i += 2; continue;
+    }
+    out += c; i += 1;
+  }
+  if (inS || inD) return { ambiguous: true };
+  return { ok: true, cooked: out };
+}
+
 // Strip leading `VAR=value` POSIX environment-variable assignments (possibly several) before the
 // real command, e.g. `FOO=bar BAZ="q u x" git push` -> `git push`. Quote-aware: the value portion
 // may contain quoted/escaped spaces like any other shell word (`A="x y" cmd`, `A=x\ y cmd`). Only
@@ -316,12 +354,19 @@ const MAX_LEADING_ASSIGNMENTS = 10;
 
 function stripLeadingAssignments(segment, dialect) {
   let s = segment.trim();
-  if (dialect !== 'posix') return { seg: s, ambiguous: false };
+  if (dialect !== 'posix') return { seg: s, ambiguous: false, assignments: [] };
   let guard = 0;
+  const assignments = [];
   while (s.length > 0 && guard < MAX_LEADING_ASSIGNMENTS) {
     const w = scanPosixWord(s);
     if (w.ambiguous) return { ambiguous: true };
-    if (!/^[A-Za-z_][A-Za-z0-9_]*=/.test(w.word)) break;
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(w.word);
+    if (!m) break;
+    // Security-sensitive assignments (e.g. GIT_CONFIG_KEY_0/VALUE_0) must not be discarded
+    // without a trace - collect name+cooked-value so the caller can inspect them once the
+    // effective binary is known (see collectGitConfigEnvAliases / classifyGit).
+    const cookedValue = cookPosixWord(m[2]);
+    assignments.push({ name: m[1], value: cookedValue.ok ? cookedValue.cooked : m[2] });
     const remainder = s.slice(w.endIndex);
     const ws = /^\s+/.exec(remainder);
     if (!ws) { s = ''; break; }
@@ -337,7 +382,7 @@ function stripLeadingAssignments(segment, dialect) {
     if (w2.ambiguous) return { ambiguous: true };
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w2.word)) return { ambiguous: true };
   }
-  return { seg: s, ambiguous: false };
+  return { seg: s, ambiguous: false, assignments };
 }
 
 function extractBinaryAndRest(segment, dialect) {
@@ -484,6 +529,9 @@ function segmentTopLevel(s, dialect) {
     if (!inSingle && !inDouble) {
       const two = s.slice(i, i + 2);
       if (two === '&&' || two === '||') { segments.push(cur); cur = ''; i += 2; continue; }
+      // `>|` (noclobber-override redirect) is one atomic operator, not a `>` followed by a pipe -
+      // must not split here or the redirection scanner never sees the operator as a whole.
+      if (c === '|' && s[i - 1] === '>') { cur += c; i += 1; continue; }
       if (c === ';' || c === '|' || c === '\n') { segments.push(cur); cur = ''; i += 1; continue; }
       // Single top-level `&` is a command separator (background operator in POSIX, also a
       // separator in CMD). Already excluded from `&&` above, so this only ever fires on a lone
@@ -545,26 +593,37 @@ function tryStripWrapperOptions(wrapperBin, rest) {
       return { ambiguous: true };
     }
     case 'time': {
-      if (rest.length === 0) return { ambiguous: true };
-      return { seg: rest };
+      // `time -p cmd` (POSIX-style) or bare `time cmd` - a leftover flag the scanner doesn't
+      // recognize (payload still starting with `-`) is an unsupported option shape, not the
+      // command itself.
+      let r = rest;
+      if (/^-p(\s|$)/.test(r)) r = r.replace(/^-p\s*/, '');
+      if (r.length === 0 || /^-/.test(r)) return { ambiguous: true };
+      return { seg: r };
     }
     case 'nice': {
       const m = /^(?:-n\s*\S+\s+|-\S+\s+)*(.+)$/.exec(rest);
-      if (m && m[1]) return { seg: m[1] };
+      if (m && m[1] && !/^-/.test(m[1])) return { seg: m[1] };
       return { ambiguous: true };
     }
     case 'nohup': {
-      if (rest.length === 0) return { ambiguous: true };
-      return { seg: rest };
+      // `nohup -- cmd` (explicit end-of-options marker) or bare `nohup cmd`.
+      let r = rest;
+      if (/^--(\s|$)/.test(r)) r = r.replace(/^--\s*/, '');
+      if (r.length === 0 || /^-/.test(r)) return { ambiguous: true };
+      return { seg: r };
     }
     case 'stdbuf': {
       const m = /^(?:-\S+\s+)+(.+)$/.exec(rest);
-      if (m && m[1]) return { seg: m[1] };
+      if (m && m[1] && !/^-/.test(m[1])) return { seg: m[1] };
       return { ambiguous: true };
     }
     case 'corepack': {
-      if (rest.length === 0) return { ambiguous: true };
-      return { seg: rest };
+      // `corepack -- cmd` (explicit end-of-options marker) or bare `corepack cmd`.
+      let r = rest;
+      if (/^--(\s|$)/.test(r)) r = r.replace(/^--\s*/, '');
+      if (r.length === 0 || /^-/.test(r)) return { ambiguous: true };
+      return { seg: r };
     }
     case 'bash':
     case 'sh': {
@@ -608,11 +667,14 @@ function tryStripWrapper(segment, dialect) {
   if (wrapperBin === 'npx') {
     let raw = rest;
     let guard = 0;
-    while (guard < 4) {
+    while (guard < 6) {
       const w = /^(\S+)/.exec(raw);
       if (!w) break;
-      if (w[1] === '-y' || w[1] === '--yes') { raw = skipLeadingRawWords(raw, 1); guard += 1; continue; }
-      if (w[1] === '--package' || w[1] === '-p') { raw = skipLeadingRawWords(raw, 2); guard += 1; continue; }
+      const word = w[1];
+      if (word === '-y' || word === '--yes' || word === '--') { raw = skipLeadingRawWords(raw, 1); guard += 1; continue; }
+      if (word === '--package' || word === '-p') { raw = skipLeadingRawWords(raw, 2); guard += 1; continue; }
+      if (word.indexOf('--package=') === 0) { raw = skipLeadingRawWords(raw, 1); guard += 1; continue; }
+      if (word.indexOf('-p') === 0 && word !== '-p' && word.length > 2) { raw = skipLeadingRawWords(raw, 1); guard += 1; continue; }
       break;
     }
     if (raw.trim().length === 0) return { ambiguous: true };
@@ -639,13 +701,12 @@ function tryStripWrapper(segment, dialect) {
   return tryStripWrapperOptions(wrapperBin, rest);
 }
 
-function resolveEffective(segment, dialect, depth, viaPackageRunner) {
-  if (depth > MAX_WRAPPER_DEPTH) return { ambiguous: true };
-  if (hasComplexMarkers(segment, dialect)) return { ambiguous: true };
-  if (hasUnbalancedQuotes(segment, dialect)) return { ambiguous: true };
-  // Assignment-stripping must happen before wrapper-stripping at each layer, not only once at the
-  // end: `A="x y" env git push` / `A="x y" bash -lc "npm publish"` only resolve to their true
-  // effective binary if the leading assignment is peeled off before `env`/`bash -lc` is recognized.
+// Single-hop resolution: strip at most one leading-assignment-run and at most one wrapper layer
+// from `segment`. Unlike the old design, this does NOT recurse to a final leaf binary - a wrapper
+// payload is shell content in its own right (may contain `;`/`&&`/`|`/multiple commands) and must
+// be re-segmented from scratch by the caller (classifySegment), not treated as one opaque argument
+// string. See classifySegment/classifyCommandString for the recursive re-segmentation loop.
+function resolveOneHop(segment, dialect) {
   const assign = stripLeadingAssignments(segment, dialect);
   if (assign.ambiguous) return { ambiguous: true };
   const afterAssign = assign.seg;
@@ -653,10 +714,9 @@ function resolveEffective(segment, dialect, depth, viaPackageRunner) {
   if (stripped) {
     if (stripped.ambiguous) return { ambiguous: true };
     const nextDialect = stripped.dialect || dialect;
-    const nextViaPR = !!viaPackageRunner || !!stripped.packageRunner;
-    return resolveEffective(stripped.seg, nextDialect, depth + 1, nextViaPR);
+    return { wrapped: true, payload: stripped.seg, dialect: nextDialect, packageRunner: !!stripped.packageRunner };
   }
-  return { segment: afterAssign, dialect, viaPackageRunner: !!viaPackageRunner };
+  return { segment: afterAssign, dialect, assignments: assign.assignments || [] };
 }
 
 // ===================== Rule-specific classifiers =====================
@@ -672,13 +732,41 @@ function getFlagValue(tokens, flagName) {
   return undefined;
 }
 
+// Cooked POSIX tokenizer: splits `s` into words at unquoted whitespace (via scanPosixWord, which
+// already correctly treats an escaped quote as not ending its enclosing quoted region) and cooks
+// each word to its semantic value (quotes stripped, escapes resolved). Dangerous nested-Claude
+// flag values must be decided from these cooked tokens, not a raw-string regex - a raw regex on
+// `--permission-mode "bypassPermissions"` (quoted, space form) never matches the literal text
+// `--permission-mode bypassPermissions` because of the stray quote characters in between.
+function tokenizeCookedPosix(s) {
+  const tokens = [];
+  let rem = s;
+  while (true) {
+    rem = rem.replace(/^\s+/, '');
+    if (rem.length === 0) break;
+    const w = scanPosixWord(rem);
+    if (w.ambiguous) return { ambiguous: true };
+    const cooked = cookPosixWord(w.word);
+    if (!cooked.ok) return { ambiguous: true };
+    tokens.push(cooked.cooked);
+    rem = rem.slice(w.endIndex);
+  }
+  return { ok: true, tokens };
+}
+
 function classifyNestedClaude(rest) {
-  const tokens = tokenizeArgs(rest);
-  const joined = ' ' + rest + ' ';
-  if (/(^|\s)--dangerously-skip-permissions(\s|$)/.test(joined)) return denyResult(RULE.TAMPER);
-  if (/(^|\s)--permission-mode(?:=|\s+)bypassPermissions(\s|$)/.test(joined)) return denyResult(RULE.TAMPER);
-  if (/(^|\s)--bare(\s|$)/.test(joined)) return denyResult(RULE.TAMPER);
-  if (/(^|\s)--safe-mode(\s|$)/.test(joined)) return denyResult(RULE.TAMPER);
+  const cookedResult = tokenizeCookedPosix(rest);
+  // Can't cook the argument list with confidence - the nested-Claude invariant already requires
+  // at least ask for anything not specifically resolved to a known-dangerous flag, so this simply
+  // falls through to that same floor rather than a distinct branch.
+  const tokens = cookedResult.ok ? cookedResult.tokens : [];
+
+  if (tokens.indexOf('--dangerously-skip-permissions') !== -1) return denyResult(RULE.TAMPER);
+  if (tokens.indexOf('--bare') !== -1) return denyResult(RULE.TAMPER);
+  if (tokens.indexOf('--safe-mode') !== -1) return denyResult(RULE.TAMPER);
+
+  const permissionModeValue = getFlagValue(tokens, '--permission-mode');
+  if (permissionModeValue === 'bypassPermissions') return denyResult(RULE.TAMPER);
 
   const settingSourcesValue = getFlagValue(tokens, '--setting-sources');
   if (settingSourcesValue !== undefined) {
@@ -708,10 +796,40 @@ function classifyNestedClaude(rest) {
   return askResult(RULE.TAMPER);
 }
 
-function classifyGit(rest, ctx) {
+// GIT_CONFIG_COUNT / GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n / GIT_CONFIG_PARAMETERS are real git
+// environment variables that inject arbitrary config values without touching any config file -
+// e.g. GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push makes `git p` behave
+// exactly like `git -c alias.p=push p`. Builds the same shape of alias map `-c` already produces,
+// plus a flag for "these env vars were present at all" (used for the ask-floor even when they
+// don't resolve to a specific known-dangerous alias).
+const GIT_CONFIG_ENV_RE = /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS)$/i;
+
+function collectGitConfigEnvAliases(assignments) {
+  const list = assignments || [];
+  const hasGitConfigEnv = list.some((a) => GIT_CONFIG_ENV_RE.test(a.name));
+  const byName = {};
+  for (const a of list) byName[a.name] = a.value;
+  const aliasMap = {};
+  const countRaw = byName.GIT_CONFIG_COUNT;
+  const count = countRaw !== undefined ? parseInt(countRaw, 10) : NaN;
+  if (Number.isInteger(count) && count >= 0 && count <= 50) {
+    for (let idx = 0; idx < count; idx++) {
+      const key = byName['GIT_CONFIG_KEY_' + idx];
+      const value = byName['GIT_CONFIG_VALUE_' + idx];
+      if (typeof key === 'string' && typeof value === 'string') {
+        const am = /^alias\.(.+)$/i.exec(key);
+        if (am) aliasMap[am[1]] = value;
+      }
+    }
+  }
+  return { aliasMap, hasGitConfigEnv };
+}
+
+function classifyGit(rest, ctx, assignments) {
   const tokens = tokenizeArgs(rest);
   let i = 0;
   const aliasMap = {};
+  const unresolvedAliasNames = [];
   while (i < tokens.length) {
     const t = tokens[i];
     if (t === '-c') {
@@ -728,14 +846,47 @@ function classifyGit(rest, ctx) {
       }
       continue;
     }
+    if (t === '--config-env' || /^--config-env=/.test(t)) {
+      // `git --config-env=<key>=<envvar>` reads the config value FROM the named environment
+      // variable rather than a literal - must be resolved via the collected leading assignments,
+      // not silently skipped like an unrecognized global flag.
+      let spec;
+      if (t === '--config-env') { spec = tokens[i + 1]; i += 2; } else { spec = t.slice('--config-env='.length); i += 1; }
+      if (typeof spec === 'string') {
+        const eq = spec.indexOf('=');
+        if (eq !== -1) {
+          const key = spec.slice(0, eq);
+          const envName = spec.slice(eq + 1);
+          const am = /^alias\.(.+)$/i.exec(key);
+          if (am) {
+            const envAssign = (assignments || []).find((a) => a.name === envName);
+            if (envAssign) aliasMap[am[1]] = envAssign.value;
+            else unresolvedAliasNames.push(am[1]);
+          }
+        }
+      }
+      continue;
+    }
     if (t === '-C' || t === '--git-dir' || t === '--work-tree' || t === '--namespace') { i += 2; continue; }
     if (/^--(git-dir|work-tree|namespace)=/.test(t)) { i += 1; continue; }
     if (t === '--no-pager' || t === '-p' || t === '--paginate' || t === '--no-replace-objects') { i += 1; continue; }
     if (t.startsWith('-')) { i += 1; continue; }
     break;
   }
+
+  const envCfg = collectGitConfigEnvAliases(assignments);
+  for (const k of Object.keys(envCfg.aliasMap)) {
+    if (!Object.prototype.hasOwnProperty.call(aliasMap, k)) aliasMap[k] = envCfg.aliasMap[k];
+  }
+
   let subcommand = tokens[i];
   let subRestTokens = tokens.slice(i + 1);
+
+  if (subcommand && unresolvedAliasNames.indexOf(subcommand) !== -1) {
+    // `--config-env` named an env var we have no value for - can't rule out it resolves to
+    // something dangerous, so ask rather than silently defer.
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: git alias source could not be resolved with confidence.' });
+  }
 
   if (subcommand && Object.prototype.hasOwnProperty.call(aliasMap, subcommand)) {
     const val = aliasMap[subcommand];
@@ -744,10 +895,10 @@ function classifyGit(rest, ctx) {
     subcommand = resolvedTokens[0];
     subRestTokens = resolvedTokens.slice(1).concat(subRestTokens);
   } else if (subcommand === undefined) {
-    return deferResult();
+    return envCfg.hasGitConfigEnv ? askResult(RULE.TAMPER) : deferResult();
   }
 
-  if (subcommand === 'push') return denyResult(RULE.GIT_PUSH);
+  if (subcommand === 'push' || subcommand === 'send-pack') return denyResult(RULE.GIT_PUSH);
 
   if (subcommand === 'config') return classifyGitConfig(subRestTokens);
   if (subcommand === 'remote') return classifyGitRemote(subRestTokens);
@@ -755,6 +906,10 @@ function classifyGit(rest, ctx) {
   // git commit is a recognized ASK family (shared baseline: Bash(git commit *)) that a wrapper
   // can hide from the literal-prefix matcher - always ask here too, direct or wrapped.
   if (subcommand === 'commit') return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git command requires manual approval.' });
+
+  // GIT_CONFIG_* env assignments were present but didn't resolve through to a specifically
+  // dangerous subcommand above - arbitrary config injection is still at least ask, never defer.
+  if (envCfg.hasGitConfigEnv) return askResult(RULE.TAMPER);
 
   return deferResult();
 }
@@ -851,9 +1006,22 @@ function classifyPackageManager(bin, rest, ctx) {
   let prefixPath = null;
   while (i < tokens.length) {
     const t = tokens[i];
-    if (bin === 'npm' && t === '--prefix') { prefixPath = tokens[i + 1]; i += 2; continue; }
-    if (bin === 'pnpm' && t === '-C') { prefixPath = tokens[i + 1]; i += 2; continue; }
-    if (PACKAGE_MANAGER_VALUE_FLAGS[bin] && PACKAGE_MANAGER_VALUE_FLAGS[bin].has(t)) { i += 2; continue; }
+    const flagSet = PACKAGE_MANAGER_VALUE_FLAGS[bin];
+    if (flagSet) {
+      if (flagSet.has(t)) {
+        if (t === '--prefix' || t === '-C') prefixPath = tokens[i + 1];
+        i += 2;
+        continue;
+      }
+      // Equals-form (`--prefix=x`, `--userconfig=x`) of the same known value-flags - a single
+      // token, not a flag+value pair, so it must not be mistaken for an unrecognized option.
+      const eqMatch = Array.from(flagSet).find((f) => t.indexOf(f + '=') === 0);
+      if (eqMatch) {
+        if (eqMatch === '--prefix' || eqMatch === '-C') prefixPath = t.slice(eqMatch.length + 1);
+        i += 1;
+        continue;
+      }
+    }
     if (t.startsWith('-')) {
       // Unrecognized global option before the subcommand - whether it takes a value can't be
       // determined with confidence (that's exactly how a value like `custom.npmrc` gets
@@ -864,6 +1032,17 @@ function classifyPackageManager(bin, rest, ctx) {
   }
   const subcommand = tokens[i];
   if (subcommand === 'publish') return denyResult(RULE.PUBLISH);
+  if (subcommand === 'exec') {
+    // `npm exec [--] <cmd...>` / `pnpm exec <cmd...>` / `yarn exec <cmd...>` runs an arbitrary
+    // command through the package manager - same package-runner semantics as npx/dlx: always at
+    // least ask, deny if the payload resolves to a specifically protected action.
+    let rawPayload = skipLeadingRawWords(rest, i + 1).trim();
+    if (/^--(\s|$)/.test(rawPayload)) rawPayload = rawPayload.replace(/^--\s*/, '');
+    const askFloor = askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a package-runner command with an unresolved payload.' });
+    if (rawPayload.length === 0) return askFloor;
+    const inner = classifyCommandString(rawPayload, 'posix', ctx, 0, { segments: 0 });
+    return inner.decision === 'defer' ? askFloor : inner;
+  }
   if (subcommand === 'run' || subcommand === 'run-script') {
     const scriptName = tokens[i + 1];
     return classifyPackageScript(scriptName, prefixPath, ctx);
@@ -922,7 +1101,10 @@ function classifyPackageScript(scriptName, prefixPath, ctx) {
     if (typeof nextBody === 'string') scriptBody = nextBody;
   }
 
-  const inner = classifySegment(scriptBody, 'posix', ctx);
+  // A script body is itself a full shell command string (may contain `&&`/`;`/multiple commands,
+  // e.g. `"deploy": "npm run build && vercel --prod"`), not a single opaque segment - route it
+  // through the same full re-segmentation as any other command string.
+  const inner = classifyCommandString(scriptBody, 'posix', ctx, 0, { segments: 0 });
   if (inner.decision === 'deny') return inner;
   return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a package.json script.' });
 }
@@ -959,25 +1141,48 @@ function classifyDeleteAlias(rest) {
 const SECRET_READ_PRIMITIVES = new Set(['cat', 'head', 'tail', 'less', 'more', 'sed', 'awk', 'grep', 'type', 'get-content', 'gc', 'base64', 'xxd', 'strings']);
 const SECRET_COPY_PRIMITIVES = new Set(['cp', 'copy', 'copy-item']);
 
+// Cook a raw argument token into its semantic value before path checks, so an escape sequence
+// like `.e\nv` (POSIX: backslash escapes the literal `n`, semantic value `.env`) is resolved
+// correctly instead of comparing the wrong raw string. Non-POSIX dialects pass through unchanged
+// (no cooking model implemented for CMD/PowerShell argument escaping here). Returns
+// {ok:true, cooked} or {ambiguous:true} if the escape/quote structure can't be resolved with
+// confidence - callers must ask rather than silently use the raw (possibly wrong) token.
+function cookArgForPath(raw, dialect) {
+  if (dialect !== 'posix') return { ok: true, cooked: raw };
+  const cooked = cookPosixWord(raw);
+  if (!cooked.ok) return { ambiguous: true };
+  return { ok: true, cooked: cooked.cooked };
+}
+
 function classifySecretPrimitive(bin, rest, segment, dialect, ctx) {
   if (bin === '.' || bin === 'source') {
     const tokens = tokenizeArgs(rest);
-    if (tokens[0] && isSecretPath(tokens[0], ctx)) return denyResult(RULE.SECRET);
-    if (tokens[0]) return askResult(RULE.COMPLEX);
+    if (tokens[0]) {
+      const cooked = cookArgForPath(tokens[0], dialect);
+      if (cooked.ambiguous) return askResult(RULE.COMPLEX);
+      if (isSecretPath(cooked.cooked, ctx)) return denyResult(RULE.SECRET);
+      return askResult(RULE.COMPLEX);
+    }
     return null;
   }
   if (SECRET_READ_PRIMITIVES.has(bin)) {
     const tokens = tokenizeArgs(rest).filter((t) => !t.startsWith('-'));
     if (tokens.length === 0) return null;
     for (const t of tokens) {
-      if (isSecretPath(t, ctx)) return denyResult(RULE.SECRET);
+      const cooked = cookArgForPath(t, dialect);
+      if (cooked.ambiguous) return askResult(RULE.COMPLEX);
+      if (isSecretPath(cooked.cooked, ctx)) return denyResult(RULE.SECRET);
     }
     if (tokens.some((t) => t.indexOf('$') !== -1 || t === '*' || /\*$/.test(t))) return askResult(RULE.SECRET);
     return null;
   }
   if (SECRET_COPY_PRIMITIVES.has(bin)) {
     const tokens = tokenizeArgs(rest).filter((t) => !t.startsWith('-'));
-    if (tokens[0] && isSecretPath(tokens[0], ctx)) return denyResult(RULE.SECRET);
+    if (tokens[0]) {
+      const cooked = cookArgForPath(tokens[0], dialect);
+      if (cooked.ambiguous) return askResult(RULE.COMPLEX);
+      if (isSecretPath(cooked.cooked, ctx)) return denyResult(RULE.SECRET);
+    }
     return null;
   }
   // input redirection `< secret-path`
@@ -1015,6 +1220,31 @@ function classifyInlineInterpreter(bin, rest, segment) {
     if (re.test(segment)) return askResult(RULE.COMPLEX); // matched call shape but dynamic argument
   }
   return askResult(RULE.COMPLEX);
+}
+
+// Known dynamic-execution primitives: the scanner does not try to be a full parser of their own
+// flag grammar (xargs/parallel/find's own options, PowerShell's -ArgumentList/-ScriptBlock
+// syntax) - these binaries are never treated as "unrecognized-but-safe" (never defer). Where the
+// payload is a plain positional command string (sudo/doas/xargs/parallel), it is re-classified so
+// a clearly protected action (e.g. `xargs git push`) still denies; PowerShell's flag-based cmdlets
+// and `find -exec/-ok` are flagged present without attempting to extract their payload.
+const DYNAMIC_EXEC_ASK_BINS = new Set(['xargs', 'parallel', 'sudo', 'doas']);
+const POWERSHELL_DYNAMIC_EXEC_BINS = new Set(['start-process', 'invoke-command']);
+const FIND_EXEC_FLAGS = new Set(['-exec', '-execdir', '-ok', '-okdir']);
+
+function classifyDynamicExecPrimitive(bin, rest, dialect, ctx) {
+  const askFloor = askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this command can dynamically execute another program.' });
+  if (bin === 'find') {
+    const tokens = tokenizeArgs(rest);
+    if (tokens.some((t) => FIND_EXEC_FLAGS.has(t))) return askFloor;
+    return null;
+  }
+  if (POWERSHELL_DYNAMIC_EXEC_BINS.has(bin)) return askFloor;
+  if (!DYNAMIC_EXEC_ASK_BINS.has(bin)) return null;
+  const trimmed = rest.trim();
+  if (trimmed.length === 0 || /^-/.test(trimmed)) return askFloor;
+  const inner = classifyCommandString(trimmed, dialect, ctx, 0, { segments: 0 });
+  return inner.decision === 'defer' ? askFloor : inner;
 }
 
 const EGRESS_BINARIES = new Set(['curl', 'wget', 'invoke-webrequest', 'iwr', 'invoke-restmethod', 'irm', 'scp', 'sftp']);
@@ -1058,20 +1288,46 @@ function classifyShellMutationTamper(bin, rest, segment, dialect, ctx) {
   if (!TAMPER_MUTATION_BINARIES.has(bin)) return null;
   const tokens = tokenizeArgs(rest).filter((t) => !t.startsWith('-'));
   for (const t of tokens) {
-    const r = checkTamperPath(t, ctx);
+    const cooked = cookArgForPath(t, dialect);
+    if (cooked.ambiguous) return askResult(RULE.COMPLEX);
+    const r = checkTamperPath(cooked.cooked, ctx);
     if (r) return r;
-    if (/claude\.md$/i.test(t.replace(/\\/g, '/'))) return askResult(RULE.TAMPER);
+    if (/claude\.md$/i.test(cooked.cooked.replace(/\\/g, '/'))) return askResult(RULE.TAMPER);
   }
   return null;
 }
 
+// Conservative redirection operator scanner: recognizes >, >>, >|, 1>, 1>>, 2>, 2>>, &>, <, 0< -
+// not a full parser, just enough to find "is there a redirection here, and if so what raw text
+// follows it". Alternation order matters: longer operator forms must be tried before the bare `>`
+// they are prefixed with, or `>>`/`>|` would only ever match their leading `>`.
+const REDIR_OUT_OP_RE = /(?:[012]?>>|[012]?>\||&>|[012]?>)\s*(\S+)/;
+const REDIR_IN_OP_RE = /0?<\s*(\S+)/;
+
+// Strip a single whole-string surrounding quote pair from a redirection target, so a quoted
+// protected literal (`> ".claude/settings.json"`) resolves the same as the unquoted form.
+function cookRedirectionTarget(raw) {
+  const t = raw.trim();
+  if (t.length >= 2 && ((t[0] === '"' && t[t.length - 1] === '"') || (t[0] === "'" && t[t.length - 1] === "'"))) {
+    return t.slice(1, -1);
+  }
+  return t;
+}
+
 function classifyRedirectionTamper(segment, ctx) {
-  const m = />{1,2}\s*([^\s<>|&;]+)/.exec(segment);
+  const m = REDIR_OUT_OP_RE.exec(segment);
   if (!m) return null;
-  const target = m[1];
+  const target = cookRedirectionTarget(m[1]);
   const r = checkTamperPath(target, ctx);
   if (r) return r;
   if (/claude\.md$/i.test(target.replace(/\\/g, '/'))) return askResult(RULE.TAMPER);
+  // Target contains an unresolved shell variable (`${HOME}`, `$P`, `%VAR%`) or `~` - the real
+  // destination can't be determined without resolving shell state, which this scanner never does.
+  // It could point at a protected file just as easily as anywhere else, so this is at least ask,
+  // never a silent defer.
+  if (looksUnresolvedVar(target)) {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: output redirection target could not be resolved with confidence.' });
+  }
   return null;
 }
 
@@ -1084,8 +1340,11 @@ function classifyRedirectionTamper(segment, ctx) {
 function classifyGlobalRedirection(segment, ctx) {
   const outTamper = classifyRedirectionTamper(segment, ctx);
   if (outTamper) return outTamper;
-  const inMatch = /<\s*([^\s<>|&;]+)/.exec(segment);
-  if (inMatch && isSecretPath(inMatch[1], ctx)) return denyResult(RULE.SECRET);
+  const inMatch = REDIR_IN_OP_RE.exec(segment);
+  if (inMatch) {
+    const target = cookRedirectionTarget(inMatch[1]);
+    if (isSecretPath(target, ctx)) return denyResult(RULE.SECRET);
+  }
   return null;
 }
 
@@ -1099,7 +1358,7 @@ const UNSUPPORTED_GRAMMAR_BINS = new Set(['if', 'then', 'else', 'elif', 'fi', 'f
 
 // ===================== Segment / command classification =====================
 
-function classifyEffectiveBinary(segment, dialect, ctx) {
+function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
   // Must run before any binary-specific dispatch below - see classifyGlobalRedirection.
   const globalRedir = classifyGlobalRedirection(segment, ctx);
   if (globalRedir) return globalRedir;
@@ -1112,14 +1371,32 @@ function classifyEffectiveBinary(segment, dialect, ctx) {
   // binary dispatch too, since these tokens are not real executable names at all.
   if (/[(){}]/.test(be.first)) return askResult(RULE.COMPLEX);
   if (be.first.startsWith('$')) return askResult(RULE.COMPLEX);
+  // CMD unresolved-variable executable target (`%COMSPEC%`, `!VAR!` delayed expansion) - the real
+  // executable can't be determined without resolving CMD environment state, which this scanner
+  // never does.
+  if (dialect === 'cmd' && (/%[A-Za-z_][A-Za-z0-9_]*%/.test(be.first) || /![A-Za-z_][A-Za-z0-9_]*!/.test(be.first))) {
+    return askResult(RULE.COMPLEX);
+  }
   const binRaw = basenameOf(be.first);
   if (dialect === 'posix' && UNSUPPORTED_GRAMMAR_BINS.has(binRaw)) return askResult(RULE.COMPLEX);
+
+  // Standalone script invariant: an executable literal ending in .sh/.ps1/.bat/.cmd is never
+  // content-inspected or treated as a known-safe unrecognized executable - always ask. Checked
+  // against `be.first` (before basenameOf, which strips .bat/.cmd as no-op Windows suffixes) so
+  // the extension is never lost before this check runs.
+  if (/\.(sh|ps1|bat|cmd)$/i.test(be.first)) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a standalone script file.' });
+  }
 
   const bin = binRaw;
   const rest = be.rest;
 
   if (bin === 'claude') return classifyNestedClaude(rest);
-  if (bin === 'git') return classifyGit(rest, ctx);
+  if (bin === 'git') return classifyGit(rest, ctx, assignments || []);
+  // `git-push`/`git-send-pack` are the real standalone binaries git's own subcommands dispatch
+  // to internally (present on PATH alongside `git` itself on most POSIX installs) - invoking them
+  // directly bypasses the `bin === 'git'` dispatch entirely unless handled here too.
+  if (bin === 'git-push' || bin === 'git-send-pack') return denyResult(RULE.GIT_PUSH);
 
   if (TAMPER_MUTATION_BINARIES.has(bin)) {
     const t = classifyShellMutationTamper(bin, rest, segment, dialect, ctx);
@@ -1136,6 +1413,9 @@ function classifyEffectiveBinary(segment, dialect, ctx) {
 
   const secretHit = classifySecretPrimitive(bin, rest, segment, dialect, ctx);
   if (secretHit) return secretHit;
+
+  const dynamicExecHit = classifyDynamicExecPrimitive(bin, rest, dialect, ctx);
+  if (dynamicExecHit) return dynamicExecHit;
 
   const egressHit = classifyEgress(bin, rest, dialect);
   if (egressHit) return egressHit;
@@ -1155,31 +1435,46 @@ function classifyEffectiveBinary(segment, dialect, ctx) {
   return deferResult();
 }
 
-function classifySegment(rawSegment, dialect, ctx) {
+// classifySegment resolves at most one wrapper hop, then either classifies the leaf binary or
+// recurses into classifyCommandString to re-segment the wrapper's payload from scratch (a payload
+// like `echo ok; git push` is shell content in its own right, not a single opaque argument).
+// `depth` bounds recursion (MAX_WRAPPER_DEPTH); `budget` is a mutable {segments} counter shared
+// across the whole recursive classification of one top-level command, bounding total segments
+// processed across all wrapper layers combined (MAX_TOTAL_SEGMENTS), not just per-layer.
+function classifySegment(rawSegment, dialect, ctx, depth, budget) {
+  if (depth > MAX_WRAPPER_DEPTH) return askResult(RULE.COMPLEX);
   if (hasComplexMarkers(rawSegment, dialect)) return askResult(RULE.COMPLEX);
   if (hasUnbalancedQuotes(rawSegment, dialect)) return askResult(RULE.COMPLEX);
-  const resolved = resolveEffective(rawSegment, dialect, 0, false);
+  const resolved = resolveOneHop(rawSegment, dialect);
   if (resolved.ambiguous) return askResult(RULE.COMPLEX);
-  const result = classifyEffectiveBinary(resolved.segment, resolved.dialect, ctx);
-  // Package-runner invariant (npx / pnpm dlx / yarn dlx): always at least ask, regardless of
-  // payload. A protected-action payload already denies/asks on its own merits and passes through
-  // unchanged; only an otherwise-unrecognized payload (which would defer) is floored to ask.
-  if (resolved.viaPackageRunner && result.decision === 'defer') {
-    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a package-runner command with an unresolved payload.' });
+  if (resolved.wrapped) {
+    const inner = classifyCommandString(resolved.payload, resolved.dialect, ctx, depth + 1, budget);
+    // Package-runner invariant (npx / pnpm dlx / yarn dlx): always at least ask, regardless of
+    // payload. A protected-action payload already denies/asks on its own merits and passes
+    // through unchanged; only an otherwise-unrecognized payload (which would defer) is floored.
+    if (resolved.packageRunner && inner.decision === 'defer') {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a package-runner command with an unresolved payload.' });
+    }
+    return inner;
   }
-  return result;
+  return classifyEffectiveBinary(resolved.segment, resolved.dialect, ctx, resolved.assignments);
 }
 
-function classifyCommandString(raw, initialDialect, ctx) {
+function classifyCommandString(raw, initialDialect, ctx, depth, budget) {
+  const effectiveDepth = depth || 0;
+  const effectiveBudget = budget || { segments: 0 };
+  if (effectiveDepth > MAX_WRAPPER_DEPTH) return askResult(RULE.COMPLEX);
   if (raw.length > MAX_COMMAND_LENGTH) return askResult(RULE.TOO_LONG);
   const normalized = initialDialect === 'posix' ? normalizeBackslashNewline(raw) : raw;
   const seg = segmentTopLevel(normalized, initialDialect);
   if (!seg.balanced) return askResult(RULE.COMPLEX);
   if (seg.segments.length > MAX_SEGMENTS) return askResult(RULE.COMPLEX);
+  effectiveBudget.segments += seg.segments.length;
+  if (effectiveBudget.segments > MAX_TOTAL_SEGMENTS) return askResult(RULE.COMPLEX);
   if (seg.segments.length === 0) return deferResult();
   let worst = null;
   for (const s of seg.segments) {
-    const r = classifySegment(s, initialDialect, ctx);
+    const r = classifySegment(s, initialDialect, ctx, effectiveDepth, effectiveBudget);
     worst = worseOf(worst, r);
   }
   return worst || deferResult();
@@ -1293,7 +1588,7 @@ module.exports = {
   hasUnbalancedQuotes,
   segmentTopLevel,
   tryStripWrapper,
-  resolveEffective,
+  resolveOneHop,
   classifyNestedClaude,
   classifyGit,
   classifyGitConfig,

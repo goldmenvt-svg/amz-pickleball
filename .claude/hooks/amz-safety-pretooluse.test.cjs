@@ -767,10 +767,10 @@ test('27. npm --prefix <path> run outside repo -> ask (cannot read)', () => {
   assertDecision(classifyBash('npm --prefix ../outside run build', ctx), 'ask', hook.RULE.COMPLEX);
 });
 
-test('27. standalone .sh script -> ask, content not read', () => {
+test('27. standalone .sh script -> ask, content not read (R5: was defer, now explicit standalone-script invariant)', () => {
   let readCalled = false;
   const ctx = { readFileSafe: () => { readCalled = true; return null; } };
-  assertDecision(classifyBash('./deploy.sh', ctx), 'defer');
+  assertDecision(classifyBash('./deploy.sh', ctx), 'ask', hook.RULE.COMPLEX);
   assert.equal(readCalled, false, 'standalone scripts must not be content-inspected');
 });
 
@@ -927,6 +927,159 @@ test('33F. claude --settings with non-empty permissions.deny override -> deny', 
 });
 test('33F. claude --settings with non-empty permissions.ask override -> deny', () => {
   assertDecision(classifyBash('claude --settings \'{"permissions":{"ask":["Bash(git commit *)"]}}\''), 'deny', hook.RULE.TAMPER);
+});
+
+// ===================== 34. R5: recursive-wrapper, tokenization, redirection gaps =====================
+
+// -- 34A. Recursive re-segmentation after wrapper stripping --
+test('34A. bash -lc "echo ok; git push" -> deny, not defer (payload re-segmented)', () => {
+  assertDecision(classifyBash('bash -lc "echo ok; git push"'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('34A. bash -lc "echo ok && npm publish" -> deny, not defer', () => {
+  assertDecision(classifyBash('bash -lc "echo ok && npm publish"'), 'deny', hook.RULE.PUBLISH);
+});
+test('34A. cmd /c "echo ok & git push" -> deny, not defer', () => {
+  assertDecision(classifyBash('cmd /c "echo ok & git push"'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('34A. powershell -Command "Write-Output ok; git push" -> deny, not defer', () => {
+  assertDecision(classifyBash('powershell -Command "Write-Output ok; git push"'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('34A. bash -lc "echo ok; curl localhost" -> ask, not defer', () => {
+  assertDecision(classifyBash('bash -lc "echo ok; curl localhost"'), 'ask', hook.RULE.EGRESS);
+});
+
+// -- 34B. Standalone script invariant --
+test('34B. ./deploy.sh -> ask, not defer', () => { assertDecision(classifyBash('./deploy.sh'), 'ask', hook.RULE.COMPLEX); });
+test('34B. ./deploy.ps1 -> ask, not defer', () => { assertDecision(classifyBash('./deploy.ps1'), 'ask', hook.RULE.COMPLEX); });
+test('34B. ./deploy.bat -> ask, not defer', () => { assertDecision(classifyBash('./deploy.bat'), 'ask', hook.RULE.COMPLEX); });
+test('34B. ./deploy.cmd -> ask, not defer', () => { assertDecision(classifyBash('./deploy.cmd'), 'ask', hook.RULE.COMPLEX); });
+test('34B.neg. echo deploy.sh -> defer (argument, not the executable)', () => {
+  assertDecision(classifyBash('echo deploy.sh'), 'defer');
+});
+test('34B.neg. printf "%s" deploy.ps1 -> defer', () => {
+  assertDecision(classifyBash('printf "%s" deploy.ps1'), 'defer');
+});
+
+// -- 34C. Wrapper option hardening --
+test('34C. time -p git push -> deny', () => { assertDecision(classifyBash('time -p git push'), 'deny', hook.RULE.GIT_PUSH); });
+test('34C. /usr/bin/time -p git push -> deny (absolute path)', () => {
+  assertDecision(classifyBash('/usr/bin/time -p git push'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('34C. nohup -- git push -> deny', () => { assertDecision(classifyBash('nohup -- git push'), 'deny', hook.RULE.GIT_PUSH); });
+test('34C. corepack -- npm publish -> deny', () => { assertDecision(classifyBash('corepack -- npm publish'), 'deny', hook.RULE.PUBLISH); });
+test('34C. env with unrecognized flag -> ask, not defer', () => {
+  assertDecision(classifyBash('env -u FOO git push'), 'ask', hook.RULE.COMPLEX);
+});
+
+// -- 34D. Redirection parser --
+test('34D. git status >| .claude/settings.json -> deny (noclobber-override operator)', () => {
+  assertDecision(classifyBash('git status >| .claude/settings.json'), 'deny', hook.RULE.TAMPER);
+});
+test('34D. git status > ".claude/settings.json" -> deny (quoted literal)', () => {
+  assertDecision(classifyBash('git status > ".claude/settings.json"'), 'deny', hook.RULE.TAMPER);
+});
+test('34D. git hash-object < ".env" -> deny (quoted secret input)', () => {
+  assertDecision(classifyBash('git hash-object < ".env"'), 'deny', hook.RULE.SECRET);
+});
+test('34D. git status > "${HOME}/.claude/settings.json" -> ask, not defer (unresolved var target)', () => {
+  assertDecision(classifyBash('git status > "${HOME}/.claude/settings.json"'), 'ask', hook.RULE.TAMPER);
+});
+test('34D. P=.claude/settings.json; git status > "$P" -> ask, not defer (dynamic var target)', () => {
+  assertDecision(classifyBash('P=.claude/settings.json; git status > "$P"'), 'ask', hook.RULE.TAMPER);
+});
+
+// -- 34E. GIT_CONFIG_* env assignments / --config-env / git-push / send-pack hardening --
+test('34E. GIT_CONFIG_COUNT alias injection resolves to push -> deny', () => {
+  assertDecision(classifyBash('GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('34E. git --config-env=alias.p=ENV resolved via leading assignment -> deny', () => {
+  assertDecision(classifyBash('ENV=push git --config-env=alias.p=ENV p'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('34E. /path/to/git-push standalone binary -> deny', () => {
+  assertDecision(classifyBash('/path/to/git-push origin master'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('34E. git send-pack -> deny', () => {
+  assertDecision(classifyBash('git send-pack origin refs/heads/master'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('34E. GIT_CONFIG_COUNT present but unresolved subcommand -> ask, not defer', () => {
+  assertDecision(classifyBash('GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=test git status'), 'ask', hook.RULE.TAMPER);
+});
+
+// -- 34F. Nested Claude cooked-token parsing --
+test('34F. claude --permission-mode bypassPermissions (space) -> deny', () => {
+  assertDecision(classifyBash('claude --permission-mode bypassPermissions'), 'deny', hook.RULE.TAMPER);
+});
+test('34F. claude --permission-mode=bypassPermissions (equals) -> deny', () => {
+  assertDecision(classifyBash('claude --permission-mode=bypassPermissions'), 'deny', hook.RULE.TAMPER);
+});
+test('34F. claude --permission-mode "bypassPermissions" (quoted space) -> deny', () => {
+  assertDecision(classifyBash('claude --permission-mode "bypassPermissions"'), 'deny', hook.RULE.TAMPER);
+});
+test("34F. claude --permission-mode='bypassPermissions' (quoted equals) -> deny", () => {
+  assertDecision(classifyBash("claude --permission-mode='bypassPermissions'"), 'deny', hook.RULE.TAMPER);
+});
+test('34F. claude --settings with escaped-quote JSON (double-quoted) -> deny', () => {
+  assertDecision(classifyBash('claude --settings "{\\"permissions\\":{\\"deny\\":[]}}"'), 'deny', hook.RULE.TAMPER);
+});
+
+// -- 34G. Package-manager execution forms --
+test('34G. npm exec -- vercel --prod -> deny', () => {
+  assertDecision(classifyBash('npm exec -- vercel --prod'), 'deny', hook.RULE.PROD_DEPLOY);
+});
+test('34G. pnpm exec vercel --prod -> deny', () => {
+  assertDecision(classifyBash('pnpm exec vercel --prod'), 'deny', hook.RULE.PROD_DEPLOY);
+});
+test('34G. yarn exec vercel --prod -> deny', () => {
+  assertDecision(classifyBash('yarn exec vercel --prod'), 'deny', hook.RULE.PROD_DEPLOY);
+});
+test('34G. npm exec with unresolved payload -> at least ask, not defer', () => {
+  assertDecision(classifyBash('npm exec -- some-unknown-tool'), 'ask', hook.RULE.COMPLEX);
+});
+test('34G. npm --userconfig=x publish (equals form) -> deny', () => {
+  assertDecision(classifyBash('npm --userconfig=x publish'), 'deny', hook.RULE.PUBLISH);
+});
+test('34G. npm --prefix=x publish (equals form) -> deny', () => {
+  assertDecision(classifyBash('npm --prefix=x publish'), 'deny', hook.RULE.PUBLISH);
+});
+test('34G. npx --package=vercel vercel --prod (equals form) -> deny', () => {
+  assertDecision(classifyBash('npx --package=vercel vercel --prod'), 'deny', hook.RULE.PROD_DEPLOY);
+});
+
+// -- 34H. Cooked-token POSIX escape resolution for arguments --
+test('34H. cat .e\\nv (backslash-escape cooks to .env) -> deny', () => {
+  assertDecision(classifyBash('cat .e\\nv'), 'deny', hook.RULE.SECRET);
+});
+test('34H. cp .e\\nv out -> deny', () => {
+  assertDecision(classifyBash('cp .e\\nv out'), 'deny', hook.RULE.SECRET);
+});
+test('34H. rm .claude/sett\\ings.json (cooks to protected settings path) -> deny', () => {
+  assertDecision(classifyBash('rm .claude/sett\\ings.json'), 'deny', hook.RULE.TAMPER);
+});
+
+// -- 34I. Known dynamic-execution primitives --
+test('34I. xargs git push -> deny (payload resolved)', () => {
+  assertDecision(classifyBash('xargs git push'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('34I. find . -exec git push {} \\; -> ask, not defer', () => {
+  assertDecision(classifyBash('find . -exec git push {} \\;'), 'ask', hook.RULE.COMPLEX);
+});
+test('34I. sudo git push -> deny (payload resolved)', () => {
+  assertDecision(classifyBash('sudo git push'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('34I. doas rm -rf /tmp/x -> deny (payload resolved)', () => {
+  assertDecision(classifyBash('doas rm -rf /tmp/x'), 'deny', hook.RULE.DELETE);
+});
+test('34I. parallel with unresolved payload -> at least ask, not defer', () => {
+  assertDecision(classifyBash('parallel echo ::: a b c'), 'ask', hook.RULE.COMPLEX);
+});
+test('34I. Start-Process git -ArgumentList push -> ask, not defer (PowerShell)', () => {
+  assertDecision(classifyPs('Start-Process git -ArgumentList push'), 'ask', hook.RULE.COMPLEX);
+});
+test('34I. Invoke-Command with scriptblock -> ask, not defer (PowerShell)', () => {
+  assertDecision(classifyPs('Invoke-Command -ComputerName x -ScriptBlock somecmd'), 'ask', hook.RULE.COMPLEX);
+});
+test('34I. cmd /c "%COMSPEC% /c git push" -> ask, not defer (unresolved CMD variable target)', () => {
+  assertDecision(classifyBash('cmd /c "%COMSPEC% /c git push"'), 'ask', hook.RULE.COMPLEX);
 });
 
 // ===================== 27b. Settings counts/config integrity =====================
@@ -1169,4 +1322,91 @@ test('IO: claude --permission-mode=bypassPermissions resolves through real proce
   const parsed = JSON.parse(r.stdout);
   assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('bypassPermissions'));
+});
+
+// ===================== R5 direct hook I/O: recursive-wrapper, tokenization, redirection gaps =====================
+
+test('IO: bash -lc "echo ok; git push" resolves through real process -> deny JSON, no defer, no raw command in reason', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'bash -lc "echo ok THIS_MUST_NOT_APPEAR; git push"' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  assert.notEqual(r.stdout, '', 'must not silently defer through the wrapper payload');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('THIS_MUST_NOT_APPEAR'));
+});
+
+test('IO: ./deploy.sh resolves through real process -> ask JSON, content not inspected', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: './deploy.sh' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+});
+
+test('IO: git status >| .claude/settings.json resolves through real process -> deny JSON, no raw command in reason', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git status >| .claude/settings.json' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('.claude/settings.json'));
+});
+
+test('IO: GIT_CONFIG alias-injection resolves through real process -> deny JSON, no raw command/secret in reason', () => {
+  const fixture = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p' },
+    cwd: 'C:/repo',
+  });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('alias.p'));
+});
+
+test('IO: claude --permission-mode "bypassPermissions" (quoted space form) resolves through real process -> deny JSON', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'claude --permission-mode "bypassPermissions"' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('bypassPermissions'));
+});
+
+test('IO: npm exec -- vercel --prod resolves through real process -> deny JSON, no raw command in reason', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'npm exec -- vercel --prod' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('vercel'));
+});
+
+test('IO: cat .e\\nv (backslash-escaped path) resolves through real process -> deny JSON, no raw command in reason', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'cat .e\\nv' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('.env'));
+});
+
+test('IO: xargs git push resolves through real process -> deny JSON, no raw command in reason', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'xargs git push' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('xargs'));
 });
