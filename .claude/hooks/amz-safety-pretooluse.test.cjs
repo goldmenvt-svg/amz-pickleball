@@ -1958,3 +1958,268 @@ test('IO 36F: dynamic subcommand across deploy family resolves through real proc
   assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('CMD'));
 });
+
+// ===================== 37. R8: expansion-metadata and project-runner bypasses =====================
+
+// --- 37A: Blocker A - rich path-token metadata (ANSI-C quote, locale quote, tilde, parameter expansion) ---
+test("37A. git status > $'.claude/settings.json' (ANSI-C quote) -> deny TAMPER (exact literal)", () => {
+  assertDecision(classifyBash("git status > $'.claude/settings.json'"), 'deny', hook.RULE.TAMPER);
+});
+test("37A. git status > $'\\x2eclaude/settings.json' (ANSI-C hex escape) -> deny TAMPER (exact literal)", () => {
+  assertDecision(classifyBash("git status > $'\\x2eclaude/settings.json'"), 'deny', hook.RULE.TAMPER);
+});
+test('37A. git status > $".claude/settings.json" (locale quote, untranslated) -> deny TAMPER (exact literal)', () => {
+  assertDecision(classifyBash('git status > $".claude/settings.json"'), 'deny', hook.RULE.TAMPER);
+});
+test('37A. git status > "${P:-.claude/settings.json}" (parameter default operator) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git status > "${P:-.claude/settings.json}"'), 'ask', hook.RULE.TAMPER);
+});
+test('37A. git status > "${P:=.claude/settings.json}" (parameter assign-default operator) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git status > "${P:=.claude/settings.json}"'), 'ask', hook.RULE.TAMPER);
+});
+test('37A. git status > "${P:+.claude/settings.json}" (parameter alt-value operator) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git status > "${P:+.claude/settings.json}"'), 'ask', hook.RULE.TAMPER);
+});
+test('37A. git status > "${!P}" (indirect parameter) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git status > "${!P}"'), 'ask', hook.RULE.TAMPER);
+});
+test('37A. git status > ~+/.claude/settings.json (tilde-plus, current dir) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git status > ~+/.claude/settings.json'), 'ask', hook.RULE.TAMPER);
+});
+test('37A. git status > ~/.claude/settings.json (tilde, home dir) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git status > ~/.claude/settings.json'), 'ask', hook.RULE.TAMPER);
+});
+test("37A. negative control: printf '%s' '$''.claude/settings.json''' (quote-concatenated literal, not ANSI-C) -> not deny", () => {
+  const r = classifyBash("printf '%s' '$''.claude/settings.json'''");
+  assert.notEqual(r.decision, 'deny');
+});
+test("37A. negative control: git status > '\\$HOME/literal' (single-quoted literal dollar) -> not a hard-deny", () => {
+  const r = classifyBash("git status > '$HOME/literal'");
+  assert.notEqual(r.decision, 'deny');
+});
+test("37A. negative control: git status > '.clau?e/settings.json' (fully quoted wildcard, literal) -> defer", () => {
+  assertDecision(classifyBash("git status > '.clau?e/settings.json'"), 'defer');
+});
+
+// --- 37B: Blocker B - source/destination-aware cp/mv/content-writer classification ---
+test("37B. cp harmless $'.claude/settings.json' (exact ANSI-C destination) -> deny TAMPER", () => {
+  assertDecision(classifyBash("cp harmless $'.claude/settings.json'"), 'deny', hook.RULE.TAMPER);
+});
+test('37B. cp harmless "${P:-.claude/settings.json}" (dynamic destination) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('cp harmless "${P:-.claude/settings.json}"'), 'ask', hook.RULE.TAMPER);
+});
+test('37B. cp harmless .clau?e/settings.json (glob destination) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('cp harmless .clau?e/settings.json'), 'ask', hook.RULE.TAMPER);
+});
+test("37B. mv harmless $'.claude/settings.json' (exact ANSI-C destination) -> deny TAMPER", () => {
+  assertDecision(classifyBash("mv harmless $'.claude/settings.json'"), 'deny', hook.RULE.TAMPER);
+});
+test('37B. mv harmless "${P:-.claude/settings.json}" (dynamic destination) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('mv harmless "${P:-.claude/settings.json}"'), 'ask', hook.RULE.TAMPER);
+});
+test('37B. mv harmless .clau?e/settings.json (glob destination) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('mv harmless .clau?e/settings.json'), 'ask', hook.RULE.TAMPER);
+});
+test('37B. negative control: cp .env harmless (secret source, unaffected by destination policy) -> deny SECRET', () => {
+  assertDecision(classifyBash('cp .env harmless'), 'deny', hook.RULE.SECRET);
+});
+test('37B. negative control: cp .e?v harmless (glob secret source) -> ask SECRET, not defer', () => {
+  assertDecision(classifyBash('cp .e?v harmless'), 'ask', hook.RULE.SECRET);
+});
+test('37B. cp a b c dest (multi-source, none secret, dest not protected) -> defer', () => {
+  assertDecision(classifyBash('cp a b c dest'), 'defer');
+});
+test('37B. cp .env b c dest (multi-source, non-first source is secret) -> deny SECRET', () => {
+  assertDecision(classifyBash('cp a .env c dest'), 'deny', hook.RULE.SECRET);
+});
+
+// --- 37C: Blocker C - git command-runner registry (rebase --exec, filter-branch, difftool/mergetool) ---
+test("37C. git rebase --exec 'git push' main -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git rebase --exec 'git push' main"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("37C. git rebase --exec='npm publish' main -> deny PUBLISH", () => {
+  assertDecision(classifyBash("git rebase --exec='npm publish' main"), 'deny', hook.RULE.PUBLISH);
+});
+test("37C. git rebase -x 'vercel --prod' main -> deny PROD_DEPLOY", () => {
+  assertDecision(classifyBash("git rebase -x 'vercel --prod' main"), 'deny', hook.RULE.PROD_DEPLOY);
+});
+test("37C. git filter-branch --tree-filter 'git push' -- --all -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git filter-branch --tree-filter 'git push' -- --all"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("37C. git filter-branch --setup 'npm publish' HEAD -> deny PUBLISH", () => {
+  assertDecision(classifyBash("git filter-branch --setup 'npm publish' HEAD"), 'deny', hook.RULE.PUBLISH);
+});
+test("37C. git difftool --extcmd 'git push' -> deny GIT_PUSH (resolved exactly)", () => {
+  assertDecision(classifyBash("git difftool --extcmd 'git push'"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('37C. negative control: git rebase main (no exec/tool flag) -> ask COMPLEX, not defer (unknown option shape)', () => {
+  assertDecision(classifyBash('git rebase main'), 'ask', hook.RULE.COMPLEX);
+});
+test('37C. negative control: git mergetool (bare) -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git mergetool'), 'ask', hook.RULE.COMPLEX);
+});
+
+// --- 37D: Blocker D - npm/pnpm/yarn lifecycle scripts and runner families ---
+test('37D. npm x -- vercel --prod (npm x aliases npm exec) -> deny PROD_DEPLOY', () => {
+  assertDecision(classifyBash('npm x -- vercel --prod'), 'deny', hook.RULE.PROD_DEPLOY);
+});
+test("37D. npm x -c 'git push' (--call short form) -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash('npm x -c "git push"'), 'deny', hook.RULE.GIT_PUSH);
+});
+test("37D. npm x --call='npm publish' (equals form) -> deny PUBLISH", () => {
+  assertDecision(classifyBash("npm x --call='npm publish'"), 'deny', hook.RULE.PUBLISH);
+});
+test("37D. npm explore foo -- git push -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash('npm explore foo -- git push'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('37D. npm start -> ask COMPLEX, not defer (no package.json readable)', () => {
+  assertDecision(classifyBash('npm start'), 'ask', hook.RULE.COMPLEX);
+});
+test('37D. npm stop -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('npm stop'), 'ask', hook.RULE.COMPLEX);
+});
+test('37D. npm restart -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('npm restart'), 'ask', hook.RULE.COMPLEX);
+});
+test('37D. pnpm start -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('pnpm start'), 'ask', hook.RULE.COMPLEX);
+});
+test('37D. yarn start -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('yarn start'), 'ask', hook.RULE.COMPLEX);
+});
+test('37D. npm start with a protected lifecycle script body -> deny GIT_PUSH', () => {
+  const pkgJson = JSON.stringify({ scripts: { start: 'git push' } });
+  const r = classifyBash('npm start', { readFileSafe: () => pkgJson });
+  assertDecision(r, 'deny', hook.RULE.GIT_PUSH);
+});
+test('37D. npm init foo (package-spec form) -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('npm init foo'), 'ask', hook.RULE.COMPLEX);
+});
+test('37D. negative control: bare npm init (no package spec) -> defer (normal scaffolding policy)', () => {
+  assertDecision(classifyBash('npm init'), 'defer');
+});
+
+// --- 37E: Blocker E - additional shell interpreters and project-runner ask-floor ---
+test("37E. ash -c 'git push' -> deny GIT_PUSH", () => { assertDecision(classifyBash("ash -c 'git push'"), 'deny', hook.RULE.GIT_PUSH); });
+test("37E. fish -c 'git push' -> deny GIT_PUSH", () => { assertDecision(classifyBash("fish -c 'git push'"), 'deny', hook.RULE.GIT_PUSH); });
+test("37E. csh -c 'git push' -> deny GIT_PUSH", () => { assertDecision(classifyBash("csh -c 'git push'"), 'deny', hook.RULE.GIT_PUSH); });
+test("37E. tcsh -c 'git push' -> deny GIT_PUSH", () => { assertDecision(classifyBash("tcsh -c 'git push'"), 'deny', hook.RULE.GIT_PUSH); });
+test('37E. negative control: fish -c "echo hi" (harmless payload) -> defer', () => {
+  assertDecision(classifyBash('fish -c "echo hi"'), 'defer');
+});
+for (const bin of ['make', 'nmake', 'just', 'task', 'rake', 'ant', 'gradle', 'gradlew', 'mvn']) {
+  test(`37E. ${bin} (project recipe runner, bare) -> ask COMPLEX, not defer`, () => {
+    assertDecision(classifyBash(bin), 'ask', hook.RULE.COMPLEX);
+  });
+}
+
+// --- 37F: Blocker F - metadata-aware nested git classifiers (remote/config/submodule/bisect) ---
+test('37F. git remote "$CMD" origin x (dynamic sub-subcommand) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git remote "$CMD" origin x'), 'ask', hook.RULE.TAMPER);
+});
+test('37F. git remote ${CMD} origin x (dynamic sub-subcommand, unquoted) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git remote ${CMD} origin x'), 'ask', hook.RULE.TAMPER);
+});
+test('37F. git remote se\\t-url origin x (POSIX-escaped exact sub-subcommand) -> deny TAMPER', () => {
+  assertDecision(classifyBash('git remote se\\t-url origin x'), 'deny', hook.RULE.TAMPER);
+});
+test('37F. negative control: git remote -v (existing behavior preserved) -> defer', () => {
+  assertDecision(classifyBash('git remote -v'), 'defer');
+});
+test('37F. git config "$KEY" value (dynamic config key) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git config "$KEY" value'), 'ask', hook.RULE.TAMPER);
+});
+test('37F. git config alias.evil "!rm -rf /" (exact sensitive key still denies) -> deny TAMPER', () => {
+  assertDecision(classifyBash('git config alias.evil "!rm -rf /"'), 'deny', hook.RULE.TAMPER);
+});
+test('37F. git submodule "$SUB" x (dynamic sub-subcommand) -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git submodule "$SUB" x'), 'ask', hook.RULE.COMPLEX);
+});
+test('37F. git bisect "$CMD" (dynamic sub-subcommand) -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git bisect "$CMD"'), 'ask', hook.RULE.COMPLEX);
+});
+test('37F. negative control: git submodule status (unaffected) -> defer', () => {
+  assertDecision(classifyBash('git submodule status'), 'defer');
+});
+
+// --- 37: direct hook-process I/O tests (one per blocker, with leak assertions) ---
+test('IO 37A: ANSI-C quoted redirection target resolves through real process -> deny, no cooked path leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: "git status > $'.claude/settings.json'" }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('.claude/settings.json'));
+});
+
+test('IO 37A: parameter-expansion-operator redirection target resolves through real process -> ask, not defer, no target leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git status > "${P:-.claude/settings.json}"' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('${P'));
+});
+
+test('IO 37B: glob cp destination resolves through real process -> ask, no raw glob token leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'cp harmless .clau?e/settings.json' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('.clau?e'));
+});
+
+test('IO 37C: git rebase --exec payload resolves through real process -> deny, no payload text leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: "git rebase --exec 'git push' main" }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('rebase'));
+});
+
+test('IO 37D: npm explore payload resolves through real process -> deny, no payload text leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'npm explore foo -- git push' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('explore'));
+});
+
+test('IO 37E: fish -c wrapper resolves through real process -> deny, no raw command leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: "fish -c 'git push'" }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('fish'));
+});
+
+test('IO 37E: project-runner (make) resolves through real process -> ask, never defer, no raw command leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'make DEPLOY_TARGET_MARKER' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  assert.notEqual(r.stdout, '', 'must not silently defer');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('DEPLOY_TARGET_MARKER'));
+});
+
+test('IO 37F: dynamic git remote sub-subcommand resolves through real process -> ask, no target marker leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git remote "$CMD" origin SHOULD_NOT_LEAK' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('SHOULD_NOT_LEAK'));
+});
