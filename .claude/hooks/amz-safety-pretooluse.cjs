@@ -169,6 +169,118 @@ function normalizePathString(raw, cwd) {
   return { ok: true, canonical: s, comparisonPath: s.toLowerCase() };
 }
 
+// ===================== R11 Blocker E: Windows-aware protected-path identity =====================
+
+// A DOS-style path component silently has trailing ASCII dots/spaces stripped by the Win32 layer
+// for a NORMAL path (not a `\\?\`-namespaced one, where this normalization is explicitly disabled -
+// see normalizeProtectedPath). `.`/`..` are path-syntax markers, not filenames, and must never have
+// this applied (stripping ".." down to "" would silently break parent-directory navigation).
+function stripDosComponent(component) {
+  if (component === '.' || component === '..') return component;
+  return component.replace(/[. ]+$/, '');
+}
+
+// An 8.3 "short name" component shape (e.g. `SETTIN~1.JSO`, `CLAUDE~1`) - up to 8 chars, a `~`, one
+// or more digits, and an optional up-to-3-char extension. This scanner never attempts to guess the
+// real short-name mapping (that requires filesystem access); a component with this shape is only
+// ever a signal to ask instead of comparing normally, never something to resolve or defer past.
+const SHORT_83_COMPONENT_RE = /^[^.\/\\]{1,8}~[0-9]{1,5}(\.[^.\/\\]{0,3})?$/;
+
+function hasShort83Component(pathStr) {
+  return normalizeSlashes(pathStr).split('/').some((p) => p.length > 0 && SHORT_83_COMPONENT_RE.test(p));
+}
+
+// NTFS Alternate Data Stream suffix (`file:stream:$DATA` or `file::$DATA` for the default/nameless
+// stream) on the FINAL path component only - a colon elsewhere (the drive-letter colon, `C:`) is not
+// stream syntax. Returns {base, streamName} (streamName '' = default stream) or null if no stream
+// suffix is present. `s` must already have backslashes normalized to forward slashes.
+function splitNtfsStream(s) {
+  const driveM = /^([A-Za-z]):(.*)$/.exec(s);
+  const prefix = driveM ? driveM[1] + ':' : '';
+  const body = driveM ? driveM[2] : s;
+  const lastSlash = body.lastIndexOf('/');
+  const dir = lastSlash === -1 ? '' : body.slice(0, lastSlash + 1);
+  const last = lastSlash === -1 ? body : body.slice(lastSlash + 1);
+  const m = /^([^:]+):([^:]*):\$DATA$/i.exec(last);
+  if (!m) return null;
+  return { base: prefix + dir + m[1], streamName: m[2] };
+}
+
+// normalizeProtectedPath: Win32-aware superset of normalizePathString. Handles device-namespace
+// prefixes (`\\?\C:\...` / `\\?\UNC\server\share\...` / unknown `\\.\...`), a plain UNC network
+// share, an NTFS alternate-data-stream suffix, DOS trailing-dot/trailing-space component collapsing,
+// and flags an 8.3 short-name-shaped component. Returns
+// {ok, canonical, comparisonPath, windowsNamespace, streamName, ambiguous} plus `short83`/`networkUnc`
+// (additional metadata the spec's return shape doesn't preclude).
+function normalizeProtectedPath(raw, ctx) {
+  if (typeof raw !== 'string' || raw.length === 0) return { ok: false, ambiguous: true, windowsNamespace: 'none', streamName: null };
+  if (raw.indexOf('\0') !== -1) return { ok: false, ambiguous: true, windowsNamespace: 'none', streamName: null };
+  // NOTE: the dynamic-variable check (looksUnresolvedVar) deliberately runs AFTER NTFS-stream
+  // stripping below, not here - the literal `$DATA` stream-type marker (`file::$DATA`) would
+  // otherwise be misread as an unresolved shell variable before it's ever recognized as ADS syntax.
+  let s = raw.trim();
+  if (s.length >= 2 && ((s[0] === '"' && s[s.length - 1] === '"') || (s[0] === "'" && s[s.length - 1] === "'"))) {
+    s = s.slice(1, -1);
+  }
+
+  let windowsNamespace = 'none';
+  let skipDosNormalization = false;
+
+  if (/^\\\\\?\\/.test(s)) {
+    const rest = s.slice(4);
+    const uncM = /^UNC\\(.+)$/i.exec(rest);
+    if (uncM) {
+      s = '//' + normalizeSlashes(uncM[1]);
+      windowsNamespace = 'device-unc';
+    } else {
+      const driveM = /^([A-Za-z]):\\?(.*)$/.exec(rest);
+      if (driveM) {
+        s = driveM[1] + ':/' + normalizeSlashes(driveM[2]);
+        windowsNamespace = 'device-drive';
+      } else {
+        return { ok: false, ambiguous: true, windowsNamespace: 'device-unknown', streamName: null };
+      }
+    }
+    // `\\?\` explicitly disables the Win32 trailing-dot/trailing-space and 8.3 alias normalization -
+    // a `\\?\C:\foo.` truly names a file literally ending in a dot, never collapsed to `foo`.
+    skipDosNormalization = true;
+  } else if (/^\\\\\.\\/.test(s)) {
+    // DOS device namespace (physical drives, named devices, or a drive-letter alias) - never guess
+    // at what this resolves to.
+    return { ok: false, ambiguous: true, windowsNamespace: 'device-unknown', streamName: null };
+  }
+
+  const slashNorm = normalizeSlashes(s);
+
+  if (windowsNamespace === 'none' && /^\/\/[^\/]/.test(slashNorm)) {
+    return { ok: true, ambiguous: false, networkUnc: true, windowsNamespace: 'none', streamName: null, canonical: slashNorm, comparisonPath: slashNorm.toLowerCase() };
+  }
+  if (windowsNamespace === 'device-unc') {
+    return { ok: true, ambiguous: false, networkUnc: true, windowsNamespace, streamName: null, canonical: slashNorm, comparisonPath: slashNorm.toLowerCase() };
+  }
+
+  const streamSplit = splitNtfsStream(slashNorm);
+  const forNorm = streamSplit ? streamSplit.base : slashNorm;
+  if (looksUnresolvedVar(forNorm)) {
+    return { ok: false, ambiguous: true, windowsNamespace, streamName: streamSplit ? streamSplit.streamName : null };
+  }
+  const dosNormalized = skipDosNormalization ? forNorm : forNorm.split('/').map(stripDosComponent).join('/');
+
+  const base = normalizePathString(dosNormalized, ctx.cwd);
+  if (!base.ok) return { ok: false, ambiguous: true, windowsNamespace, streamName: streamSplit ? streamSplit.streamName : null };
+
+  return {
+    ok: true,
+    ambiguous: false,
+    canonical: base.canonical,
+    comparisonPath: base.comparisonPath,
+    windowsNamespace,
+    streamName: streamSplit ? streamSplit.streamName : null,
+    short83: !skipDosNormalization && hasShort83Component(raw),
+    networkUnc: false,
+  };
+}
+
 function normalizeHomeCandidate(raw) {
   if (typeof raw !== 'string' || raw.length === 0) return null;
   let s = normalizeSlashes(raw);
@@ -228,16 +340,35 @@ function matchesProtectedEntry(cmpPath, entry) {
 
 function checkTamperPath(rawPath, ctx) {
   if (typeof rawPath !== 'string' || rawPath.length === 0) return null;
-  const norm = normalizePathString(rawPath, ctx.cwd);
+  const norm = normalizeProtectedPath(rawPath, ctx);
   if (!norm.ok) {
+    if (norm.windowsNamespace === 'device-unknown') {
+      return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this targets an unrecognized Windows device-namespace path (\\\\.\\...).' });
+    }
     if (/\.claude[\\/]settings(\.local)?\.json$/i.test(rawPath) || /\.claude[\\/]hooks[\\/]/i.test(rawPath)) {
       return askResult(RULE.TAMPER);
     }
     return null;
   }
+  // A plain UNC network share destination sends data over the network (SMB), the same egress
+  // concern as the /dev/tcp redirection targets handled in classifyGlobalRedirection - never a local
+  // filesystem write this scanner's protected-path list can meaningfully compare against.
+  if (norm.networkUnc) {
+    return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: this writes to a network (UNC) share instead of a local path.' });
+  }
   const entries = buildProtectedPathEntries(ctx);
   for (const e of entries) {
     if (matchesProtectedEntry(norm.comparisonPath, e)) return denyResult(RULE.TAMPER);
+  }
+  // An 8.3 short-name-shaped component inside/near the repo root cannot be ruled out as an alias for
+  // a protected file's real short name without filesystem access - ask rather than silently compare
+  // the long-name text and pass.
+  if (norm.short83) {
+    const repoRoot83 = normalizePathString(ctx.repoRoot, ctx.cwd);
+    const insideRepo83 = repoRoot83.ok && (norm.comparisonPath === repoRoot83.comparisonPath || norm.comparisonPath.startsWith(repoRoot83.comparisonPath + '/'));
+    if (insideRepo83) {
+      return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this path contains an 8.3 short-name-shaped component near the repository and could not be confirmed safe.' });
+    }
   }
   // No home candidate could be resolved, but the target still has the exact shape of a
   // home-relative settings file outside the repo -> cannot confirm/deny, ask rather than silently pass.
@@ -262,7 +393,13 @@ function isSecretPath(rawArg, ctx) {
     else if (norm.comparisonPath.startsWith(repoRoot.comparisonPath + '/')) rel = norm.comparisonPath.slice(repoRoot.comparisonPath.length + 1);
   }
   const bareForm = rawArg.trim().replace(/^["']|["']$/g, '');
-  const bareLower = normalizeSlashes(bareForm).toLowerCase();
+  let bareLower = normalizeSlashes(bareForm).toLowerCase();
+  // R11 Blocker E: strip an NTFS alternate-data-stream suffix and per-component trailing dot/space
+  // before the basename/suffix checks below, so `.env::$DATA` or `.env.` still match `.env` instead
+  // of evading detection through a Windows path-identity alias.
+  const streamSplit = splitNtfsStream(bareLower);
+  if (streamSplit) bareLower = streamSplit.base;
+  bareLower = bareLower.split('/').map(stripDosComponent).join('/');
   const basename = bareLower.split('/').pop();
 
   if (SECRET_BASENAME_EXACT.has(basename)) return true;
@@ -1284,6 +1421,15 @@ const GIT_COMMAND_BEARING_CONFIG_KEY_RES = [
   /^mergetool\..+\.cmd$/i,
   /^filter\..+\.(clean|smudge|process)$/i,
   /^core\.fsmonitor$/i,
+  // R11 Blocker C additions: gpg.program/gpg.ssh.program name the external signing/verification
+  // binary git invokes; log.showSignature forces the same signature-verification path as
+  // --show-signature purely via config; diff.<driver>.textconv/.command define a named diff driver's
+  // external program (the same risk as difftool.*.cmd, just reached through `diff.*` instead).
+  /^gpg\.program$/i,
+  /^gpg\.ssh\.program$/i,
+  /^log\.showsignature$/i,
+  /^diff\..+\.textconv$/i,
+  /^diff\..+\.command$/i,
 ];
 
 function isGitCommandBearingConfigKey(key) {
@@ -1322,6 +1468,54 @@ const GIT_READONLY_SUBCOMMANDS = new Set(['status', 'diff', 'log', 'show', 'rev-
 const GIT_OUTPUT_FILE_SUBCOMMANDS = new Set(['diff', 'log', 'show']);
 const GIT_EXTCONTENT_SUBCOMMANDS = new Set(['diff', 'log', 'show']);
 
+// R11 Blocker C: metadata-only diff display modes never render file content, so they never invoke a
+// textconv/ext-diff driver - a `diff`/`show` invocation may defer ONLY when every flag present is in
+// this set (or --no-textconv/--no-ext-diff are both explicitly present, checked separately).
+const GIT_DIFF_SHOW_METADATA_ONLY_RE = /^(--stat|--shortstat|--numstat|--name-only|--name-status|--raw|--summary|--check)$/;
+
+// R11 Blocker D: per-subcommand recognized-flag tables for the "unsupported option -> ask" invariant.
+// Only dash-prefixed tokens are checked against these - a positional revision/pathspec/object
+// argument is never required to be in an allowlist to pass through.
+const GIT_READONLY_FLAG_TABLES = {
+  status: {
+    bool: new Set(['-s', '--short', '-b', '--branch', '-v', '--verbose', '--porcelain', '--long']),
+    re: /^--untracked-files(=\S+)?$|^-u(no|normal|all)?$/,
+  },
+  log: {
+    bool: new Set(['--oneline', '-p', '-u', '--patch', '--patch-with-stat', '--stat', '--name-only', '--name-status', '--show-signature', '--no-textconv', '--no-ext-diff']),
+    re: /^-[0-9]+$|^--(format|pretty)(=.*)?$/,
+  },
+  'rev-parse': {
+    bool: new Set(['--verify', '--short', '--is-inside-work-tree', '--show-toplevel', '--abbrev-ref', '--symbolic-full-name', '-q', '--quiet']),
+  },
+  'ls-files': {
+    bool: new Set(['-c', '--cached', '-d', '--deleted', '-m', '--modified', '-o', '--others', '-i', '--ignored', '--exclude-standard', '-z']),
+  },
+  'ls-tree': {
+    bool: new Set(['-r', '-d', '-l', '--long', '-z', '--name-only', '--name-status', '--abbrev', '--full-tree']),
+  },
+  'cat-file': {
+    bool: new Set(['-p', '-t', '-s', '-e', '--batch', '--batch-check', '--follow-symlinks']),
+  },
+};
+
+function isRecognizedGitReadonlyFlag(subcommand, raw) {
+  const table = GIT_READONLY_FLAG_TABLES[subcommand];
+  if (!table) return false;
+  if (table.bool && table.bool.has(raw)) return true;
+  if (table.re && table.re.test(raw)) return true;
+  return false;
+}
+
+function classifyGitReadonlyUnknownOptionGuard(subcommand, subTokens) {
+  for (const t of subTokens) {
+    if (typeof t === 'string' && t[0] === '-' && t !== '-' && t !== '--' && !isRecognizedGitReadonlyFlag(subcommand, t)) {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option for this git read-only command.' });
+    }
+  }
+  return null;
+}
+
 function classifyGitReadonlySubcommand(subcommand, subTokens, subMeta, ctx) {
   if (subcommand === 'cat-file') {
     for (const t of subTokens) {
@@ -1329,8 +1523,32 @@ function classifyGitReadonlySubcommand(subcommand, subTokens, subMeta, ctx) {
         return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git cat-file --filters/--textconv can run an external content filter or textconv driver from repository config or .gitattributes.' });
       }
     }
+    const guard = classifyGitReadonlyUnknownOptionGuard('cat-file', subTokens);
+    if (guard) return guard;
     return deferResult();
   }
+
+  // R11 Blocker C: signature verification (--show-signature, or a --format/--pretty value containing
+  // a %G placeholder such as %G?/%GK/%GS/%GT) can invoke an external GPG (or gpg.ssh.program)
+  // configured in git config - always ask, checked before anything else can allow a defer.
+  if (subcommand === 'log' || subcommand === 'show') {
+    for (let idx = 0; idx < subTokens.length; idx++) {
+      const t = subTokens[idx];
+      if (t === '--show-signature') {
+        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this verifies a commit/tag signature, which can invoke an external GPG (or gpg.ssh) program from git config.' });
+      }
+      if (t === '--format' || t === '--pretty') {
+        const val = subTokens[idx + 1];
+        if (typeof val === 'string' && /%G/i.test(val)) {
+          return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this format string requests signature-verification data (%G placeholder).' });
+        }
+      }
+      if (typeof t === 'string' && /^--(format|pretty)=/.test(t) && /%G/i.test(t)) {
+        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this format string requests signature-verification data (%G placeholder).' });
+      }
+    }
+  }
+
   if (GIT_OUTPUT_FILE_SUBCOMMANDS.has(subcommand) || GIT_EXTCONTENT_SUBCOMMANDS.has(subcommand)) {
     for (let idx = 0; idx < subTokens.length; idx++) {
       const t = subTokens[idx];
@@ -1358,6 +1576,44 @@ function classifyGitReadonlySubcommand(subcommand, subTokens, subMeta, ctx) {
       }
     }
   }
+
+  // R11 Blocker C: `diff` is always content-producing by nature, and `show` defaults to a patch for
+  // a commit target too - both may defer ONLY when proven not to invoke a driver: either every
+  // dash-flag present is a metadata-only display mode (never renders content), or --no-textconv AND
+  // --no-ext-diff are both explicitly present. The disallowed-flag check runs even in the
+  // driver-disabled branch, so an unrecognized flag combined with --no-textconv/--no-ext-diff still asks.
+  if (subcommand === 'diff' || subcommand === 'show') {
+    const hasNoTextconv = subTokens.indexOf('--no-textconv') !== -1;
+    const hasNoExtDiff = subTokens.indexOf('--no-ext-diff') !== -1;
+    const hasMetadataOnlyModeFlag = subTokens.some((t) => typeof t === 'string' && GIT_DIFF_SHOW_METADATA_ONLY_RE.test(t));
+    const hasDisallowedFlag = subTokens.some((t) => typeof t === 'string' && t[0] === '-' && t !== '-' && !GIT_DIFF_SHOW_METADATA_ONLY_RE.test(t) && t !== '--no-textconv' && t !== '--no-ext-diff');
+    const isDriverDisabled = hasNoTextconv && hasNoExtDiff;
+    const isMetadataOnly = hasMetadataOnlyModeFlag && !hasDisallowedFlag;
+    if (!isDriverDisabled && !isMetadataOnly) {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this can render diff content through an external textconv or ext-diff driver from repository config; pass --no-textconv --no-ext-diff or a metadata-only display flag to allow.' });
+    }
+    if (hasDisallowedFlag) {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option for this git read-only command.' });
+    }
+    return deferResult();
+  }
+
+  // R11 Blocker C: `log`'s default (no patch flag) never renders diff content, so it keeps the old
+  // defer-eligible path; only once a patch-producing flag is requested does the same textconv/
+  // ext-diff concern apply, and only --no-textconv + --no-ext-diff (both) proves it safe.
+  if (subcommand === 'log') {
+    const hasPatchFlag = subTokens.some((t) => t === '-p' || t === '-u' || t === '--patch' || t === '--patch-with-stat');
+    if (hasPatchFlag) {
+      const hasNoTextconv = subTokens.indexOf('--no-textconv') !== -1;
+      const hasNoExtDiff = subTokens.indexOf('--no-ext-diff') !== -1;
+      if (!(hasNoTextconv && hasNoExtDiff)) {
+        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this shows patch content, which can invoke an external textconv or ext-diff driver from repository config.' });
+      }
+    }
+  }
+
+  const guard = classifyGitReadonlyUnknownOptionGuard(subcommand, subTokens);
+  if (guard) return guard;
   return deferResult();
 }
 
@@ -1377,6 +1633,28 @@ function classifyGitCommandBearingEnvValue(value, ctx) {
   const inner = classifyCommandString(value, 'posix', ctx, 0, { segments: 0 });
   if (inner.decision === 'deny') return inner;
   return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation sets a command-bearing environment variable whose program could not be fully resolved.' });
+}
+
+// R11 Blocker B: environment variables that change WHERE git reads its config/index/repository
+// data from, rather than what program it runs. Not command-bearing (classifyGitCommandBearingEnvValue
+// doesn't apply), but redirecting these to an attacker-controlled path is equally dangerous - e.g. an
+// alternate GIT_CONFIG_GLOBAL can itself set command-bearing keys (core.pager, credential.helper) or
+// an alternate GIT_INDEX_FILE/GIT_DIR can point git at a completely different repository/config tree.
+const GIT_PATH_BEARING_ENV_VARS = new Set([
+  'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_INDEX_FILE', 'GIT_DIR', 'GIT_COMMON_DIR',
+  'GIT_WORK_TREE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'HOME', 'USERPROFILE', 'XDG_CONFIG_HOME',
+]);
+
+function classifyGitPathBearingEnvValue(value, ambiguous, ctx) {
+  if (ambiguous || typeof value !== 'string') {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation overrides a config/repository path via an environment variable that could not be resolved with confidence.' });
+  }
+  if (detectUnquotedGlob(value, 'posix') || detectDynamicExpansion(value, 'posix')) {
+    return askResult(RULE.SECRET, { safeMessage: 'Needs approval: this git invocation overrides a config/repository path with an unresolved glob or expansion character.' });
+  }
+  if (isSecretPath(value, ctx)) return denyResult(RULE.SECRET);
+  return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation overrides where Git reads its config, index, or repository data from.' });
 }
 
 // git subcommands that mutate the working tree/index at an explicit, parseable pathspec - deny on
@@ -1542,6 +1820,16 @@ function classifyGit(rest, ctx, assignments, dialect) {
     envVarFloor = worseOf(envVarFloor, r);
   }
 
+  // Path-bearing environment variables (R11 Blocker B) - independent of the command-bearing set
+  // above, these redirect where git reads config/index/repository data from.
+  let pathEnvFloor = null;
+  for (const a of assignments || []) {
+    if (!GIT_PATH_BEARING_ENV_VARS.has(a.name)) continue;
+    const r = classifyGitPathBearingEnvValue(a.value, a.ambiguous, ctx);
+    if (r.decision === 'deny') return r;
+    pathEnvFloor = worseOf(pathEnvFloor, r);
+  }
+
   // Every non-alias `-c key=value`/`-c key` override must factor into the decision (R9 Section 8) -
   // a command-bearing key with a `!`-prefixed value can deny outright, regardless of which
   // subcommand follows (credential/editor/pager/filter hooks can fire for many git operations, not
@@ -1652,7 +1940,7 @@ function classifyGit(rest, ctx, assignments, dialect) {
   }
 
   const result = resolveSubcommandDecision();
-  const floor = worseOf(configOverrideFloor, envVarFloor);
+  const floor = worseOf(worseOf(configOverrideFloor, envVarFloor), pathEnvFloor);
   return floor ? worseOf(floor, result) : result;
 }
 
@@ -2608,12 +2896,44 @@ function classifyGrepOptions(bin, rest, dialect, ctx) {
 }
 
 // `ls`/`dir`/`which`/`where` only enumerate names (directory entries or PATH matches) - no operand
-// shape causes a file write, secret-content read, or command execution, so every token (including a
-// dynamic/glob listing target, e.g. `ls *.txt`) is safe to pass through unexamined; only a token
-// whose escape/quote structure is genuinely unresolvable floors to ask.
-function classifySimpleListingCommand(rest, dialect) {
+// shape causes a file write, secret-content read, or command execution, so a positional listing
+// target (including a dynamic/glob one, e.g. `ls *.txt`) is always safe to pass through unexamined.
+// R11 Blocker D: the binary being harmless is not the same as every FLAG being harmless to guess the
+// arity of - an unrecognized `-`/`/`-prefixed option still asks, it just never needs a distinct
+// deny-capable check the way a writer/secret-read command would.
+const LS_BOOLEAN_LETTERS = 'laAhRtrS1dF';
+
+function isLsBooleanFlag(raw) {
+  if (/^--(all|almost-all|human-readable|recursive|reverse|size|color|directory|classify)(=\S+)?$/.test(raw)) return true;
+  if (/^-[a-zA-Z0-9]+$/.test(raw) && Array.from(raw.slice(1)).every((c) => LS_BOOLEAN_LETTERS.indexOf(c) !== -1)) return true;
+  return false;
+}
+
+function isWhichWhereBooleanFlag(raw) {
+  return /^(-a|--all|-s|--silent)$/.test(raw) || /^\/[a-zA-Z]$/.test(raw);
+}
+
+function isDirBooleanFlag(raw) {
+  return /^\/[a-zA-Z]$/.test(raw) || isLsBooleanFlag(raw);
+}
+
+function classifySimpleListingCommand(bin, rest, dialect) {
   const td = tokenizeDialectWords(rest, dialect);
   if (!td.ok) return askResult(RULE.COMPLEX);
+  const winStyle = bin === 'dir' || bin === 'where';
+  for (const t of td.tokens) {
+    const raw = t.raw;
+    const isFlagShaped = raw[0] === '-' || (winStyle && raw[0] === '/');
+    if (!isFlagShaped) continue;
+    let recognized = false;
+    if (bin === 'ls') recognized = isLsBooleanFlag(raw);
+    else if (bin === 'which') recognized = isWhichWhereBooleanFlag(raw);
+    else if (bin === 'where') recognized = isWhichWhereBooleanFlag(raw);
+    else if (bin === 'dir') recognized = isDirBooleanFlag(raw);
+    if (!recognized) {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option shape for this listing command.' });
+    }
+  }
   return deferResult();
 }
 
@@ -2630,7 +2950,7 @@ function classifySimpleReadonlyCommand(bin, rest, dialect, ctx) {
   if (bin === 'wc') return classifyWcCommand(rest, dialect, ctx);
   if (bin === 'cat' || bin === 'head' || bin === 'tail' || bin === 'cut') return classifyCatHeadTailCut(bin, rest, dialect, ctx);
   if (bin === 'grep' || bin === 'rg') return classifyGrepOptions(bin, rest, dialect, ctx);
-  if (bin === 'ls' || bin === 'dir' || bin === 'which' || bin === 'where') return classifySimpleListingCommand(rest, dialect);
+  if (bin === 'ls' || bin === 'dir' || bin === 'which' || bin === 'where') return classifySimpleListingCommand(bin, rest, dialect);
   return null;
 }
 
@@ -3309,6 +3629,27 @@ function scanRedirections(s, dialect) {
 // Every redirection in the segment is checked (not just the first) - `git status > /tmp/harmless >
 // .claude/settings.json` opens BOTH targets, and the second one being protected must still deny
 // even though it is not the first match a naive single-regex scan would find.
+// R11 Blocker A: Bash special network device files - `/dev/tcp/<host>/<port>` and
+// `/dev/udp/<host>/<port>` open a TCP/UDP socket as a file descriptor when redirected to/from; this
+// scanner never resolves the hostname or opens the socket, so any such target is at least ask. The
+// literal `/dev/tcp/`/`/dev/udp/` prefix survives cooking even when host/port are dynamic (`$HOST`)
+// since cooking never evaluates variables - only quote/escape structure - so this check runs before
+// the generic `!exact` floor, not after it, or a dynamic-but-recognizable network target would fall
+// through to the less specific TAMPER/SECRET ask instead of EGRESS.
+function isDevNetworkTarget(cooked) {
+  return typeof cooked === 'string' && /^\/dev\/(tcp|udp)\//i.test(cooked);
+}
+
+// A plain UNC network share (`\\server\share\...` or `//server/share\...`) is never a local
+// filesystem path - writing to one sends data over the network (SMB), same concern as /dev/tcp.
+// Windows device-namespace prefixes (`\\?\`, `\\.\`) are NOT plain UNC shares and are excluded here
+// - those are handled by normalizeProtectedPath (R11 Blocker E) as local-path aliases instead.
+function isUncNetworkTarget(cooked) {
+  if (typeof cooked !== 'string') return false;
+  if (/^\\\\\?\\/.test(cooked) || /^\\\\\.\\/.test(cooked)) return false;
+  return /^\/\/[^\/]/.test(normalizeSlashes(cooked));
+}
+
 function classifyGlobalRedirection(segment, ctx, dialect) {
   const redirs = scanRedirections(segment, dialect);
   for (const r of redirs) {
@@ -3316,6 +3657,9 @@ function classifyGlobalRedirection(segment, ctx, dialect) {
       return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: redirection target could not be resolved with confidence.' });
     }
     const target = r.cookedTarget;
+    if ((r.direction === 'out' || r.direction === 'inout') && (isDevNetworkTarget(target) || isUncNetworkTarget(target))) {
+      return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: this redirects to a network destination (TCP/UDP device file or UNC share), not a local file - hostname is not resolved and no socket is opened.' });
+    }
     // A target that is not `exact` (unquoted glob, or a dynamic construct this scanner does not
     // fully resolve - `${P:-...}`, `${!P}`, bare `$VAR`, tilde expansion, etc.) means the real file
     // it resolves to depends on filesystem/environment state never inspected here - the cooked
@@ -3640,6 +3984,7 @@ module.exports = {
   msysToWindowsDrive,
   collapseDotSegments,
   normalizePathString,
+  normalizeProtectedPath,
   normalizeHomeCandidate,
   getHomeCandidates,
   buildProtectedPathEntries,
