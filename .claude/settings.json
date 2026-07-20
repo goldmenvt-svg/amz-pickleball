@@ -58,22 +58,5 @@
       "Edit(./data/players.json)",
       "Write(./data/players.json)"
     ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|PowerShell|Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/amz-safety-pretooluse.cjs"
-            ],
-            "timeout": 10
-          }
-        ]
-      }
-    ]
   }
 }
