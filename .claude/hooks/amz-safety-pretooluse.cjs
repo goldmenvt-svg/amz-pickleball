@@ -1120,10 +1120,16 @@ function parseGitGlobalOptions(tokens, assignments) {
       }
       continue;
     }
-    if (t === '-C' || t === '--git-dir' || t === '--work-tree' || t === '--namespace') { i += 2; continue; }
-    if (/^--(git-dir|work-tree|namespace)=/.test(t)) { i += 1; continue; }
+    if (t === '-C' || t === '--git-dir' || t === '--work-tree' || t === '--namespace' || t === '--exec-path') { i += 2; continue; }
+    if (/^--(git-dir|work-tree|namespace|exec-path)=/.test(t)) { i += 1; continue; }
     if (t === '--no-pager' || t === '-p' || t === '--paginate' || t === '--no-replace-objects') { i += 1; continue; }
-    if (t.startsWith('-')) { i += 1; continue; }
+    if (/^(--bare|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--html-path|--man-path|--info-path|--version|-v|--help|-h)$/.test(t)) { i += 1; continue; }
+    // R10 Section 5: a leading global option this scanner does not specifically recognize must not
+    // be silently treated as a zero-argument boolean flag and skipped - it might consume the very
+    // next token as its value (in which case that token is NOT the subcommand), and this scanner has
+    // no way to tell with confidence. Stop here and let the caller ask, rather than risk misreading
+    // an option's value as the subcommand (which could silently defer on the wrong identity).
+    if (t.startsWith('-')) return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, unknownGlobalOption: true };
     break;
   }
   return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides };
@@ -1158,6 +1164,7 @@ function resolveGitAlias(startToken, aliasMap, assignments) {
     const bodyTokens = bodyResult.tokens;
     const g = parseGitGlobalOptions(bodyTokens, assignments);
     if (g.unresolvedAliasNames.length > 0) return { ambiguous: true };
+    if (g.unknownGlobalOption) return { ambiguous: true };
     for (const k of Object.keys(g.aliasMap)) {
       if (!Object.prototype.hasOwnProperty.call(aliasMap, k)) aliasMap[k] = g.aliasMap[k];
     }
@@ -1181,7 +1188,16 @@ function classifyGitSubmodule(subTokens, subMeta, ctx) {
   if (subTokens.length > 0 && tokenNeedsFloor(subMeta && subMeta[0])) {
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git submodule subcommand could not be resolved with confidence (dynamic or glob token).' });
   }
-  if (subTokens[0] !== 'foreach') return deferResult();
+  const sub = subTokens[0];
+  // R10 Section 7 audit fix: every other git submodule subcommand (add/init/update/deinit/sync/
+  // absorbgitdirs/set-branch/set-url) writes .gitmodules, working-tree files, or repo config - only
+  // `status`/`summary` are genuinely read-only queries. Previously ANY non-"foreach" subcommand
+  // (including `add`) silently deferred - a real fail-open gap, not something this scanner ever
+  // proved safe.
+  if (sub === 'status' || sub === 'summary') return deferResult();
+  if (sub !== 'foreach') {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git submodule command can modify submodule configuration or working-tree content.' });
+  }
   let i = 1;
   while (subTokens[i] === '--recursive' || subTokens[i] === '-q' || subTokens[i] === '--quiet') i += 1;
   const cmdToken = subTokens[i];
@@ -1198,7 +1214,15 @@ function classifyGitBisect(subTokens, subMeta, ctx) {
   if (subTokens.length > 0 && tokenNeedsFloor(subMeta && subMeta[0])) {
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git bisect subcommand could not be resolved with confidence (dynamic or glob token).' });
   }
-  if (subTokens[0] !== 'run') return deferResult();
+  const sub = subTokens[0];
+  // R10 Section 7 audit fix: start/good/bad/skip/reset/replay all move HEAD to a different commit
+  // (the same working-tree-mutation concern as a git checkout branch switch, which already asks) and
+  // `replay <file>` re-executes bisect commands recorded in an arbitrary file - only `log` is a pure
+  // read (prints the current bisect log). Previously every non-"run" subcommand silently deferred.
+  if (sub === 'log') return deferResult();
+  if (sub !== 'run') {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git bisect command can change working-tree state by checking out a different commit.' });
+  }
   const askFloor = askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a command via git bisect run at each step.' });
   const payloadTokens = subTokens.slice(1);
   if (payloadTokens.length === 0) return askFloor;
@@ -1288,6 +1312,72 @@ function classifyGitConfigBearingValue(value, ctx) {
 // (see classifyGitConfig's --get/--list branch and classifyGitRemote's bare/-v/get-url branch) -
 // this list is only consulted for subcommands that reach the very end of classifyGit unhandled.
 const GIT_READONLY_SUBCOMMANDS = new Set(['status', 'diff', 'log', 'show', 'rev-parse', 'ls-files', 'ls-tree', 'cat-file']);
+
+// R10 Section 5: the subcommand name alone does not prove the invocation is read-only - `diff`/
+// `log`/`show` can redirect their output to an arbitrary file (`--output[=]FILE`, a real write, not
+// a display), and `diff`/`log`/`show`/`cat-file` can invoke an external diff/textconv/content-filter
+// driver named in repository config or `.gitattributes` (`--ext-diff`, `--textconv`, `cat-file
+// --filters`, `cat-file --textconv`) - this scanner does not inspect that config, so it can never
+// confirm the driver is safe. Only once neither shape is present does the subcommand defer.
+const GIT_OUTPUT_FILE_SUBCOMMANDS = new Set(['diff', 'log', 'show']);
+const GIT_EXTCONTENT_SUBCOMMANDS = new Set(['diff', 'log', 'show']);
+
+function classifyGitReadonlySubcommand(subcommand, subTokens, subMeta, ctx) {
+  if (subcommand === 'cat-file') {
+    for (const t of subTokens) {
+      if (t === '--filters' || t === '--textconv') {
+        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git cat-file --filters/--textconv can run an external content filter or textconv driver from repository config or .gitattributes.' });
+      }
+    }
+    return deferResult();
+  }
+  if (GIT_OUTPUT_FILE_SUBCOMMANDS.has(subcommand) || GIT_EXTCONTENT_SUBCOMMANDS.has(subcommand)) {
+    for (let idx = 0; idx < subTokens.length; idx++) {
+      const t = subTokens[idx];
+      if (t === '--output') {
+        const valTok = subMeta[idx + 1];
+        if (!valTok) return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: git --output target could not be determined.' });
+        const hit = checkTamperToken(valTok, ctx);
+        if (hit) return hit;
+        return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git command writes output to a file instead of displaying it.' });
+      }
+      if (typeof t === 'string' && t.indexOf('--output=') === 0) {
+        const m = subMeta[idx];
+        const valTok = {
+          cooked: t.slice('--output='.length),
+          ambiguous: m ? m.ambiguous : true,
+          hasUnquotedGlob: m ? m.hasUnquotedGlob : false,
+          hasDynamicExpansion: m ? m.hasDynamicExpansion : false,
+        };
+        const hit = checkTamperToken(valTok, ctx);
+        if (hit) return hit;
+        return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git command writes output to a file instead of displaying it.' });
+      }
+      if (t === '--ext-diff' || t === '--textconv') {
+        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this can run an external diff or textconv driver from repository config or .gitattributes.' });
+      }
+    }
+  }
+  return deferResult();
+}
+
+// Command-bearing git environment variables: whichever program these name may be invoked by git
+// itself (as a pager, editor, external diff, SSH transport, or credential prompt) depending on the
+// subcommand/config in play - this scanner does not model exactly when each one fires, so presence
+// on ANY git invocation floors to at least ask, exactly like the existing GIT_CONFIG_* env handling.
+const GIT_COMMAND_BEARING_ENV_VARS = new Set([
+  'GIT_EXTERNAL_DIFF', 'GIT_PAGER', 'PAGER', 'GIT_EDITOR', 'GIT_SEQUENCE_EDITOR',
+  'GIT_SSH_COMMAND', 'GIT_ASKPASS', 'SSH_ASKPASS', 'VISUAL', 'EDITOR',
+]);
+
+function classifyGitCommandBearingEnvValue(value, ctx) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation sets a command-bearing environment variable (pager/editor/diff/ssh/askpass).' });
+  }
+  const inner = classifyCommandString(value, 'posix', ctx, 0, { segments: 0 });
+  if (inner.decision === 'deny') return inner;
+  return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation sets a command-bearing environment variable whose program could not be fully resolved.' });
+}
 
 // git subcommands that mutate the working tree/index at an explicit, parseable pathspec - deny on
 // an exact protected-path match, ask on anything dynamic/glob/unresolved, never defer (these are
@@ -1429,9 +1519,28 @@ function classifyGit(rest, ctx, assignments, dialect) {
   const tokens = td.tokens;
   const meta = td.meta;
   const parsed = parseGitGlobalOptions(tokens, assignments);
+  if (parsed.unknownGlobalOption) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git global option is not recognized.' });
+  }
   const i = parsed.index;
   const aliasMap = parsed.aliasMap;
   const unresolvedAliasNames = parsed.unresolvedAliasNames;
+
+  // Command-bearing environment variables (R10 Section 5) - a pager/editor/external-diff/ssh/
+  // askpass program name set via a leading assignment is at least ask, deny on a confidently-
+  // resolved protected payload, regardless of which subcommand follows (this scanner does not model
+  // exactly which subcommand triggers which of these).
+  let envVarFloor = null;
+  for (const a of assignments || []) {
+    if (!GIT_COMMAND_BEARING_ENV_VARS.has(a.name)) continue;
+    if (a.ambiguous) {
+      envVarFloor = worseOf(envVarFloor, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation sets a command-bearing environment variable that could not be resolved with confidence.' }));
+      continue;
+    }
+    const r = classifyGitCommandBearingEnvValue(a.value, ctx);
+    if (r.decision === 'deny') return r;
+    envVarFloor = worseOf(envVarFloor, r);
+  }
 
   // Every non-alias `-c key=value`/`-c key` override must factor into the decision (R9 Section 8) -
   // a command-bearing key with a `!`-prefixed value can deny outright, regardless of which
@@ -1535,13 +1644,16 @@ function classifyGit(rest, ctx, assignments, dialect) {
     // dangerous subcommand above - arbitrary config injection is still at least ask, never defer.
     if (envCfg.hasGitConfigEnv) return askResult(RULE.TAMPER);
 
-    // R9 fail-closed fallback: only a subcommand proven read-only may defer here.
-    if (GIT_READONLY_SUBCOMMANDS.has(subcommand)) return deferResult();
+    // R9 fail-closed fallback: only a subcommand proven read-only may defer here. R10 Section 5:
+    // the subcommand name alone is not proof - classifyGitReadonlySubcommand inspects the option
+    // shape too (--output/--ext-diff/--textconv/cat-file --filters) before allowing it to defer.
+    if (GIT_READONLY_SUBCOMMANDS.has(subcommand)) return classifyGitReadonlySubcommand(subcommand, subRestTokens, subRestMeta, ctx);
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized git subcommand.' });
   }
 
   const result = resolveSubcommandDecision();
-  return configOverrideFloor ? worseOf(configOverrideFloor, result) : result;
+  const floor = worseOf(configOverrideFloor, envVarFloor);
+  return floor ? worseOf(floor, result) : result;
 }
 
 const SENSITIVE_CONFIG_KEY = /^(alias\..+|core\.hookspath|remote\..+\.url|remote\..+\.pushurl)$/i;
@@ -1606,7 +1718,12 @@ function classifyGitRemote(tokens, meta) {
   }
   if (/^(set-url|add|remove|rename|rm)$/i.test(sub)) return denyResult(RULE.TAMPER);
   if (sub.startsWith('-')) return askResult(RULE.TAMPER); // unrecognized remote option shape
-  return deferResult();
+  // R10 Section 7 audit fix: only `show`/`get-url` are genuinely read-only queries - `prune` deletes
+  // stale remote-tracking refs, `update` fetches from every configured remote (network egress plus
+  // ref changes), and `set-head`/`set-branches` rewrite tracking configuration. Previously every
+  // subcommand other than the deny-listed ones silently deferred.
+  if (/^(show|get-url)$/i.test(sub)) return deferResult();
+  return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git remote command can modify remote-tracking configuration or contact the network.' });
 }
 
 // Vercel/Firebase are recognized ASK families in the shared permission baseline (Bash(vercel *),
@@ -1659,6 +1776,35 @@ function classifyFirebase(rest, dialect) {
 }
 
 const PACKAGE_MANAGER_VALUE_FLAGS = { npm: new Set(['--prefix', '--userconfig']), pnpm: new Set(['-C']) };
+
+// Explicit read-only package-manager subcommands - the only shapes allowed to defer once every
+// mutating built-in above has been ruled out (R9 fail-closed policy: unknown subcommand must never
+// default to "probably safe").
+const PACKAGE_READONLY_SUBCOMMANDS = new Set(['view', 'info', 'list', 'ls', 'why']);
+
+// R10 Section 6: subcommand-name membership alone does not prove the invocation is read-only -
+// a dynamic/glob argument, or an option shape this scanner doesn't specifically recognize (e.g. a
+// hypothetical command-bearing config flag), must still ask rather than silently defer just because
+// the subcommand itself is on the allowlist. Recognized display-only flags are a narrow, explicit
+// set; anything else (including a bare package/query positional, which always passes through) is
+// treated conservatively.
+const PACKAGE_READONLY_BOOLEAN_RE = /^--(json|long|all|global|production|dev|parseable|depth)(=\S+)?$/;
+const PACKAGE_READONLY_BOOLEAN_LETTERS = 'lag';
+
+function classifyPackageReadonlySubcommand(subTokens, subMeta) {
+  for (let idx = 0; idx < subTokens.length; idx++) {
+    if (tokenNeedsFloor(subMeta[idx])) {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: package manager subcommand argument could not be resolved with confidence (dynamic or glob token).' });
+    }
+    const t = subTokens[idx];
+    if (t.startsWith('-') && t !== '-') {
+      if (PACKAGE_READONLY_BOOLEAN_RE.test(t)) continue;
+      if (/^-[a-zA-Z]+$/.test(t) && Array.from(t.slice(1)).every((c) => PACKAGE_READONLY_BOOLEAN_LETTERS.indexOf(c) !== -1)) continue;
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option for this package manager read-only subcommand.' });
+    }
+  }
+  return deferResult();
+}
 
 function classifyPackageManager(bin, rest, ctx, dialect) {
   const td = dialectTokenStrings(rest, dialect);
@@ -1778,8 +1924,12 @@ function classifyPackageManager(bin, rest, ctx, dialect) {
   }
   // Explicit read-only package-manager subcommands - the only shapes allowed to defer at this
   // fallback (R9 fail-closed policy: unknown subcommand must never default to "probably safe").
-  const PACKAGE_READONLY_SUBCOMMANDS = new Set(['view', 'info', 'list', 'ls', 'why']);
-  if (subcommand !== undefined && PACKAGE_READONLY_SUBCOMMANDS.has(subcommand)) return deferResult();
+  // R10 Section 6: subcommand-name membership alone is not proof either - classifyPackageReadonly
+  // Subcommand additionally inspects the remaining argument list (dynamic/glob token, or an option
+  // shape this scanner doesn't specifically recognize) before allowing it to defer.
+  if (subcommand !== undefined && PACKAGE_READONLY_SUBCOMMANDS.has(subcommand)) {
+    return classifyPackageReadonlySubcommand(tokens.slice(i + 1), meta.slice(i + 1));
+  }
   // Yarn supports running a package.json script without the `run` keyword (`yarn deploy` ==
   // `yarn run deploy`) - only for yarn (npm/pnpm require the explicit subcommand), and only once
   // every recognized yarn built-in above has already been ruled out. Resolved exactly like `run
@@ -1793,7 +1943,12 @@ function classifyPackageManager(bin, rest, ctx, dialect) {
 }
 
 // codegraph init is a recognized ASK family (shared baseline: Bash(codegraph init *)) that a
-// wrapper can hide from the literal-prefix matcher - always ask here too.
+// wrapper can hide from the literal-prefix matcher - always ask here too. R10 Section 7 audit fix:
+// only the specifically-allowlisted read-only query subcommands may defer - every other/unknown
+// codegraph subcommand (and a bare `codegraph` with none) asks rather than silently deferring just
+// because it isn't "init".
+const CODEGRAPH_READONLY_SUBCOMMANDS = new Set(['explore', 'search', 'query', 'status']);
+
 function classifyCodegraph(rest, dialect) {
   const td = dialectTokenStrings(rest, dialect);
   if (!td.ok) return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: codegraph command arguments could not be resolved with confidence.' });
@@ -1801,7 +1956,8 @@ function classifyCodegraph(rest, dialect) {
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: codegraph subcommand could not be resolved with confidence.' });
   }
   if (td.tokens[0] === 'init') return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this initializes a CodeGraph index.' });
-  return deferResult();
+  if (td.tokens[0] !== undefined && CODEGRAPH_READONLY_SUBCOMMANDS.has(td.tokens[0])) return deferResult();
+  return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized codegraph subcommand.' });
 }
 
 function classifyPackageScript(scriptName, prefixPath, ctx) {
@@ -1872,7 +2028,11 @@ function classifyDeleteAlias(rest, dialect) {
   return askResult(RULE.DELETE);
 }
 
-const SECRET_READ_PRIMITIVES = new Set(['cat', 'head', 'tail', 'less', 'more', 'sed', 'awk', 'grep', 'rg', 'type', 'get-content', 'gc', 'base64', 'xxd', 'strings']);
+// R10 Section 4: cat/head/tail/grep/rg moved to their own option-aware classifiers
+// (classifyCatHeadTailCut / classifyGrepOptions, dispatched via classifySimpleReadonlyCommand) which
+// each cover both option-shape validation AND this same secret-path check - they no longer need (or
+// use) this generic flag-blind fallback.
+const SECRET_READ_PRIMITIVES = new Set(['less', 'more', 'sed', 'awk', 'type', 'get-content', 'gc', 'base64', 'xxd', 'strings']);
 const SECRET_COPY_PRIMITIVES = new Set(['cp', 'copy', 'copy-item']);
 
 // Cook a raw argument token into its semantic value before path checks, dialect-aware, so an
@@ -2077,15 +2237,402 @@ function classifyEgress(bin, rest, dialect) {
 // Justfile, Rakefile, build.gradle, pom.xml, ...) this scanner does not parse - always at least ask.
 const PROJECT_RUNNER_ASK_BINS = new Set(['make', 'nmake', 'just', 'task', 'rake', 'ant', 'gradle', 'gradlew', 'mvn']);
 
-// R9 explicit read-only allowlist (Section 4): the ONLY binaries confidently known to never write/
-// execute/exfiltrate that may still defer at the bottom of classifyEffectiveBinary, once every
-// earlier check in the pipeline (global redirection, secret-path, dynamic-token) has already run
-// and found nothing objectionable. Deliberately narrow - awk/sed/find/interpreters/project runners
-// are excluded because their grammar can write files or run commands this scanner doesn't parse.
-const SIMPLE_READONLY_BINS = new Set([
-  'pwd', 'echo', 'printf', 'true', 'false', 'whoami', 'date', 'which', 'where', 'type',
-  'ls', 'dir', 'head', 'tail', 'grep', 'rg', 'wc', 'sort', 'uniq', 'cut', 'cat',
-]);
+// R10 Section 4: the binary name alone was never proof of read-only-ness - `sort -o FILE`,
+// `rg --pre COMMAND`, `date --file=.env` all write/read/execute through a normal-looking coreutils
+// invocation. classifySimpleReadonlyCommand replaces the old bare Set-membership check with a
+// per-binary option-aware parser; a binary handled here only ever defers once its OWN parser has
+// proven the specific invocation shape read-only. Binaries with no narrow parser below (awk/sed/
+// find/interpreters/project runners) are still excluded entirely - their grammar can write files or
+// run commands this scanner does not parse, so they must never reach this function at all.
+
+// Binaries with no operand grammar that causes a file write, secret-content read, or command
+// execution - global redirection is already checked upstream (classifyGlobalRedirection) for all of
+// them, so nothing further needs inspecting here regardless of arguments.
+const SIMPLE_READONLY_NOOP_BINS = new Set(['pwd', 'echo', 'printf', 'true', 'false', 'whoami']);
+
+// `date`: only `date` / `date +FORMAT` are unconditionally read-only. `-f/--file`/`-r/--reference`
+// read an arbitrary file as a source of dates/timestamps - secret-read policy applies. `-s/--set`
+// changes the system clock - always ask. Any other option shape this scanner does not specifically
+// recognize (including `-d/--date`, which is not in this narrow list) asks rather than being guessed at.
+function classifyDateCommand(rest, dialect, ctx) {
+  const td = tokenizeDialectWords(rest, dialect);
+  if (!td.ok) return askResult(RULE.COMPLEX);
+  const tokens = td.tokens;
+  let fileTok = null;
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (t.raw === '-f' || t.raw === '--file' || t.raw === '-r' || t.raw === '--reference') {
+      const val = tokens[i + 1];
+      if (!val) return askResult(RULE.COMPLEX);
+      fileTok = val;
+      i += 2;
+      continue;
+    }
+    if (typeof t.cooked === 'string' && (/^--file=/.test(t.cooked) || /^--reference=/.test(t.cooked))) {
+      const eq = t.cooked.indexOf('=');
+      fileTok = { cooked: t.cooked.slice(eq + 1), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1;
+      continue;
+    }
+    if (t.raw === '-s' || t.raw === '--set' || /^--set=/.test(t.raw)) {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this changes the system clock.' });
+    }
+    if (typeof t.cooked === 'string' && t.cooked[0] === '+') {
+      if (tokenNeedsFloor(t)) return askResult(RULE.COMPLEX);
+      i += 1;
+      continue;
+    }
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option shape for date.' });
+  }
+  if (fileTok) {
+    const floor = secretPathTokenFloor(fileTok);
+    if (floor) return floor;
+    if (isSecretPath(fileTok.cooked, ctx)) return denyResult(RULE.SECRET);
+  }
+  return deferResult();
+}
+
+// `sort`: -o/--output writes sorted output to a file (deny if protected, else ask - a real write to
+// an arbitrary location is never silently allowed to defer just because the target isn't protected).
+// --files0-from reads a NUL-separated list of input files from FILE - secret-read policy applies to
+// FILE itself. --compress-program runs an external (de)compression program - always ask. -T/
+// --temporary-directory changes where sort writes its temp files - ask if dynamic/glob or if it
+// targets a protected location (explicitly "ask", not "deny", per the narrower risk of a temp-file
+// directory versus an explicit output file). Plain positional input files go through the same
+// secret-read policy as `cat`. Unknown option -> ask.
+const SORT_BOOLEAN_LETTERS = 'bcCdfghiMmnRrsuVz';
+const SORT_BOOLEAN_LONG_RE = /^--(reverse|unique|numeric-sort|ignore-case|ignore-leading-blanks|dictionary-order|general-numeric-sort|ignore-nonprinting|month-sort|human-numeric-sort|random-sort|check|merge|stable|zero-terminated|debug|version|help)$/;
+const SORT_VALUE_FLAGS = new Set(['-k', '--key', '-t', '--field-separator', '-S', '--buffer-size', '--parallel']);
+const SORT_VALUE_LONG_EQ_RE = /^--(key|field-separator|buffer-size|parallel|check)=/;
+
+function isSortBooleanFlag(raw) {
+  if (SORT_BOOLEAN_LONG_RE.test(raw)) return true;
+  if (/^--check=\S+$/.test(raw)) return true;
+  if (/^-[a-zA-Z]+$/.test(raw) && Array.from(raw.slice(1)).every((c) => SORT_BOOLEAN_LETTERS.indexOf(c) !== -1)) return true;
+  return false;
+}
+
+function classifySortCommand(rest, dialect, ctx) {
+  const td = tokenizeDialectWords(rest, dialect);
+  if (!td.ok) return askResult(RULE.COMPLEX);
+  const tokens = td.tokens;
+  let outputTok = null;
+  let files0Tok = null;
+  let tempDirTok = null;
+  let hasCompressProgram = false;
+  let endOfOptions = false;
+  const positional = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (endOfOptions) { positional.push(t); i += 1; continue; }
+    if (t.raw === '--') { endOfOptions = true; i += 1; continue; }
+    if (t.raw === '-o' || t.raw === '--output') {
+      const val = tokens[i + 1];
+      if (!val) return askResult(RULE.COMPLEX);
+      outputTok = val; i += 2; continue;
+    }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--output=') === 0) {
+      outputTok = { cooked: t.cooked.slice('--output='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+    if (t.raw === '--files0-from') {
+      const val = tokens[i + 1];
+      if (!val) return askResult(RULE.COMPLEX);
+      files0Tok = val; i += 2; continue;
+    }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--files0-from=') === 0) {
+      files0Tok = { cooked: t.cooked.slice('--files0-from='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+    if (t.raw === '--compress-program') { hasCompressProgram = true; i += 2; continue; }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--compress-program=') === 0) { hasCompressProgram = true; i += 1; continue; }
+    if (t.raw === '-T' || t.raw === '--temporary-directory') {
+      const val = tokens[i + 1];
+      if (!val) return askResult(RULE.COMPLEX);
+      tempDirTok = val; i += 2; continue;
+    }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--temporary-directory=') === 0) {
+      tempDirTok = { cooked: t.cooked.slice('--temporary-directory='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+    if (SORT_VALUE_FLAGS.has(t.raw)) { i += 2; continue; }
+    if (SORT_VALUE_LONG_EQ_RE.test(t.raw)) { i += 1; continue; }
+    if (isSortBooleanFlag(t.raw)) { i += 1; continue; }
+    if (t.raw[0] === '-' && t.raw !== '-') {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option shape for sort.' });
+    }
+    positional.push(t);
+    i += 1;
+  }
+
+  let result = null;
+  if (hasCompressProgram) {
+    result = worseOf(result, askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: sort --compress-program runs an external program to (de)compress temporary files.' }));
+  }
+  if (tempDirTok) {
+    if (tokenNeedsFloor(tempDirTok)) {
+      result = worseOf(result, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: sort temporary directory could not be resolved with confidence.' }));
+    } else if (checkTamperPath(tempDirTok.cooked, ctx)) {
+      result = worseOf(result, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: sort temporary directory targets a protected location.' }));
+    }
+  }
+  if (outputTok) {
+    const hit = checkTamperToken(outputTok, ctx);
+    result = worseOf(result, hit || askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this writes sorted output to a file.' }));
+  }
+  if (files0Tok) {
+    const floor = secretPathTokenFloor(files0Tok);
+    if (floor) result = worseOf(result, floor);
+    else if (isSecretPath(files0Tok.cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+  }
+  for (const p of positional) {
+    const floor = secretPathTokenFloor(p);
+    if (floor) { result = worseOf(result, floor); continue; }
+    if (isSecretPath(p.cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+  }
+  return result || deferResult();
+}
+
+// `uniq [OPTION] [INPUT [OUTPUT]]` - INPUT (first positional) is secret-read policy, OUTPUT (second
+// positional) is tamper-destination policy. More than two positional operands, or an unrecognized
+// option, is not a shape this scanner guesses at - ask.
+const UNIQ_VALUE_FLAGS = new Set(['-f', '--skip-fields', '-s', '--skip-chars', '-w', '--check-chars']);
+const UNIQ_VALUE_EQ_RE = /^--(skip-fields|skip-chars|check-chars)=/;
+const UNIQ_BOOLEAN_LONG_RE = /^--(count|repeated|all-repeated|unique|ignore-case|zero-terminated|group|version|help)(=\S+)?$/;
+const UNIQ_BOOLEAN_LETTERS = 'cDdiuz';
+
+function classifyUniqCommand(rest, dialect, ctx) {
+  const td = tokenizeDialectWords(rest, dialect);
+  if (!td.ok) return askResult(RULE.COMPLEX);
+  const tokens = td.tokens;
+  const positional = [];
+  let endOfOptions = false;
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (endOfOptions) { positional.push(t); i += 1; continue; }
+    if (t.raw === '--') { endOfOptions = true; i += 1; continue; }
+    if (UNIQ_VALUE_FLAGS.has(t.raw)) { i += 2; continue; }
+    if (UNIQ_VALUE_EQ_RE.test(t.raw)) { i += 1; continue; }
+    if (UNIQ_BOOLEAN_LONG_RE.test(t.raw)) { i += 1; continue; }
+    if (/^-[a-zA-Z]+$/.test(t.raw) && Array.from(t.raw.slice(1)).every((c) => UNIQ_BOOLEAN_LETTERS.indexOf(c) !== -1)) { i += 1; continue; }
+    if (t.raw[0] === '-' && t.raw !== '-') {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option shape for uniq.' });
+    }
+    positional.push(t);
+    i += 1;
+  }
+  if (positional.length > 2) return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized operand shape for uniq.' });
+  let result = null;
+  if (positional[0]) {
+    const floor = secretPathTokenFloor(positional[0]);
+    if (floor) result = worseOf(result, floor);
+    else if (isSecretPath(positional[0].cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+  }
+  if (positional[1]) {
+    const hit = checkTamperToken(positional[1], ctx);
+    if (hit) result = worseOf(result, hit);
+  }
+  return result || deferResult();
+}
+
+// `wc`: only --files0-from needs special handling (reads an arbitrary file naming further inputs -
+// secret-read policy). Plain positional file operands are not modeled beyond the existing behavior
+// (wc reveals only counts, not content) - out of this scanner's stated R10 scope for wc.
+const WC_BOOLEAN_LETTERS = 'clmwL';
+
+function classifyWcCommand(rest, dialect, ctx) {
+  const td = tokenizeDialectWords(rest, dialect);
+  if (!td.ok) return askResult(RULE.COMPLEX);
+  const tokens = td.tokens;
+  let filesFromTok = null;
+  let endOfOptions = false;
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (endOfOptions) { i += 1; continue; }
+    if (t.raw === '--') { endOfOptions = true; i += 1; continue; }
+    if (t.raw === '--files0-from') {
+      const val = tokens[i + 1];
+      if (!val) return askResult(RULE.COMPLEX);
+      filesFromTok = val; i += 2; continue;
+    }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--files0-from=') === 0) {
+      filesFromTok = { cooked: t.cooked.slice('--files0-from='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+    if (t.raw === '--total' || /^--total=/.test(t.raw)) { i += (t.raw === '--total') ? 2 : 1; continue; }
+    if (/^--(bytes|chars|lines|words|max-line-length|version|help)$/.test(t.raw)) { i += 1; continue; }
+    if (/^-[a-zA-Z]+$/.test(t.raw) && Array.from(t.raw.slice(1)).every((c) => WC_BOOLEAN_LETTERS.indexOf(c) !== -1)) { i += 1; continue; }
+    if (t.raw[0] === '-' && t.raw !== '-') {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option shape for wc.' });
+    }
+    i += 1;
+  }
+  if (filesFromTok) {
+    const floor = secretPathTokenFloor(filesFromTok);
+    if (floor) return floor;
+    if (isSecretPath(filesFromTok.cooked, ctx)) return denyResult(RULE.SECRET);
+  }
+  return deferResult();
+}
+
+// `cat`/`head`/`tail`/`cut`: only a narrow, explicit boolean/value option set is recognized per
+// binary; unknown option -> ask. Every remaining positional (non-flag) operand goes through the
+// same secret-read policy `grep`/`rg` use (deny if secret, ask if dynamic/glob/ambiguous).
+function classifyCatHeadTailCut(bin, rest, dialect, ctx) {
+  const td = tokenizeDialectWords(rest, dialect);
+  if (!td.ok) return askResult(RULE.COMPLEX);
+  const tokens = td.tokens;
+  const positional = [];
+  let endOfOptions = false;
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (endOfOptions) { positional.push(t); i += 1; continue; }
+    if (t.raw === '--') { endOfOptions = true; i += 1; continue; }
+    let recognized = false;
+    if (bin === 'cat') {
+      if (/^--(show-all|number-nonblank|show-ends|number|squeeze-blank|show-tabs|show-nonprinting|version|help)$/.test(t.raw)) recognized = true;
+      else if (/^-[a-zA-Z]+$/.test(t.raw) && Array.from(t.raw.slice(1)).every((c) => 'AbeEnstTuv'.indexOf(c) !== -1)) recognized = true;
+    } else if (bin === 'head' || bin === 'tail') {
+      if (t.raw === '-n' || t.raw === '--lines' || t.raw === '-c' || t.raw === '--bytes') { i += 2; continue; }
+      if (/^(-n|-c)\S+$/.test(t.raw)) recognized = true;
+      else if (/^--(lines|bytes)=/.test(t.raw)) recognized = true;
+      else if (bin === 'tail' && (t.raw === '-s' || t.raw === '--sleep-interval' || t.raw === '--pid' || t.raw === '--max-unchanged-stats')) { i += 2; continue; }
+      else if (bin === 'tail' && /^--(sleep-interval|pid|max-unchanged-stats)=/.test(t.raw)) recognized = true;
+      else if (bin === 'tail' && (/^--(follow|retry)(=\S+)?$/.test(t.raw) || t.raw === '-f' || t.raw === '-F')) recognized = true;
+      else if (/^--(quiet|silent|verbose|zero-terminated|version|help)$/.test(t.raw)) recognized = true;
+      else if (/^-[a-zA-Z]+$/.test(t.raw) && Array.from(t.raw.slice(1)).every((c) => 'qvzF'.indexOf(c) !== -1)) recognized = true;
+    } else if (bin === 'cut') {
+      if (t.raw === '-f' || t.raw === '--fields' || t.raw === '-d' || t.raw === '--delimiter' || t.raw === '-c' || t.raw === '--characters' || t.raw === '-b' || t.raw === '--bytes' || t.raw === '--output-delimiter') { i += 2; continue; }
+      if (/^--(fields|delimiter|characters|bytes|output-delimiter)=/.test(t.raw)) recognized = true;
+      else if (/^-[fdcb]\S+$/.test(t.raw)) recognized = true;
+      else if (/^--(only-delimited|complement|zero-terminated|version|help)$/.test(t.raw)) recognized = true;
+      else if (/^-[a-zA-Z]+$/.test(t.raw) && Array.from(t.raw.slice(1)).every((c) => 'sz'.indexOf(c) !== -1)) recognized = true;
+    }
+    if (recognized) { i += 1; continue; }
+    if (t.raw[0] === '-' && t.raw !== '-') {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option shape for this file-reading command.' });
+    }
+    positional.push(t);
+    i += 1;
+  }
+  let result = null;
+  for (const p of positional) {
+    const floor = secretPathTokenFloor(p);
+    if (floor) { result = worseOf(result, floor); continue; }
+    if (isSecretPath(p.cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+  }
+  return result || deferResult();
+}
+
+// `grep`/`rg`: -f/--file[=] reads an arbitrary pattern file - secret-read policy. `rg` additionally
+// supports --pre[=] (runs an external preprocessor command for every searched file - deny on a
+// confidently-resolved protected payload, else ask) and --pre-glob[=] (a glob pattern, not a file
+// path or command - just consumed as a recognized value flag). Every remaining positional operand
+// goes through the same secret-read policy as `cat`.
+const GREP_BOOLEAN_LETTERS = 'ivclLnHhrRwxoqsaIEFGPz';
+const GREP_BOOLEAN_LONG_RE = /^--(ignore-case|invert-match|count|files-with-matches|files-without-match|line-number|with-filename|no-filename|recursive|dereference-recursive|word-regexp|line-regexp|only-matching|quiet|silent|text|extended-regexp|fixed-strings|basic-regexp|perl-regexp|null-data|byte-offset|no-messages|version|help)$/;
+const GREP_VALUE_FLAGS = new Set(['-A', '-B', '-C', '-e', '-m', '--include', '--exclude', '--exclude-dir', '--color', '--binary-files']);
+const GREP_VALUE_LONG_EQ_RE = /^--(after-context|before-context|context|regexp|max-count|include|exclude|exclude-dir|color|binary-files)=/;
+
+function classifyGrepOptions(bin, rest, dialect, ctx) {
+  const td = tokenizeDialectWords(rest, dialect);
+  if (!td.ok) return askResult(RULE.COMPLEX);
+  const tokens = td.tokens;
+  let fileTok = null;
+  let preTok = null;
+  let endOfOptions = false;
+  const positional = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (endOfOptions) { positional.push(t); i += 1; continue; }
+    if (t.raw === '--') { endOfOptions = true; i += 1; continue; }
+    if (t.raw === '-f' || t.raw === '--file') {
+      const val = tokens[i + 1];
+      if (!val) return askResult(RULE.COMPLEX);
+      fileTok = val; i += 2; continue;
+    }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--file=') === 0) {
+      fileTok = { cooked: t.cooked.slice('--file='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+    if (bin === 'rg') {
+      if (t.raw === '--pre') {
+        const val = tokens[i + 1];
+        if (!val) return askResult(RULE.COMPLEX);
+        preTok = val; i += 2; continue;
+      }
+      if (typeof t.cooked === 'string' && t.cooked.indexOf('--pre=') === 0) {
+        preTok = { cooked: t.cooked.slice('--pre='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+        i += 1; continue;
+      }
+      if (t.raw === '--pre-glob') { i += 2; continue; }
+      if (typeof t.cooked === 'string' && t.cooked.indexOf('--pre-glob=') === 0) { i += 1; continue; }
+    }
+    if (GREP_VALUE_FLAGS.has(t.raw)) { i += 2; continue; }
+    if (GREP_VALUE_LONG_EQ_RE.test(t.raw)) { i += 1; continue; }
+    if (GREP_BOOLEAN_LONG_RE.test(t.raw)) { i += 1; continue; }
+    if (/^-[a-zA-Z]+$/.test(t.raw) && Array.from(t.raw.slice(1)).every((c) => GREP_BOOLEAN_LETTERS.indexOf(c) !== -1)) { i += 1; continue; }
+    if (t.raw[0] === '-' && t.raw !== '-') {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option shape for this search command.' });
+    }
+    positional.push(t);
+    i += 1;
+  }
+  let result = null;
+  if (fileTok) {
+    const floor = secretPathTokenFloor(fileTok);
+    if (floor) result = worseOf(result, floor);
+    else if (isSecretPath(fileTok.cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+  }
+  if (preTok) {
+    const askFloor = askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs an external preprocessor command for each searched file.' });
+    if (tokenNeedsFloor(preTok)) {
+      result = worseOf(result, askFloor);
+    } else {
+      const inner = classifyCommandString(preTok.cooked, 'posix', ctx, 0, { segments: 0 });
+      result = worseOf(result, resolvedOrFloor(inner, askFloor));
+    }
+  }
+  for (const p of positional) {
+    const floor = secretPathTokenFloor(p);
+    if (floor) { result = worseOf(result, floor); continue; }
+    if (isSecretPath(p.cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+  }
+  return result || deferResult();
+}
+
+// `ls`/`dir`/`which`/`where` only enumerate names (directory entries or PATH matches) - no operand
+// shape causes a file write, secret-content read, or command execution, so every token (including a
+// dynamic/glob listing target, e.g. `ls *.txt`) is safe to pass through unexamined; only a token
+// whose escape/quote structure is genuinely unresolvable floors to ask.
+function classifySimpleListingCommand(rest, dialect) {
+  const td = tokenizeDialectWords(rest, dialect);
+  if (!td.ok) return askResult(RULE.COMPLEX);
+  return deferResult();
+}
+
+function classifySimpleReadonlyCommand(bin, rest, dialect, ctx) {
+  if (SIMPLE_READONLY_NOOP_BINS.has(bin)) return deferResult();
+  // `type` (Windows CMD file-reader semantics) was already fully vetted for secret-path content by
+  // classifySecretPrimitive earlier in the pipeline (a member of SECRET_READ_PRIMITIVES) - reaching
+  // this point means every argument was already confirmed exact/non-secret/non-glob/non-dynamic, so
+  // no further option parsing is needed here.
+  if (bin === 'type') return deferResult();
+  if (bin === 'date') return classifyDateCommand(rest, dialect, ctx);
+  if (bin === 'sort') return classifySortCommand(rest, dialect, ctx);
+  if (bin === 'uniq') return classifyUniqCommand(rest, dialect, ctx);
+  if (bin === 'wc') return classifyWcCommand(rest, dialect, ctx);
+  if (bin === 'cat' || bin === 'head' || bin === 'tail' || bin === 'cut') return classifyCatHeadTailCut(bin, rest, dialect, ctx);
+  if (bin === 'grep' || bin === 'rg') return classifyGrepOptions(bin, rest, dialect, ctx);
+  if (bin === 'ls' || bin === 'dir' || bin === 'which' || bin === 'where') return classifySimpleListingCommand(rest, dialect);
+  return null;
+}
 
 const TAMPER_SRC_DEST_BINARIES = new Set(['cp', 'copy', 'copy-item', 'install']);
 const TAMPER_DEST_ONLY_BINARIES = new Set(['mv', 'move', 'ren', 'rename', 'move-item', 'ln', 'rsync']);
@@ -2933,12 +3480,15 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
   }
 
   // R9 fail-closed policy: only a binary PROVEN read-only (and, by reaching this point, already
-  // past the global redirection/secret-path/dynamic-token checks above) may still defer. `cat` and
-  // the other SECRET_READ_PRIMITIVES members reaching this point already had every argument
-  // confirmed exact/non-secret/non-glob/non-dynamic by classifySecretPrimitive above (it only
-  // returns null/undefined when that holds) - no further per-argument condition is needed here.
-  // Everything else asks: "unrecognized" must never again silently mean "assumed safe".
-  if (SIMPLE_READONLY_BINS.has(bin)) return deferResult();
+  // past the global redirection/secret-path/dynamic-token checks above) may still defer. `type`
+  // reaching this point already had every argument confirmed exact/non-secret/non-glob/non-dynamic
+  // by classifySecretPrimitive above (it only returns null/undefined when that holds). R10 Section 4:
+  // the binary name alone is no longer sufficient for the rest of this group either -
+  // classifySimpleReadonlyCommand additionally validates the option/operand shape (date/sort/uniq/
+  // wc/cat/head/tail/cut/grep/rg) before allowing a defer. Everything else asks: "unrecognized" must
+  // never again silently mean "assumed safe".
+  const simpleHit = classifySimpleReadonlyCommand(bin, rest, dialect, ctx);
+  if (simpleHit) return simpleHit;
 
   return askResult(RULE.UNKNOWN, { safeMessage: 'Needs approval: this executable is not recognized by the safety classifier.' });
 }

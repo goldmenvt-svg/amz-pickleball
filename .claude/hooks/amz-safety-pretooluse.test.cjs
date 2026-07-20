@@ -2516,3 +2516,340 @@ test('IO 38H: unknown-command invariant resolves through real process -> ask, no
   assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('SHOULD_NOT_LEAK'));
 });
+
+// ===================== 39: R10 - option-aware read-only allowlists =====================
+
+// --- 39A: date ---
+test('39A. date --file=.env -> deny SECRET', () => { assertDecision(classifyBash('date --file=.env'), 'deny', hook.RULE.SECRET); });
+test('39A. date -f .env -> deny SECRET', () => { assertDecision(classifyBash('date -f .env'), 'deny', hook.RULE.SECRET); });
+test('39A. date --reference=.env -> deny SECRET', () => { assertDecision(classifyBash('date --reference=.env'), 'deny', hook.RULE.SECRET); });
+test('39A. date -s "2030-01-01" -> ask COMPLEX, not defer (changes system clock)', () => {
+  assertDecision(classifyBash('date -s "2030-01-01"'), 'ask', hook.RULE.COMPLEX);
+});
+test('39A. date --set=now -> ask COMPLEX, not defer', () => { assertDecision(classifyBash('date --set=now'), 'ask', hook.RULE.COMPLEX); });
+test('39A. date -d "tomorrow" -> ask COMPLEX, not defer (unrecognized option shape, not in the narrow allowlist)', () => {
+  assertDecision(classifyBash('date -d "tomorrow"'), 'ask', hook.RULE.COMPLEX);
+});
+test('39A. negative control: bare date -> defer', () => { assertDecision(classifyBash('date'), 'defer'); });
+test('39A. negative control: date +%F -> defer', () => { assertDecision(classifyBash('date +%F'), 'defer'); });
+test('39A. negative control: date --file=README.md (non-secret) -> defer', () => {
+  assertDecision(classifyBash('date --file=README.md'), 'defer');
+});
+
+// --- 39B: sort ---
+test('39B. sort -o .claude/settings.json input.txt -> deny TAMPER', () => {
+  assertDecision(classifyBash('sort -o .claude/settings.json input.txt'), 'deny', hook.RULE.TAMPER);
+});
+test('39B. sort --output=.claude/settings.json input.txt -> deny TAMPER', () => {
+  assertDecision(classifyBash('sort --output=.claude/settings.json input.txt'), 'deny', hook.RULE.TAMPER);
+});
+test('39B. sort --files0-from=.env -> deny SECRET', () => {
+  assertDecision(classifyBash('sort --files0-from=.env'), 'deny', hook.RULE.SECRET);
+});
+test("39B. sort --compress-program='git push' input.txt -> ask COMPLEX, not defer", () => {
+  assertDecision(classifyBash("sort --compress-program='git push' input.txt"), 'ask', hook.RULE.COMPLEX);
+});
+test('39B. sort -o harmless.txt input.txt (non-protected output) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('sort -o harmless.txt input.txt'), 'ask', hook.RULE.TAMPER);
+});
+test('39B. sort -T .claude/hooks input.txt -> ask TAMPER (protected temp dir)', () => {
+  assertDecision(classifyBash('sort -T .claude/hooks input.txt'), 'ask', hook.RULE.TAMPER);
+});
+test('39B. sort --unknown-flag input.txt -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('sort --unknown-flag input.txt'), 'ask', hook.RULE.COMPLEX);
+});
+test('39B. negative control: sort input.txt -> defer', () => { assertDecision(classifyBash('sort input.txt'), 'defer'); });
+test('39B. negative control: sort -r input.txt -> defer', () => { assertDecision(classifyBash('sort -r input.txt'), 'defer'); });
+test('39B. negative control: sort .env is a positional secret source -> deny SECRET', () => {
+  assertDecision(classifyBash('sort .env'), 'deny', hook.RULE.SECRET);
+});
+
+// --- 39C: uniq ---
+test('39C. uniq input.txt .claude/settings.json -> deny TAMPER', () => {
+  assertDecision(classifyBash('uniq input.txt .claude/settings.json'), 'deny', hook.RULE.TAMPER);
+});
+test('39C. uniq .env output.txt -> deny SECRET', () => {
+  assertDecision(classifyBash('uniq .env output.txt'), 'deny', hook.RULE.SECRET);
+});
+test('39C. uniq a b c (too many operands) -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('uniq a b c'), 'ask', hook.RULE.COMPLEX);
+});
+test('39C. negative control: uniq input.txt -> defer', () => { assertDecision(classifyBash('uniq input.txt'), 'defer'); });
+test('39C. negative control: bare uniq -> defer', () => { assertDecision(classifyBash('uniq'), 'defer'); });
+
+// --- 39D: grep / rg ---
+test('39D. grep --file=.env pattern input.txt -> deny SECRET', () => {
+  assertDecision(classifyBash('grep --file=.env pattern input.txt'), 'deny', hook.RULE.SECRET);
+});
+test('39D. grep -f .env input.txt -> deny SECRET', () => {
+  assertDecision(classifyBash('grep -f .env input.txt'), 'deny', hook.RULE.SECRET);
+});
+test('39D. rg --file=.env pattern input.txt -> deny SECRET', () => {
+  assertDecision(classifyBash('rg --file=.env pattern input.txt'), 'deny', hook.RULE.SECRET);
+});
+test("39D. rg --pre 'git push' pattern . -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("rg --pre 'git push' pattern ."), 'deny', hook.RULE.GIT_PUSH);
+});
+test('39D. rg --pre ./unknown-tool pattern . -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('rg --pre ./unknown-tool pattern .'), 'ask', hook.RULE.COMPLEX);
+});
+test('39D. grep --unknown-flag pattern input.txt -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('grep --unknown-flag pattern input.txt'), 'ask', hook.RULE.COMPLEX);
+});
+test('39D. negative control: grep foo bar.txt -> defer', () => { assertDecision(classifyBash('grep foo bar.txt'), 'defer'); });
+test('39D. negative control: rg foo . -> defer', () => { assertDecision(classifyBash('rg foo .'), 'defer'); });
+test('39D. negative control: grep -i -n pattern README.md -> defer (recognized booleans)', () => {
+  assertDecision(classifyBash('grep -i -n pattern README.md'), 'defer');
+});
+
+// --- 39E: wc ---
+test('39E. wc --files0-from=.env -> deny SECRET', () => {
+  assertDecision(classifyBash('wc --files0-from=.env'), 'deny', hook.RULE.SECRET);
+});
+test('39E. wc --files0-from .env -> deny SECRET (separate-token form)', () => {
+  assertDecision(classifyBash('wc --files0-from .env'), 'deny', hook.RULE.SECRET);
+});
+test('39E. wc --unknown-flag README.md -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('wc --unknown-flag README.md'), 'ask', hook.RULE.COMPLEX);
+});
+test('39E. negative control: wc README.md -> defer', () => { assertDecision(classifyBash('wc README.md'), 'defer'); });
+test('39E. negative control: wc -l README.md -> defer', () => { assertDecision(classifyBash('wc -l README.md'), 'defer'); });
+
+// --- 39F: cat/head/tail/cut option-aware, cut added to secret-read handling ---
+test('39F. cut -f1 .env -> deny SECRET (cut newly added to secret-read handling)', () => {
+  assertDecision(classifyBash('cut -f1 .env'), 'deny', hook.RULE.SECRET);
+});
+test('39F. cat --unknown-flag README.md -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('cat --unknown-flag README.md'), 'ask', hook.RULE.COMPLEX);
+});
+test('39F. head --unknown-flag README.md -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('head --unknown-flag README.md'), 'ask', hook.RULE.COMPLEX);
+});
+test('39F. tail --unknown-flag README.md -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('tail --unknown-flag README.md'), 'ask', hook.RULE.COMPLEX);
+});
+test('39F. cut --unknown-flag README.md -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('cut --unknown-flag README.md'), 'ask', hook.RULE.COMPLEX);
+});
+test('39F. negative control: cat README.md -> defer', () => { assertDecision(classifyBash('cat README.md'), 'defer'); });
+test('39F. negative control: head -n 5 README.md -> defer', () => { assertDecision(classifyBash('head -n 5 README.md'), 'defer'); });
+test('39F. negative control: tail -f README.md -> defer', () => { assertDecision(classifyBash('tail -f README.md'), 'defer'); });
+test('39F. negative control: cut -f1,3 -d, README.md -> defer', () => { assertDecision(classifyBash('cut -f1,3 -d, README.md'), 'defer'); });
+test('39F. negative control: cat .env still denies (unaffected by the option-aware rewrite)', () => {
+  assertDecision(classifyBash('cat .env'), 'deny', hook.RULE.SECRET);
+});
+
+// --- 39G: git diff/log/show --output ---
+test('39G. git diff --output=.claude/settings.json -> deny TAMPER', () => {
+  assertDecision(classifyBash('git diff --output=.claude/settings.json'), 'deny', hook.RULE.TAMPER);
+});
+test('39G. git log --output=.claude/settings.json -1 -> deny TAMPER', () => {
+  assertDecision(classifyBash('git log --output=.claude/settings.json -1'), 'deny', hook.RULE.TAMPER);
+});
+test('39G. git show --output=.claude/settings.json HEAD -> deny TAMPER', () => {
+  assertDecision(classifyBash('git show --output=.claude/settings.json HEAD'), 'deny', hook.RULE.TAMPER);
+});
+test('39G. git diff --output harmless.diff (non-protected, separate-token form) -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git diff --output harmless.diff'), 'ask', hook.RULE.TAMPER);
+});
+
+// --- 39H: git external execution flags ---
+test('39H. git diff --ext-diff -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git diff --ext-diff'), 'ask', hook.RULE.COMPLEX);
+});
+test('39H. git diff --textconv -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git diff --textconv'), 'ask', hook.RULE.COMPLEX);
+});
+test('39H. git show --textconv HEAD -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git show --textconv HEAD'), 'ask', hook.RULE.COMPLEX);
+});
+test('39H. git log --ext-diff -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git log --ext-diff'), 'ask', hook.RULE.COMPLEX);
+});
+test('39H. git cat-file --filters HEAD:README.md -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git cat-file --filters HEAD:README.md'), 'ask', hook.RULE.COMPLEX);
+});
+test('39H. git cat-file --textconv HEAD:README.md -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git cat-file --textconv HEAD:README.md'), 'ask', hook.RULE.COMPLEX);
+});
+test('39H. negative control: git cat-file -p HEAD -> defer', () => {
+  assertDecision(classifyBash('git cat-file -p HEAD'), 'defer');
+});
+test('39H. negative control: git cat-file -t HEAD -> defer', () => {
+  assertDecision(classifyBash('git cat-file -t HEAD'), 'defer');
+});
+
+// --- 39I: command-bearing git environment variables ---
+test("39I. GIT_EXTERNAL_DIFF='./external.sh' git diff --ext-diff -> ask, not defer (unresolved external program)", () => {
+  assertDecision(classifyBash("GIT_EXTERNAL_DIFF='./external.sh' git diff --ext-diff"), 'ask');
+});
+test("39I. GIT_EXTERNAL_DIFF='git push' git diff --ext-diff -> deny GIT_PUSH (payload resolves confidently)", () => {
+  assertDecision(classifyBash("GIT_EXTERNAL_DIFF='git push' git diff --ext-diff"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("39I. GIT_PAGER='git push' git status -> deny GIT_PUSH (command-bearing pager env)", () => {
+  assertDecision(classifyBash("GIT_PAGER='git push' git status"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("39I. GIT_SSH_COMMAND='ssh -o something' git status -> ask, not defer", () => {
+  assertDecision(classifyBash("GIT_SSH_COMMAND='ssh -o something' git status"), 'ask', hook.RULE.TAMPER);
+});
+test('39I. negative control: git status (no command-bearing env) -> defer', () => {
+  assertDecision(classifyBash('git status'), 'defer');
+});
+
+// --- 39J: unknown git global option arity ---
+test('39J. git --unknown-flag status -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git --unknown-flag status'), 'ask', hook.RULE.COMPLEX);
+});
+test('39J. git --unknown-flag push -> ask COMPLEX, not defer (never silently defer OR silently miss push)', () => {
+  assertDecision(classifyBash('git --unknown-flag push'), 'ask', hook.RULE.COMPLEX);
+});
+test('39J. negative control: git -C /tmp/x status -> defer (recognized global option)', () => {
+  assertDecision(classifyBash('git -C /tmp/x status'), 'defer');
+});
+test('39J. negative control: git --version -> defer (recognized boolean global option)', () => {
+  assertDecision(classifyBash('git --version'), 'defer');
+});
+
+// --- 39K: codegraph unknown subcommand must ask, not defer ---
+test('39K. codegraph foo -> ask COMPLEX, not defer (unrecognized subcommand)', () => {
+  assertDecision(classifyBash('codegraph foo'), 'ask', hook.RULE.COMPLEX);
+});
+test('39K. bare codegraph -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('codegraph'), 'ask', hook.RULE.COMPLEX);
+});
+test('39K. negative control: codegraph explore "foo" -> defer', () => {
+  assertDecision(classifyBash('codegraph explore "foo"'), 'defer');
+});
+test('39K. negative control: codegraph search "foo" -> defer', () => {
+  assertDecision(classifyBash('codegraph search "foo"'), 'defer');
+});
+test('39K. negative control: codegraph status -> defer', () => {
+  assertDecision(classifyBash('codegraph status'), 'defer');
+});
+
+// --- 39L: Section 7 audit fixes - git submodule/bisect/remote broad-defer gaps closed ---
+test('39L. git submodule add https://evil/x.git vendor/x -> ask TAMPER, not defer (was a silent gap pre-R10)', () => {
+  assertDecision(classifyBash('git submodule add https://evil/x.git vendor/x'), 'ask', hook.RULE.TAMPER);
+});
+test('39L. git submodule update --init --recursive -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git submodule update --init --recursive'), 'ask', hook.RULE.TAMPER);
+});
+test('39L. negative control: git submodule status -> defer (unaffected)', () => {
+  assertDecision(classifyBash('git submodule status'), 'defer');
+});
+test('39L. git bisect start -> ask TAMPER, not defer (checks out a different commit, was a silent gap pre-R10)', () => {
+  assertDecision(classifyBash('git bisect start'), 'ask', hook.RULE.TAMPER);
+});
+test('39L. git bisect good -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('git bisect good'), 'ask', hook.RULE.TAMPER);
+});
+test('39L. negative control: git bisect log -> defer (pure read)', () => {
+  assertDecision(classifyBash('git bisect log'), 'defer');
+});
+test('39L. git remote prune origin -> ask TAMPER, not defer (was a silent gap pre-R10)', () => {
+  assertDecision(classifyBash('git remote prune origin'), 'ask', hook.RULE.TAMPER);
+});
+test('39L. git remote update -> ask TAMPER, not defer (fetches from every configured remote)', () => {
+  assertDecision(classifyBash('git remote update'), 'ask', hook.RULE.TAMPER);
+});
+test('39L. negative control: git remote show origin -> defer', () => {
+  assertDecision(classifyBash('git remote show origin'), 'defer');
+});
+test('39L. negative control: git remote get-url origin -> defer', () => {
+  assertDecision(classifyBash('git remote get-url origin'), 'defer');
+});
+
+// --- 39M: package readonly subcommands option-aware ---
+test('39M. npm view "$PKG" -> ask COMPLEX, not defer (dynamic argument)', () => {
+  assertDecision(classifyBash('npm view "$PKG"'), 'ask', hook.RULE.COMPLEX);
+});
+test('39M. npm ls --unknown-flag -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('npm ls --unknown-flag'), 'ask', hook.RULE.COMPLEX);
+});
+test('39M. negative control: npm view react --json -> defer (recognized display flag)', () => {
+  assertDecision(classifyBash('npm view react --json'), 'defer');
+});
+test('39M. negative control: pnpm why react -> defer', () => { assertDecision(classifyBash('pnpm why react'), 'defer'); });
+test('39M. negative control: yarn list -> defer', () => { assertDecision(classifyBash('yarn list'), 'defer'); });
+
+// --- 39N: Section 8 gate - full negative-control list stays defer via the pure classifier too ---
+test('39N. Section 8 required negative controls all defer', () => {
+  const negatives = [
+    'pwd', 'echo hello', "printf '%s' hello", 'sort input.txt', 'uniq input.txt', 'date', 'date +%F',
+    'grep pattern README.md', 'rg pattern README.md', 'wc README.md', 'cat README.md',
+    'git status', 'git diff --stat', 'git log -1 --oneline', 'git show --stat HEAD',
+    'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD', 'git cat-file -t HEAD',
+  ];
+  for (const c of negatives) assertDecision(classifyBash(c), 'defer', undefined, `expected defer for: ${c}`);
+});
+
+// ===================== Direct hook I/O tests (R10 Section 8 gate) =====================
+
+test('IO 39: required dangerous fixtures never defer, never leak raw command, no crash', () => {
+  const required = [
+    'sort -o .claude/settings.json input.txt',
+    'sort --output=.claude/settings.json input.txt',
+    'uniq input.txt .claude/settings.json',
+    'date --file=.env',
+    'grep --file=.env pattern input.txt',
+    'rg --file=.env pattern input.txt',
+    'wc --files0-from=.env',
+    'sort --files0-from=.env',
+    "rg --pre 'git push' pattern .",
+    "sort --compress-program='git push' input.txt",
+    'git diff --output=.claude/settings.json',
+    'git log --output=.claude/settings.json -1',
+    'git show --output=.claude/settings.json HEAD',
+    "GIT_EXTERNAL_DIFF='./external.sh' git diff --ext-diff",
+    "GIT_EXTERNAL_DIFF='git push' git diff --ext-diff",
+    'git diff --ext-diff',
+    'git diff --textconv',
+    'git show --textconv HEAD',
+    'git cat-file --filters HEAD:README.md',
+  ];
+  for (const cmd of required) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    assert.notEqual(r.stdout.trim(), '', `must not silently defer: ${cmd}`);
+    const parsed = JSON.parse(r.stdout);
+    assert.notEqual(parsed.hookSpecificOutput.permissionDecision, 'defer', `must not defer: ${cmd}`);
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('.env'), `must not leak raw command for: ${cmd}`);
+  }
+});
+
+test('IO 39: required negative controls all defer through the real process (no hard-deny)', () => {
+  const negatives = [
+    'pwd', 'echo hello', "printf '%s' hello", 'sort input.txt', 'uniq input.txt', 'date', 'date +%F',
+    'grep pattern README.md', 'rg pattern README.md', 'wc README.md', 'cat README.md',
+    'git status', 'git diff --stat', 'git log -1 --oneline', 'git show --stat HEAD',
+    'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD', 'git cat-file -t HEAD',
+  ];
+  for (const cmd of negatives) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    assert.equal(r.stdout.trim(), '', `must defer (no stdout) for: ${cmd}`);
+  }
+});
+
+test('IO 39G: git diff --output=.claude/settings.json resolves through real process -> deny, no raw command leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git diff --output=.claude/settings.json' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+});
+
+test('IO 39I: GIT_EXTERNAL_DIFF=git push resolves through real process -> deny, no env value leaked', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: "GIT_EXTERNAL_DIFF='git push' git diff --ext-diff" }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('external.sh'));
+});
