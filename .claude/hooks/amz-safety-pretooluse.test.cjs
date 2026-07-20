@@ -317,7 +317,7 @@ test('12. env git push -> deny', () => { assertDecision(classifyBash('env git pu
 test('12. command git push -> deny', () => { assertDecision(classifyBash('command git push'), 'deny', hook.RULE.GIT_PUSH); });
 test('12. timeout 10 git push -> deny', () => { assertDecision(classifyBash('timeout 10 git push'), 'deny', hook.RULE.GIT_PUSH); });
 test('12. git -c alias.p=push p origin master -> deny', () => { assertDecision(classifyBash('git -c alias.p=push p origin master'), 'deny', hook.RULE.GIT_PUSH); });
-test('12. git shell alias (!) -> ask, not recursively parsed', () => { assertDecision(classifyBash('git -c alias.p="!git push" p'), 'ask', hook.RULE.COMPLEX); });
+test('12. git shell alias (!) -> deny (R6: shell-alias payload resolves confidently to git push, was ask)', () => { assertDecision(classifyBash('git -c alias.p="!git push" p'), 'deny', hook.RULE.GIT_PUSH); });
 test('12. git alias not defined in command -> defer (unresolved subcommand)', () => { assertDecision(classifyBash('git p origin master'), 'defer'); });
 test('12. git status -> defer (no hard-deny)', () => { assertDecision(classifyBash('git status'), 'defer'); });
 test('12. git diff -> defer', () => { assertDecision(classifyBash('git diff'), 'defer'); });
@@ -858,8 +858,8 @@ test('33D. /bin/bash -lc "git push" -> deny (absolute path wrapper recognized by
 test('33D. bash --noprofile -lc "git push" -> deny (known extra flag before -lc)', () => {
   assertDecision(classifyBash('bash --noprofile -lc "git push"'), 'deny', hook.RULE.GIT_PUSH);
 });
-test('33D. env -i git push -> deny (known env option form)', () => {
-  assertDecision(classifyBash('env -i git push'), 'deny', hook.RULE.GIT_PUSH);
+test('33D. env -i git push -> ask (R6: env -i clears inherited environment, fail-closed instead of trusting payload, was deny)', () => {
+  assertDecision(classifyBash('env -i git push'), 'ask', hook.RULE.COMPLEX);
 });
 test('33D. command -p git push -> deny (known command option form)', () => {
   assertDecision(classifyBash('command -p git push'), 'deny', hook.RULE.GIT_PUSH);
@@ -1113,6 +1113,182 @@ test('never emits allow decision anywhere in the classifier surface', () => {
   const src = sourceFs.readFileSync(path.join(__dirname, 'amz-safety-pretooluse.cjs'), 'utf8');
   assert.ok(!/decision:\s*'allow'/.test(src), 'source must never construct an allow decision');
   assert.ok(!/updatedInput/.test(src), 'source must never reference updatedInput');
+});
+
+// ===================== 35. R6: assignment inheritance, recursive git alias, redirection enumeration, glob-executable, extra wrappers =====================
+
+// --- 35A: Blocker A - assignment metadata preserved (and correctly shadowed) across wrapper hops ---
+test('35A. GIT_CONFIG_COUNT/KEY/VALUE through env -> deny (assignments survive wrapper)', () => {
+  assertDecision(classifyBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push env git p"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35A. GIT_CONFIG_COUNT/KEY/VALUE through command -> deny', () => {
+  assertDecision(classifyBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push command git p"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35A. GIT_CONFIG_COUNT/KEY/VALUE through time -> deny', () => {
+  assertDecision(classifyBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push time git p"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35A. GIT_CONFIG_COUNT/KEY/VALUE through nohup -> deny', () => {
+  assertDecision(classifyBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push nohup git p"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35A. GIT_CONFIG_COUNT/KEY/VALUE through bash -lc -> deny', () => {
+  assertDecision(classifyBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push bash -lc 'git p'"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35A. GIT_CONFIG_PARAMETERS single-quoted pair -> deny (confidently parsed)', () => {
+  assertDecision(classifyBash("GIT_CONFIG_PARAMETERS=\"'alias.p=push'\" env git p"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35A. GIT_CONFIG_PARAMETERS unparseable form -> ask, not defer (fails closed)', () => {
+  assertDecision(classifyBash("GIT_CONFIG_PARAMETERS='not-a-kv-pair' env git p"), 'ask', hook.RULE.TAMPER);
+});
+test('35A. inner assignment overrides outer of the same name (real environment-inheritance semantics)', () => {
+  // Outer GIT_CONFIG_COUNT=1 would resolve the alias; inner GIT_CONFIG_COUNT=0 (declared closer to
+  // the leaf, inside the bash -lc payload) must shadow it and nullify the alias resolution.
+  assertDecision(
+    classifyBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push bash -lc 'GIT_CONFIG_COUNT=0 git p'"),
+    'ask', hook.RULE.TAMPER
+  );
+});
+test('35A. env -i git push -> ask, fails closed instead of trusting cleared/inherited env', () => {
+  assertDecision(classifyBash('env -i git push'), 'ask', hook.RULE.COMPLEX);
+});
+test('35A. env -i FOO=bar git push -> ask, fails closed', () => {
+  assertDecision(classifyBash('env -i FOO=bar git push'), 'ask', hook.RULE.COMPLEX);
+});
+test('35A. negative control: unrelated leading assignment through wrapper -> defer', () => {
+  assertDecision(classifyBash("A=1 B=2 bash -lc 'git status'"), 'defer');
+});
+
+// --- 35B: Blocker B - recursive git alias resolution (depth/cycle bounded, global options preserved) ---
+test('35B. two-hop alias chain to push -> deny', () => {
+  assertDecision(classifyBash('git -c alias.a=b -c alias.b=push a'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35B. two-hop alias chain to send-pack -> deny', () => {
+  assertDecision(classifyBash('git -c alias.a=b -c alias.b=send-pack a'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35B. alias chain resolving to shell alias "!git push" -> deny (confidently protected)', () => {
+  assertDecision(classifyBash("git -c alias.a=b -c alias.b='!git push' a"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35B. alias chain resolving to shell alias "!echo hi" -> ask (not confidently protected)', () => {
+  assertDecision(classifyBash("git -c alias.a=b -c alias.b='!echo hi' a"), 'ask', hook.RULE.COMPLEX);
+});
+test('35B. alias cycle a->b->a -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git -c alias.a=b -c alias.b=a a'), 'ask', hook.RULE.COMPLEX);
+});
+test('35B. alias chain exceeding MAX_GIT_ALIAS_DEPTH -> ask, not defer', () => {
+  assertDecision(
+    classifyBash('git -c alias.a1=a2 -c alias.a2=a3 -c alias.a3=a4 -c alias.a4=a5 -c alias.a5=a6 -c alias.a6=a7 -c alias.a7=push a1'),
+    'ask', hook.RULE.COMPLEX
+  );
+});
+test('35B. alias value starting with a git global option is not truncated to its first token -> deny', () => {
+  assertDecision(classifyBash('git -c alias.p="-c alias.q=push q" p'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35B. alias value starting with -C global option resolves to harmless subcommand -> defer', () => {
+  assertDecision(classifyBash('git -c alias.p="-C /tmp status" p'), 'defer');
+});
+test('35B. negative control: alias to harmless subcommand -> defer', () => {
+  assertDecision(classifyBash('git -c alias.p=status p'), 'defer');
+});
+
+// --- 35C: Blocker C - quote-aware redirection enumeration (every redirection, not just the first) ---
+test('35C. two output redirects, protected one is second -> deny (not just first checked)', () => {
+  assertDecision(classifyBash('git status > /tmp/harmless > .claude/settings.json'), 'deny', hook.RULE.TAMPER);
+});
+test('35C. output + stderr redirect, protected target on stderr -> deny', () => {
+  assertDecision(classifyBash('git status > /tmp/harmless 2> .claude/settings.json'), 'deny', hook.RULE.TAMPER);
+});
+test('35C. fd 3 redirect to protected target -> deny (not limited to fd 0-2)', () => {
+  assertDecision(classifyBash('git status 3> .claude/settings.json'), 'deny', hook.RULE.TAMPER);
+});
+test('35C. quoted decoy operator inside printf argument does not hide the real trailing redirect -> deny', () => {
+  assertDecision(classifyBash("printf '%s' '> /tmp/harmless' > .claude/settings.json"), 'deny', hook.RULE.TAMPER);
+});
+test('35C. quoted decoy operator inside printf argument, real input redirect from secret -> deny', () => {
+  assertDecision(classifyBash("printf '%s' '< /dev/null' < .env"), 'deny', hook.RULE.SECRET);
+});
+test('35C. two input redirects, secret one is second -> deny (not just first checked)', () => {
+  assertDecision(classifyBash('cat < /dev/null < .env'), 'deny', hook.RULE.SECRET);
+});
+test('35C. 2>&1 fd-duplication is never misread as a file target -> defer', () => {
+  assertDecision(classifyBash('echo test 2>&1'), 'defer');
+});
+test('35C. 2>&1 followed by a real background separator still segments correctly -> deny', () => {
+  assertDecision(classifyBash('echo test 2>&1 & git push'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35C. negative control: single harmless redirect -> defer', () => {
+  assertDecision(classifyBash('git status > /tmp/harmless'), 'defer');
+});
+
+// --- 35D: Blocker D - dialect-aware redirection target cooking (shared with argument-path cooking) ---
+test('35D. POSIX backslash-escaped protected output target -> deny', () => {
+  assertDecision(classifyBash('git status > .clau\\de/settings.json'), 'deny', hook.RULE.TAMPER);
+});
+test('35D. POSIX single-quote-concatenated protected output target -> deny', () => {
+  assertDecision(classifyBash("git status > .clau'de'/settings.json"), 'deny', hook.RULE.TAMPER);
+});
+test('35D. POSIX double-quoted protected output target -> deny', () => {
+  assertDecision(classifyBash('git status > ".claude/settings.json"'), 'deny', hook.RULE.TAMPER);
+});
+test('35D. POSIX backslash-escaped secret input target -> deny', () => {
+  assertDecision(classifyBash('cat < .e\\nv'), 'deny', hook.RULE.SECRET);
+});
+test('35D. POSIX single-quote-concatenated secret input target -> deny', () => {
+  assertDecision(classifyBash("cat < .e'nv'"), 'deny', hook.RULE.SECRET);
+});
+test('35D. POSIX double-quoted secret input target -> deny', () => {
+  assertDecision(classifyBash('cat < ".env"'), 'deny', hook.RULE.SECRET);
+});
+test('35D. dynamic output target ($P) -> ask, not defer', () => {
+  assertDecision(classifyBash('git status > "$P"'), 'ask', hook.RULE.TAMPER);
+});
+test('35D. dynamic output target (${HOME}/...) -> ask, not defer', () => {
+  assertDecision(classifyBash('git status > "${HOME}/.claude/settings.json"'), 'ask', hook.RULE.TAMPER);
+});
+test('35D. dynamic input target ($SECRET_FILE) -> ask, not defer', () => {
+  assertDecision(classifyBash('cat < "$SECRET_FILE"'), 'ask', hook.RULE.SECRET);
+});
+
+// --- 35E: Blocker E - dynamic/glob executable token ---
+test('35E. unquoted ? glob in executable path -> ask, not defer', () => {
+  assertDecision(classifyBash('/usr/bin/g?t push'), 'ask', hook.RULE.COMPLEX);
+});
+test('35E. unquoted * glob in executable name -> ask, not defer', () => {
+  assertDecision(classifyBash('g* push'), 'ask', hook.RULE.COMPLEX);
+});
+test('35E. unquoted [] glob in executable path -> ask, not defer', () => {
+  assertDecision(classifyBash('./[g]it push'), 'ask', hook.RULE.COMPLEX);
+});
+test('35E. whole-token-quoted glob-looking executable -> defer (literal, not semantically expanded)', () => {
+  assertDecision(classifyBash('"/usr/bin/g?t" push'), 'defer');
+});
+test('35E. negative control: glob character in an argument (not the executable) -> defer', () => {
+  assertDecision(classifyBash('ls *.txt'), 'defer');
+});
+
+// --- 35F: Blocker F - additional shell/exec wrappers (dash/zsh/ksh/busybox/setsid/script/winpty/wsl) ---
+test('35F. dash -c "git push" -> deny', () => { assertDecision(classifyBash("dash -c 'git push'"), 'deny', hook.RULE.GIT_PUSH); });
+test('35F. zsh -c "git push" -> deny', () => { assertDecision(classifyBash("zsh -c 'git push'"), 'deny', hook.RULE.GIT_PUSH); });
+test('35F. ksh -c "git push" -> deny', () => { assertDecision(classifyBash("ksh -c 'git push'"), 'deny', hook.RULE.GIT_PUSH); });
+test('35F. busybox sh -c "git push" -> deny', () => { assertDecision(classifyBash("busybox sh -c 'git push'"), 'deny', hook.RULE.GIT_PUSH); });
+test('35F. busybox with unrecognized applet -> ask, not defer', () => { assertDecision(classifyBash('busybox echo hi'), 'ask', hook.RULE.COMPLEX); });
+test('35F. setsid git push -> deny', () => { assertDecision(classifyBash('setsid git push'), 'deny', hook.RULE.GIT_PUSH); });
+test('35F. setsid with unrecognized leading flag -> ask, not defer', () => { assertDecision(classifyBash('setsid -w git push'), 'ask', hook.RULE.COMPLEX); });
+test('35F. script -q -c "git push" /dev/null -> deny (trailing positional file ignored)', () => {
+  assertDecision(classifyBash("script -q -c 'git push' /dev/null"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35F. script with no -c (interactive-session shape) -> ask, not defer', () => {
+  assertDecision(classifyBash('script /dev/null'), 'ask', hook.RULE.COMPLEX);
+});
+test('35F. winpty bash -lc "git push" -> deny (two wrapper layers)', () => {
+  assertDecision(classifyBash("winpty bash -lc 'git push'"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('35F. wsl.exe sh -c "git push" -> ask always, no WSL grammar parsing attempted', () => {
+  assertDecision(classifyBash("wsl.exe sh -c 'git push'"), 'ask', hook.RULE.COMPLEX);
+});
+test('35F. bare wsl git push -> ask always', () => {
+  assertDecision(classifyBash('wsl git push'), 'ask', hook.RULE.COMPLEX);
+});
+test('35F. negative control: winpty with harmless payload -> defer', () => {
+  assertDecision(classifyBash('winpty echo hi'), 'defer');
 });
 
 // ===================== Direct hook I/O tests (section 24 of task) =====================
@@ -1409,4 +1585,120 @@ test('IO: xargs git push resolves through real process -> deny JSON, no raw comm
   const parsed = JSON.parse(r.stdout);
   assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('xargs'));
+});
+
+// ===================== R6 direct hook I/O tests (one per blocker A-F) =====================
+
+test('IO 35A: GIT_CONFIG_* assignment surviving an env wrapper resolves through real process -> deny, no GIT_CONFIG_VALUE marker leaked', () => {
+  const fixture = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.THISMUSTNOTAPPEAR GIT_CONFIG_VALUE_0=push env git THISMUSTNOTAPPEAR" },
+    cwd: 'C:/repo',
+  });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('THISMUSTNOTAPPEAR'));
+});
+
+test('IO 35B: recursive git alias chain to send-pack resolves through real process -> deny, no alias-name marker leaked', () => {
+  const fixture = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'git -c alias.THISMUSTNOTAPPEAR1=THISMUSTNOTAPPEAR2 -c alias.THISMUSTNOTAPPEAR2=send-pack THISMUSTNOTAPPEAR1' },
+    cwd: 'C:/repo',
+  });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('THISMUSTNOTAPPEAR'));
+});
+
+test('IO 35C: second (non-first) redirection target being protected resolves through real process -> deny, no target path leaked', () => {
+  const fixture = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'git status > /tmp/harmless > .claude/settings.json' },
+    cwd: 'C:/repo',
+  });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('.claude/settings.json'));
+});
+
+test('IO 35D: backslash-escaped secret input redirection target resolves through real process -> deny, no cooked path leaked', () => {
+  const fixture = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: 'cat < .e\\nv' },
+    cwd: 'C:/repo',
+  });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('.env'));
+});
+
+test('IO 35E: unquoted glob metacharacter in executable token resolves through real process -> ask, not defer, no raw command leaked', () => {
+  const fixture = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: '/usr/bin/g?t push' },
+    cwd: 'C:/repo',
+  });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('/usr/bin/g?t'));
+});
+
+test('IO 35F: two-layer wrapper (winpty + bash -lc) resolves through real process -> deny, no raw command leaked', () => {
+  const fixture = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: "winpty bash -lc 'git push'" },
+    cwd: 'C:/repo',
+  });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('winpty'));
+});
+
+test('IO 35F: wsl.exe wrapper resolves through real process -> ask always, no raw command leaked, no WSL parsing attempted', () => {
+  const fixture = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: "wsl.exe sh -c 'git push'" },
+    cwd: 'C:/repo',
+  });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('wsl'));
+});
+
+test('IO: env -i git push resolves through real process -> ask JSON (fail-closed), never defer', () => {
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'env -i git push' }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
 });

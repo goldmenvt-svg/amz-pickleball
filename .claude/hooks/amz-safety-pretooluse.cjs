@@ -15,6 +15,7 @@ const MAX_FILE_PATH_LENGTH = 1024;
 const MAX_SEGMENTS = 20;
 const MAX_TOTAL_SEGMENTS = 40;
 const MAX_WRAPPER_DEPTH = 6;
+const MAX_GIT_ALIAS_DEPTH = 6;
 const MAX_PACKAGE_JSON_SIZE = 10 * 1024;
 
 const RULE = {
@@ -366,7 +367,7 @@ function stripLeadingAssignments(segment, dialect) {
     // without a trace - collect name+cooked-value so the caller can inspect them once the
     // effective binary is known (see collectGitConfigEnvAliases / classifyGit).
     const cookedValue = cookPosixWord(m[2]);
-    assignments.push({ name: m[1], value: cookedValue.ok ? cookedValue.cooked : m[2] });
+    assignments.push({ name: m[1], value: cookedValue.ok ? cookedValue.cooked : m[2], ambiguous: !cookedValue.ok });
     const remainder = s.slice(w.endIndex);
     const ws = /^\s+/.exec(remainder);
     if (!ws) { s = ''; break; }
@@ -385,6 +386,17 @@ function stripLeadingAssignments(segment, dialect) {
   return { seg: s, ambiguous: false, assignments };
 }
 
+// Merge assignment lists collected at successive wrapper hops, e.g.
+// `A=1 env B=2 bash -lc 'C=3 cmd'` - `outer` assignments (declared further from the leaf) are
+// visible to everything the wrapper chain runs, but a same-named assignment declared at a more
+// nested hop (`inner`, closer to the leaf) shadows it, exactly like a real process environment.
+function mergeAssignments(outer, inner) {
+  const map = new Map();
+  for (const a of outer || []) map.set(a.name, a);
+  for (const a of inner || []) map.set(a.name, a);
+  return Array.from(map.values());
+}
+
 function extractBinaryAndRest(segment, dialect) {
   const stripped = stripLeadingAssignments(segment, dialect);
   if (stripped.ambiguous) return { ambiguous: true };
@@ -393,9 +405,11 @@ function extractBinaryAndRest(segment, dialect) {
   let m = /^"([^"]+)"\s*(.*)$/.exec(trimmed) || /^'([^']+)'\s*(.*)$/.exec(trimmed);
   let first;
   let rest;
+  let quoted = false;
   if (m) {
     first = m[1];
     rest = m[2];
+    quoted = true;
   } else {
     const idx = trimmed.search(/\s/);
     if (idx === -1) { first = trimmed; rest = ''; } else { first = trimmed.slice(0, idx); rest = trimmed.slice(idx + 1); }
@@ -414,7 +428,7 @@ function extractBinaryAndRest(segment, dialect) {
     if (dialect === 'cmd' && first.indexOf('^') !== -1) return { ambiguous: true };
     if (dialect === 'powershell' && first.indexOf('`') !== -1) return { ambiguous: true };
   }
-  return { first, rest: rest.trim() };
+  return { first, rest: rest.trim(), quoted };
 }
 
 function basenameOf(p) {
@@ -532,6 +546,12 @@ function segmentTopLevel(s, dialect) {
       // `>|` (noclobber-override redirect) is one atomic operator, not a `>` followed by a pipe -
       // must not split here or the redirection scanner never sees the operator as a whole.
       if (c === '|' && s[i - 1] === '>') { cur += c; i += 1; continue; }
+      // `>&`/`<&` (fd-duplication, e.g. `2>&1`, `1>&2`, `<&3`) is one atomic redirection operator -
+      // the `&` here is glued directly to the preceding redirection char with no separating
+      // whitespace, so it is never the background/separator operator. Splitting here would hand
+      // the redirection scanner a truncated `2>` with no visible target, misreading a harmless fd
+      // duplication as an unresolvable redirection instead of correctly ignoring it.
+      if (c === '&' && (s[i - 1] === '>' || s[i - 1] === '<')) { cur += c; i += 1; continue; }
       if (c === ';' || c === '|' || c === '\n') { segments.push(cur); cur = ''; i += 1; continue; }
       // Single top-level `&` is a command separator (background operator in POSIX, also a
       // separator in CMD). Already excluded from `&&` above, so this only ever fires on a lone
@@ -553,7 +573,10 @@ function segmentTopLevel(s, dialect) {
 // than a regex anchored to literal text at the start of the string. A binary in this set with an
 // option shape the scanner doesn't specifically support is `ambiguous` (ask), never treated as an
 // unrecognized-but-safe executable that falls through to defer - see each case below.
-const KNOWN_PLAIN_WRAPPER_BINS = new Set(['env', 'command', 'timeout', 'time', 'nice', 'nohup', 'stdbuf', 'bash', 'sh', 'cmd', 'powershell', 'pwsh', 'corepack']);
+const KNOWN_PLAIN_WRAPPER_BINS = new Set([
+  'env', 'command', 'timeout', 'time', 'nice', 'nohup', 'stdbuf', 'bash', 'sh', 'cmd', 'powershell',
+  'pwsh', 'corepack', 'dash', 'zsh', 'ksh', 'busybox', 'setsid', 'script', 'winpty',
+]);
 
 // Skip `count` leading raw "words" (simple whitespace-delimited, quote-aware) from `s`, returning
 // the remaining raw substring with its original quoting intact. Used to peel off a small number of
@@ -574,8 +597,12 @@ function skipLeadingRawWords(s, count) {
 function tryStripWrapperOptions(wrapperBin, rest) {
   switch (wrapperBin) {
     case 'env': {
-      const m = /^-i\s+(.+)$/.exec(rest);
-      if (m) return { seg: m[1] };
+      // `env -i` clears the entire inherited environment before running the payload. Accurately
+      // modeling exactly which assignments survive (only ones re-declared after -i) vs which are
+      // erased (everything inherited, e.g. a GIT_CONFIG_* triple from an outer wrapper) is not
+      // something this scanner attempts - fail closed with ask rather than silently trusting (or
+      // silently dropping) inherited assignment context either way.
+      if (/^-i(\s|$)/.test(rest)) return { ambiguous: true };
       if (rest.length === 0) return { ambiguous: true };
       if (/^-/.test(rest)) return { ambiguous: true };
       return { seg: rest };
@@ -626,10 +653,37 @@ function tryStripWrapperOptions(wrapperBin, rest) {
       return { seg: r };
     }
     case 'bash':
-    case 'sh': {
+    case 'sh':
+    case 'dash':
+    case 'zsh':
+    case 'ksh': {
       const m = /^(?:(?:--noprofile|--norc|--posix)\s+)*(?:-lc|-c)\s+(?:--\s+)?(.+)$/i.exec(rest);
       if (m) return { seg: unquoteOnce(m[1]), dialect: 'posix' };
       return { ambiguous: true };
+    }
+    case 'busybox': {
+      // `busybox <applet> -c <command>` - busybox is a multi-call binary; only the shell applets
+      // (sh/bash/ash/dash) with a recognized -c/-lc option shape are stripped with confidence.
+      const m = /^(sh|bash|ash|dash)\s+(?:(?:--noprofile|--norc|--posix)\s+)*(?:-lc|-c)\s+(?:--\s+)?(.+)$/i.exec(rest);
+      if (m) return { seg: unquoteOnce(m[2]), dialect: 'posix' };
+      return { ambiguous: true };
+    }
+    case 'setsid':
+    case 'winpty': {
+      // Transparent process wrappers: `setsid|winpty [--] cmd [args...]`.
+      let r = rest;
+      if (/^--(\s|$)/.test(r)) r = r.replace(/^--\s*/, '');
+      if (r.length === 0 || /^-/.test(r)) return { ambiguous: true };
+      return { seg: r };
+    }
+    case 'script': {
+      // Only `script [-q|--quiet]* (-c|--command) <command> [typescript-file]` is stripped with
+      // confidence - an interactive session (no -c) or unrecognized flag ordering must ask.
+      const m = /^(?:-q\s+|--quiet\s+)*(?:-c|--command)\s+(.+)$/i.exec(rest);
+      if (!m) return { ambiguous: true };
+      const w = scanPosixWord(m[1]);
+      if (w.ambiguous || !w.word) return { ambiguous: true };
+      return { seg: unquoteOnce(w.word), dialect: 'posix' };
     }
     case 'cmd': {
       if (/^\/k\b/i.test(rest)) return { ambiguous: true };
@@ -714,7 +768,11 @@ function resolveOneHop(segment, dialect) {
   if (stripped) {
     if (stripped.ambiguous) return { ambiguous: true };
     const nextDialect = stripped.dialect || dialect;
-    return { wrapped: true, payload: stripped.seg, dialect: nextDialect, packageRunner: !!stripped.packageRunner };
+    // Assignments declared before the wrapper binary itself (e.g. the `GIT_CONFIG_*` triple in
+    // `GIT_CONFIG_COUNT=1 ... env git p`) are visible to whatever the wrapper runs - must be
+    // carried out with the wrapped payload, not dropped here, or the caller has no way to know
+    // they existed by the time the payload is re-classified.
+    return { wrapped: true, payload: stripped.seg, dialect: nextDialect, packageRunner: !!stripped.packageRunner, assignments: assign.assignments || [] };
   }
   return { segment: afterAssign, dialect, assignments: assign.assignments || [] };
 }
@@ -804,12 +862,33 @@ function classifyNestedClaude(rest) {
 // don't resolve to a specific known-dangerous alias).
 const GIT_CONFIG_ENV_RE = /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS)$/i;
 
+// GIT_CONFIG_PARAMETERS is a space-separated list of git's own single-quote-shell-encoded
+// `key=value` pairs (e.g. `'alias.p=push' 'alias.q=pull'`) - the same quoting convention as a
+// POSIX shell word, so the existing cooked-word tokenizer parses it correctly for the common case.
+// Anything the tokenizer can't resolve with confidence (unbalanced quoting, a token that isn't
+// `key=value`) is reported as a parse failure so the caller fails closed to ask, not defer.
+function parseGitConfigParameters(value) {
+  const t = tokenizeCookedPosix(value);
+  if (!t.ok) return { ok: false };
+  const aliasMap = {};
+  for (const tok of t.tokens) {
+    const eq = tok.indexOf('=');
+    if (eq === -1) return { ok: false };
+    const key = tok.slice(0, eq);
+    const val = tok.slice(eq + 1);
+    const am = /^alias\.(.+)$/i.exec(key);
+    if (am) aliasMap[am[1]] = val;
+  }
+  return { ok: true, aliasMap };
+}
+
 function collectGitConfigEnvAliases(assignments) {
   const list = assignments || [];
   const hasGitConfigEnv = list.some((a) => GIT_CONFIG_ENV_RE.test(a.name));
   const byName = {};
   for (const a of list) byName[a.name] = a.value;
   const aliasMap = {};
+  let parametersAmbiguous = false;
   const countRaw = byName.GIT_CONFIG_COUNT;
   const count = countRaw !== undefined ? parseInt(countRaw, 10) : NaN;
   if (Number.isInteger(count) && count >= 0 && count <= 50) {
@@ -822,11 +901,23 @@ function collectGitConfigEnvAliases(assignments) {
       }
     }
   }
-  return { aliasMap, hasGitConfigEnv };
+  if (typeof byName.GIT_CONFIG_PARAMETERS === 'string') {
+    const parsed = parseGitConfigParameters(byName.GIT_CONFIG_PARAMETERS);
+    if (parsed.ok) {
+      for (const k of Object.keys(parsed.aliasMap)) aliasMap[k] = parsed.aliasMap[k];
+    } else {
+      parametersAmbiguous = true;
+    }
+  }
+  return { aliasMap, hasGitConfigEnv, parametersAmbiguous };
 }
 
-function classifyGit(rest, ctx, assignments) {
-  const tokens = tokenizeArgs(rest);
+// Parse a leading run of git global options from `tokens`, collecting any `-c alias.x=y` and
+// `--config-env=alias.x=ENVVAR` entries into an alias map along the way. Shared between top-level
+// command parsing and re-parsing an alias-expanded token stream, since an alias value can itself
+// start with global options (`alias.p = -c alias.q=push q`) that must not be mistaken for the
+// subcommand - see resolveGitAlias.
+function parseGitGlobalOptions(tokens, assignments) {
   let i = 0;
   const aliasMap = {};
   const unresolvedAliasNames = [];
@@ -860,7 +951,7 @@ function classifyGit(rest, ctx, assignments) {
           const am = /^alias\.(.+)$/i.exec(key);
           if (am) {
             const envAssign = (assignments || []).find((a) => a.name === envName);
-            if (envAssign) aliasMap[am[1]] = envAssign.value;
+            if (envAssign && !envAssign.ambiguous) aliasMap[am[1]] = envAssign.value;
             else unresolvedAliasNames.push(am[1]);
           }
         }
@@ -873,6 +964,50 @@ function classifyGit(rest, ctx, assignments) {
     if (t.startsWith('-')) { i += 1; continue; }
     break;
   }
+  return { index: i, aliasMap, unresolvedAliasNames };
+}
+
+// Recursively resolve `startToken` through `aliasMap` (mutated in place as nested alias values are
+// discovered), following real git alias-chaining semantics: each hop's expansion may itself start
+// with global options (skipped via parseGitGlobalOptions) and its own trailing tokens, which are
+// prepended - in resolution order, innermost first - to the tokens the caller already had. Returns
+// `{subcommand, tail}` on success, `{shellAlias}` if a hop resolves to a `!`-prefixed shell alias
+// (which is not a plain subcommand rewrite and must be evaluated as its own shell command by the
+// caller), or `{ambiguous:true}` on a cycle, exceeding MAX_GIT_ALIAS_DEPTH, or an unresolved
+// `--config-env` reference inside an alias body - never silently falls through to defer.
+function resolveGitAlias(startToken, aliasMap, assignments) {
+  let token = startToken;
+  const visited = new Set();
+  let tail = [];
+  let hops = 0;
+  while (token !== undefined && Object.prototype.hasOwnProperty.call(aliasMap, token)) {
+    if (visited.has(token)) return { ambiguous: true };
+    visited.add(token);
+    hops += 1;
+    if (hops > MAX_GIT_ALIAS_DEPTH) return { ambiguous: true };
+    const val = String(aliasMap[token]).trim();
+    if (val.startsWith('!')) return { shellAlias: val };
+    const bodyTokens = tokenizeArgs(val);
+    const g = parseGitGlobalOptions(bodyTokens, assignments);
+    if (g.unresolvedAliasNames.length > 0) return { ambiguous: true };
+    for (const k of Object.keys(g.aliasMap)) {
+      if (!Object.prototype.hasOwnProperty.call(aliasMap, k)) aliasMap[k] = g.aliasMap[k];
+    }
+    const nextToken = bodyTokens[g.index];
+    const rest = bodyTokens.slice(g.index + 1);
+    tail = rest.concat(tail);
+    token = nextToken;
+  }
+  if (token === undefined) return { ambiguous: true };
+  return { subcommand: token, tail };
+}
+
+function classifyGit(rest, ctx, assignments) {
+  const tokens = tokenizeArgs(rest);
+  const parsed = parseGitGlobalOptions(tokens, assignments);
+  const i = parsed.index;
+  const aliasMap = parsed.aliasMap;
+  const unresolvedAliasNames = parsed.unresolvedAliasNames;
 
   const envCfg = collectGitConfigEnvAliases(assignments);
   for (const k of Object.keys(envCfg.aliasMap)) {
@@ -888,14 +1023,27 @@ function classifyGit(rest, ctx, assignments) {
     return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: git alias source could not be resolved with confidence.' });
   }
 
-  if (subcommand && Object.prototype.hasOwnProperty.call(aliasMap, subcommand)) {
-    const val = aliasMap[subcommand];
-    if (val.trim().startsWith('!')) return askResult(RULE.COMPLEX);
-    const resolvedTokens = tokenizeArgs(val);
-    subcommand = resolvedTokens[0];
-    subRestTokens = resolvedTokens.slice(1).concat(subRestTokens);
-  } else if (subcommand === undefined) {
+  if (subcommand === undefined) {
     return envCfg.hasGitConfigEnv ? askResult(RULE.TAMPER) : deferResult();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(aliasMap, subcommand)) {
+    const resolved = resolveGitAlias(subcommand, aliasMap, assignments);
+    if (resolved.ambiguous) {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git alias chain could not be resolved with confidence.' });
+    }
+    if (resolved.shellAlias) {
+      // A `!`-prefixed alias value runs its payload as a shell command in its own right - resolve
+      // it the same way any other nested shell command is resolved, and prefer deny over a bare
+      // ask when the payload confidently resolves to a protected action (e.g. `!git push`).
+      const shellCmd = resolved.shellAlias.slice(1).trim();
+      if (shellCmd.length === 0) return askResult(RULE.COMPLEX);
+      const inner = classifyCommandString(shellCmd, 'posix', ctx, 0, { segments: 0 });
+      if (inner.decision === 'deny') return inner;
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git alias runs a shell command that could not be fully resolved.' });
+    }
+    subcommand = resolved.subcommand;
+    subRestTokens = resolved.tail.concat(subRestTokens);
   }
 
   if (subcommand === 'push' || subcommand === 'send-pack') return denyResult(RULE.GIT_PUSH);
@@ -1185,13 +1333,10 @@ function classifySecretPrimitive(bin, rest, segment, dialect, ctx) {
     }
     return null;
   }
-  // input redirection `< secret-path`
-  const redirMatch = /<\s*([^\s<>|&;]+)/.exec(segment);
-  if (redirMatch && isSecretPath(redirMatch[1], ctx)) return denyResult(RULE.SECRET);
-
-  // fast-read $(<file) narrow carve-out (checked before generic $( ambiguity in caller flow is NOT guaranteed;
-  // this function is only reached for segments that passed hasComplexMarkers, so $( already excluded upstream.
-  // Kept here only as defensive documentation of the design decision - see classifySegment.)
+  // Input redirection from a secret path (`< .env`) is handled exhaustively (all redirections in
+  // the segment, not just the first) by the global scanner (classifyGlobalRedirection /
+  // scanRedirections), which always runs before classifyEffectiveBinary reaches this function - no
+  // narrower single-match fallback is needed or maintained here.
   return null;
 }
 
@@ -1297,38 +1442,190 @@ function classifyShellMutationTamper(bin, rest, segment, dialect, ctx) {
   return null;
 }
 
-// Conservative redirection operator scanner: recognizes >, >>, >|, 1>, 1>>, 2>, 2>>, &>, <, 0< -
-// not a full parser, just enough to find "is there a redirection here, and if so what raw text
-// follows it". Alternation order matters: longer operator forms must be tried before the bare `>`
-// they are prefixed with, or `>>`/`>|` would only ever match their leading `>`.
-const REDIR_OUT_OP_RE = /(?:[012]?>>|[012]?>\||&>|[012]?>)\s*(\S+)/;
-const REDIR_IN_OP_RE = /0?<\s*(\S+)/;
-
-// Strip a single whole-string surrounding quote pair from a redirection target, so a quoted
-// protected literal (`> ".claude/settings.json"`) resolves the same as the unquoted form.
-function cookRedirectionTarget(raw) {
-  const t = raw.trim();
-  if (t.length >= 2 && ((t[0] === '"' && t[t.length - 1] === '"') || (t[0] === "'" && t[t.length - 1] === "'"))) {
-    return t.slice(1, -1);
+// Quote/escape-aware POSIX word scanner used elsewhere for command words; redirection targets need
+// the equivalent for CMD (only `"` quotes, `^` escapes next char) and PowerShell (`'`/`"` quotes,
+// backtick escapes next char) dialects too, since a redirection target is just "the next shell
+// word" in whichever dialect the segment belongs to.
+function scanDialectWord(s, dialect) {
+  if (dialect === 'posix') return scanPosixWord(s);
+  let i = 0;
+  let inS = false;
+  let inD = false;
+  const n = s.length;
+  while (i < n) {
+    const c = s[i];
+    if (!inS && !inD && /\s/.test(c)) break;
+    if (dialect === 'cmd' && c === '^' && !inD) {
+      if (i + 1 >= n) return { ambiguous: true };
+      i += 2;
+      continue;
+    }
+    if (dialect === 'powershell' && c === '`' && !inS) {
+      if (i + 1 >= n) return { ambiguous: true };
+      i += 2;
+      continue;
+    }
+    if (dialect === 'cmd' && c === '"') { inD = !inD; i += 1; continue; }
+    if (dialect === 'powershell' && c === "'" && !inD) { inS = !inS; i += 1; continue; }
+    if (dialect === 'powershell' && c === '"' && !inS) { inD = !inD; i += 1; continue; }
+    i += 1;
   }
-  return t;
+  if (inS || inD) return { ambiguous: true };
+  return { word: s.slice(0, i), endIndex: i };
 }
 
-function classifyRedirectionTamper(segment, ctx) {
-  const m = REDIR_OUT_OP_RE.exec(segment);
-  if (!m) return null;
-  const target = cookRedirectionTarget(m[1]);
-  const r = checkTamperPath(target, ctx);
-  if (r) return r;
-  if (/claude\.md$/i.test(target.replace(/\\/g, '/'))) return askResult(RULE.TAMPER);
-  // Target contains an unresolved shell variable (`${HOME}`, `$P`, `%VAR%`) or `~` - the real
-  // destination can't be determined without resolving shell state, which this scanner never does.
-  // It could point at a protected file just as easily as anywhere else, so this is at least ask,
-  // never a silent defer.
-  if (looksUnresolvedVar(target)) {
-    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: output redirection target could not be resolved with confidence.' });
+// Cook a redirection target word into its semantic value, dialect-aware - reuses the same POSIX
+// cooker as argument paths (cookArgForPath) so `.clau\de/settings.json` and `.clau'de'/settings.json`
+// resolve identically whether they appear as a command argument or a redirection target.
+function cookDialectTarget(rawWord, dialect) {
+  if (dialect === 'posix') return cookPosixWord(rawWord);
+  if (dialect === 'cmd') {
+    let out = '';
+    let inD = false;
+    const n = rawWord.length;
+    for (let i = 0; i < n; i++) {
+      const c = rawWord[i];
+      if (c === '^' && !inD) {
+        if (i + 1 >= n) return { ambiguous: true };
+        out += rawWord[i + 1];
+        i += 1;
+        continue;
+      }
+      if (c === '"') { inD = !inD; continue; }
+      out += c;
+    }
+    if (inD) return { ambiguous: true };
+    return { ok: true, cooked: out };
   }
+  if (dialect === 'powershell') {
+    let out = '';
+    let inS = false;
+    let inD = false;
+    const n = rawWord.length;
+    for (let i = 0; i < n; i++) {
+      const c = rawWord[i];
+      if (inS) {
+        if (c === "'") { inS = false; continue; }
+        out += c;
+        continue;
+      }
+      if (inD) {
+        if (c === '"') { inD = false; continue; }
+        if (c === '`') {
+          if (i + 1 >= n) return { ambiguous: true };
+          out += rawWord[i + 1];
+          i += 1;
+          continue;
+        }
+        out += c;
+        continue;
+      }
+      if (c === "'") { inS = true; continue; }
+      if (c === '"') { inD = true; continue; }
+      if (c === '`') {
+        if (i + 1 >= n) return { ambiguous: true };
+        out += rawWord[i + 1];
+        i += 1;
+        continue;
+      }
+      out += c;
+    }
+    if (inS || inD) return { ambiguous: true };
+    return { ok: true, cooked: out };
+  }
+  return { ok: true, cooked: rawWord };
+}
+
+// Try to match a redirection operator starting exactly at position i of s. Longer/more specific
+// forms are tried first so e.g. `>>` is never seen as just `>`. A single leading fd digit only
+// counts when it sits at a real word boundary (start of string, or preceded by whitespace/`;&|(`)
+// - otherwise a glued digit sequence like `abc123>file` would be misread as fd 123 rather than the
+// literal command name `abc123`.
+function matchRedirOperatorAt(s, i) {
+  const rest = s.slice(i);
+  if (/^&>>/.test(rest)) return { opLength: 3, operator: '&>>', fd: null, direction: 'out' };
+  if (/^&>/.test(rest)) return { opLength: 2, operator: '&>', fd: null, direction: 'out' };
+  let fd = null;
+  let opStart = 0;
+  const fdMatch = /^([0-9])/.exec(rest);
+  if (fdMatch) {
+    const before = i > 0 ? s[i - 1] : undefined;
+    const boundaryOk = before === undefined || /[\s;&|(]/.test(before);
+    if (boundaryOk) { fd = fdMatch[1]; opStart = 1; }
+  }
+  const afterFd = rest.slice(opStart);
+  if (/^>>/.test(afterFd)) return { opLength: opStart + 2, operator: (fd || '') + '>>', fd, direction: 'out' };
+  if (/^>\|/.test(afterFd)) return { opLength: opStart + 2, operator: (fd || '') + '>|', fd, direction: 'out' };
+  if (/^<>/.test(afterFd)) return { opLength: opStart + 2, operator: (fd || '') + '<>', fd, direction: 'inout' };
+  if (/^>/.test(afterFd)) return { opLength: opStart + 1, operator: (fd || '') + '>', fd, direction: 'out' };
+  if (/^</.test(afterFd)) return { opLength: opStart + 1, operator: (fd || '') + '<', fd, direction: 'in' };
   return null;
+}
+
+// Enumerate every redirection operator in `s` (not just the first), skipping anything inside a
+// quoted region or escaped by the dialect's escape character, and returning the raw+cooked target
+// for each. A duplicate-fd form (`2>&1`, `1>&-`) is recognized and skipped entirely - it duplicates
+// a file descriptor, it is never a file path, and must never be reported as a redirection target.
+function scanRedirections(s, dialect) {
+  const results = [];
+  const n = s.length;
+  let i = 0;
+  let inS = false;
+  let inD = false;
+  while (i < n) {
+    const c = s[i];
+    if (!inS && !inD) {
+      if (dialect === 'posix' && c === '\\') { i += (i + 1 < n) ? 2 : 1; continue; }
+      if (dialect === 'cmd' && c === '^') { i += (i + 1 < n) ? 2 : 1; continue; }
+      if (dialect === 'powershell' && c === '`') { i += (i + 1 < n) ? 2 : 1; continue; }
+    }
+    if (c === "'" && !inD && dialect !== 'cmd') { inS = !inS; i += 1; continue; }
+    if (c === '"' && !inS) { inD = !inD; i += 1; continue; }
+    if (inS || inD) { i += 1; continue; }
+
+    const op = matchRedirOperatorAt(s, i);
+    if (!op) { i += 1; continue; }
+
+    let j = i + op.opLength;
+    const wsSkip = /^\s*/.exec(s.slice(j))[0];
+    j += wsSkip.length;
+
+    if (op.direction === 'out' && s[j] === '&' && /^[0-9-]/.test(s[j + 1] || '')) {
+      let k = j + 1;
+      while (k < n && /[0-9-]/.test(s[k])) k += 1;
+      i = k;
+      continue;
+    }
+
+    if (j >= n) {
+      results.push({ operator: op.operator, fd: op.fd, direction: op.direction, rawTarget: null, cookedTarget: null, ambiguous: true });
+      i = j;
+      continue;
+    }
+
+    const wordScan = scanDialectWord(s.slice(j), dialect);
+    if (wordScan.ambiguous) {
+      results.push({ operator: op.operator, fd: op.fd, direction: op.direction, rawTarget: null, cookedTarget: null, ambiguous: true });
+      i = n;
+      break;
+    }
+    if (!wordScan.word || wordScan.word.length === 0) {
+      results.push({ operator: op.operator, fd: op.fd, direction: op.direction, rawTarget: '', cookedTarget: null, ambiguous: true });
+      i = j;
+      continue;
+    }
+    const cooked = cookDialectTarget(wordScan.word, dialect);
+    results.push({
+      operator: op.operator,
+      fd: op.fd,
+      direction: op.direction,
+      rawTarget: wordScan.word,
+      cookedTarget: cooked.ok ? cooked.cooked : null,
+      ambiguous: !cooked.ok,
+    });
+    i = j + wordScan.endIndex;
+  }
+  return results;
 }
 
 // Global redirection check: must run before ANY binary-specific dispatch (git/claude/package
@@ -1337,13 +1634,34 @@ function classifyRedirectionTamper(segment, ctx) {
 // redirection inspection at all - the binary-specific classifier answers first and the redirection
 // is silently ignored. Same rationale for input redirection from a secret file
 // (`git hash-object < .env`, `npm view x < .env`, `vercel status < .env`, `claude -p x < .env`).
-function classifyGlobalRedirection(segment, ctx) {
-  const outTamper = classifyRedirectionTamper(segment, ctx);
-  if (outTamper) return outTamper;
-  const inMatch = REDIR_IN_OP_RE.exec(segment);
-  if (inMatch) {
-    const target = cookRedirectionTarget(inMatch[1]);
-    if (isSecretPath(target, ctx)) return denyResult(RULE.SECRET);
+// Every redirection in the segment is checked (not just the first) - `git status > /tmp/harmless >
+// .claude/settings.json` opens BOTH targets, and the second one being protected must still deny
+// even though it is not the first match a naive single-regex scan would find.
+function classifyGlobalRedirection(segment, ctx, dialect) {
+  const redirs = scanRedirections(segment, dialect);
+  for (const r of redirs) {
+    if (r.ambiguous) {
+      return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: redirection target could not be resolved with confidence.' });
+    }
+    const target = r.cookedTarget;
+    if (r.direction === 'out' || r.direction === 'inout') {
+      const tamperHit = checkTamperPath(target, ctx);
+      if (tamperHit) return tamperHit;
+      if (/claude\.md$/i.test(target.replace(/\\/g, '/'))) return askResult(RULE.TAMPER);
+      // Target contains an unresolved shell variable (`${HOME}`, `$P`, `%VAR%`) or `~` - the real
+      // destination can't be determined without resolving shell state, which this scanner never
+      // does. It could point at a protected file just as easily as anywhere else, so this is at
+      // least ask, never a silent defer.
+      if (looksUnresolvedVar(target)) {
+        return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: output redirection target could not be resolved with confidence.' });
+      }
+    }
+    if (r.direction === 'in' || r.direction === 'inout') {
+      if (isSecretPath(target, ctx)) return denyResult(RULE.SECRET);
+      if (looksUnresolvedVar(target)) {
+        return askResult(RULE.SECRET, { safeMessage: 'Needs approval: input redirection source could not be resolved with confidence.' });
+      }
+    }
   }
   return null;
 }
@@ -1360,7 +1678,7 @@ const UNSUPPORTED_GRAMMAR_BINS = new Set(['if', 'then', 'else', 'elif', 'fi', 'f
 
 function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
   // Must run before any binary-specific dispatch below - see classifyGlobalRedirection.
-  const globalRedir = classifyGlobalRedirection(segment, ctx);
+  const globalRedir = classifyGlobalRedirection(segment, ctx, dialect);
   if (globalRedir) return globalRedir;
 
   const be = extractBinaryAndRest(segment, dialect);
@@ -1377,8 +1695,22 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
   if (dialect === 'cmd' && (/%[A-Za-z_][A-Za-z0-9_]*%/.test(be.first) || /![A-Za-z_][A-Za-z0-9_]*!/.test(be.first))) {
     return askResult(RULE.COMPLEX);
   }
+  // POSIX executable token containing an unquoted shell glob metacharacter (`*`, `?`, `[`, `]`) -
+  // the real executable depends on filesystem glob expansion this scanner never performs, so it
+  // must never be compared literally (which would silently defer for e.g. `g?t push`). A whole-
+  // token-quoted literal (`"/usr/bin/g?t"`) is not glob-expanded by the shell at all and is exempt
+  // - it falls through to be treated as an ordinary (if unrecognized) literal executable name.
+  if (dialect === 'posix' && !be.quoted && /[*?[\]]/.test(be.first)) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: executable name contains unresolved shell glob characters.' });
+  }
   const binRaw = basenameOf(be.first);
   if (dialect === 'posix' && UNSUPPORTED_GRAMMAR_BINS.has(binRaw)) return askResult(RULE.COMPLEX);
+  // `wsl`/`wsl.exe` runs a command inside a full Linux subsystem with its own independent grammar
+  // and quoting rules this scanner does not attempt to parse - always ask rather than try (and
+  // risk getting wrong) a full WSL command-line parser.
+  if (binRaw === 'wsl') {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a command inside WSL, which is not parsed by this scanner.' });
+  }
 
   // Standalone script invariant: an executable literal ending in .sh/.ps1/.bat/.cmd is never
   // content-inspected or treated as a known-safe unrecognized executable - always ask. Checked
@@ -1441,14 +1773,18 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
 // `depth` bounds recursion (MAX_WRAPPER_DEPTH); `budget` is a mutable {segments} counter shared
 // across the whole recursive classification of one top-level command, bounding total segments
 // processed across all wrapper layers combined (MAX_TOTAL_SEGMENTS), not just per-layer.
-function classifySegment(rawSegment, dialect, ctx, depth, budget) {
+function classifySegment(rawSegment, dialect, ctx, depth, budget, inheritedAssignments) {
   if (depth > MAX_WRAPPER_DEPTH) return askResult(RULE.COMPLEX);
   if (hasComplexMarkers(rawSegment, dialect)) return askResult(RULE.COMPLEX);
   if (hasUnbalancedQuotes(rawSegment, dialect)) return askResult(RULE.COMPLEX);
   const resolved = resolveOneHop(rawSegment, dialect);
   if (resolved.ambiguous) return askResult(RULE.COMPLEX);
   if (resolved.wrapped) {
-    const inner = classifyCommandString(resolved.payload, resolved.dialect, ctx, depth + 1, budget);
+    // Assignments declared before this wrapper hop are visible to the payload it runs (real
+    // environment-inheritance semantics); a same-named assignment declared at the payload's own
+    // level (resolved one hop further down) must still win over this one - see mergeAssignments.
+    const effectiveAssignments = mergeAssignments(inheritedAssignments, resolved.assignments);
+    const inner = classifyCommandString(resolved.payload, resolved.dialect, ctx, depth + 1, budget, effectiveAssignments);
     // Package-runner invariant (npx / pnpm dlx / yarn dlx): always at least ask, regardless of
     // payload. A protected-action payload already denies/asks on its own merits and passes
     // through unchanged; only an otherwise-unrecognized payload (which would defer) is floored.
@@ -1457,10 +1793,11 @@ function classifySegment(rawSegment, dialect, ctx, depth, budget) {
     }
     return inner;
   }
-  return classifyEffectiveBinary(resolved.segment, resolved.dialect, ctx, resolved.assignments);
+  const effectiveAssignments = mergeAssignments(inheritedAssignments, resolved.assignments);
+  return classifyEffectiveBinary(resolved.segment, resolved.dialect, ctx, effectiveAssignments);
 }
 
-function classifyCommandString(raw, initialDialect, ctx, depth, budget) {
+function classifyCommandString(raw, initialDialect, ctx, depth, budget, inheritedAssignments) {
   const effectiveDepth = depth || 0;
   const effectiveBudget = budget || { segments: 0 };
   if (effectiveDepth > MAX_WRAPPER_DEPTH) return askResult(RULE.COMPLEX);
@@ -1474,7 +1811,7 @@ function classifyCommandString(raw, initialDialect, ctx, depth, budget) {
   if (seg.segments.length === 0) return deferResult();
   let worst = null;
   for (const s of seg.segments) {
-    const r = classifySegment(s, initialDialect, ctx, effectiveDepth, effectiveBudget);
+    const r = classifySegment(s, initialDialect, ctx, effectiveDepth, effectiveBudget, inheritedAssignments);
     worst = worseOf(worst, r);
   }
   return worst || deferResult();
@@ -1604,7 +1941,11 @@ module.exports = {
   classifyInlineInterpreter,
   classifyEgress,
   classifyShellMutationTamper,
-  classifyRedirectionTamper,
+  scanRedirections,
+  classifyGlobalRedirection,
+  parseGitGlobalOptions,
+  resolveGitAlias,
+  mergeAssignments,
   classifyEffectiveBinary,
   classifySegment,
   classifyCommandString,
