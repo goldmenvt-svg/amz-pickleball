@@ -575,7 +575,8 @@ function segmentTopLevel(s, dialect) {
 // unrecognized-but-safe executable that falls through to defer - see each case below.
 const KNOWN_PLAIN_WRAPPER_BINS = new Set([
   'env', 'command', 'timeout', 'time', 'nice', 'nohup', 'stdbuf', 'bash', 'sh', 'cmd', 'powershell',
-  'pwsh', 'corepack', 'dash', 'zsh', 'ksh', 'busybox', 'setsid', 'script', 'winpty',
+  'pwsh', 'corepack', 'dash', 'zsh', 'ksh', 'busybox', 'setsid', 'script', 'winpty', 'builtin',
+  'call', 'start',
 ]);
 
 // Skip `count` leading raw "words" (simple whitespace-delimited, quote-aware) from `s`, returning
@@ -594,7 +595,7 @@ function skipLeadingRawWords(s, count) {
   return cur;
 }
 
-function tryStripWrapperOptions(wrapperBin, rest) {
+function tryStripWrapperOptions(wrapperBin, rest, dialect) {
   switch (wrapperBin) {
     case 'env': {
       // `env -i` clears the entire inherited environment before running the payload. Accurately
@@ -676,6 +677,25 @@ function tryStripWrapperOptions(wrapperBin, rest) {
       if (r.length === 0 || /^-/.test(r)) return { ambiguous: true };
       return { seg: r };
     }
+    case 'builtin': {
+      // `builtin <name> [args...]` forces bash to run <name> as a builtin, bypassing any function/
+      // alias override of the same name. `builtin eval <words...>` is `eval` invoked as a builtin -
+      // eval concatenates and re-parses its arguments as a new command line, so (only when every
+      // argument cooks unambiguously, with no dynamic/glob marker) the payload can be resolved
+      // here with confidence rather than falling back to the blanket ask bare `eval` still gets
+      // (a genuinely dynamic `eval` is exactly what UNSUPPORTED_GRAMMAR_BINS protects against).
+      const evalMatch = /^eval\s+(.+)$/i.exec(rest);
+      if (evalMatch) {
+        const td = tokenizeDialectWords(evalMatch[1], 'posix');
+        if (!td.ok || td.tokens.length === 0) return { ambiguous: true };
+        for (const t of td.tokens) {
+          if (t.ambiguous || t.hasDynamicExpansion || t.hasUnquotedGlob) return { ambiguous: true };
+        }
+        return { seg: td.tokens.map((t) => t.cooked).join(' ') };
+      }
+      if (rest.length === 0 || /^-/.test(rest)) return { ambiguous: true };
+      return { seg: rest };
+    }
     case 'script': {
       // Only `script [-q|--quiet]* (-c|--command) <command> [typescript-file]` is stripped with
       // confidence - an interactive session (no -c) or unrecognized flag ordering must ask.
@@ -684,6 +704,32 @@ function tryStripWrapperOptions(wrapperBin, rest) {
       const w = scanPosixWord(m[1]);
       if (w.ambiguous || !w.word) return { ambiguous: true };
       return { seg: unquoteOnce(w.word), dialect: 'posix' };
+    }
+    case 'call': {
+      // `call <target> [args...]` re-invokes another batch file/command from within CMD - only
+      // meaningful under the CMD dialect. A dynamic target (`call %CMD%`) is caught naturally by
+      // re-segmentation (the existing CMD unresolved-`%VAR%` executable check runs on the payload).
+      if (dialect !== 'cmd') return { ambiguous: true };
+      if (rest.length === 0 || /^-/.test(rest)) return { ambiguous: true };
+      return { seg: rest, dialect: 'cmd' };
+    }
+    case 'start': {
+      // `start ["title"] [/options] [command [args]]` - real cmd.exe has a well-known ambiguity
+      // where a leading quoted string could be a window title OR the command itself (if quoted for
+      // spaces); this scanner does not attempt to disambiguate that. Only a small set of known
+      // boolean options followed by an unquoted command is stripped with confidence.
+      if (dialect !== 'cmd') return { ambiguous: true };
+      let r = rest;
+      const startFlagRe = /^\/(wait|b|min|max|normal|low|high|realtime|abovenormal|belownormal|separate|shared)\b\s*/i;
+      let guard = 0;
+      while (guard < 6) {
+        const m = startFlagRe.exec(r);
+        if (!m) break;
+        r = r.slice(m[0].length);
+        guard += 1;
+      }
+      if (r.length === 0 || r[0] === '"') return { ambiguous: true };
+      return { seg: r, dialect: 'cmd' };
     }
     case 'cmd': {
       if (/^\/k\b/i.test(rest)) return { ambiguous: true };
@@ -752,7 +798,7 @@ function tryStripWrapper(segment, dialect) {
   }
 
   if (!KNOWN_PLAIN_WRAPPER_BINS.has(wrapperBin)) return null;
-  return tryStripWrapperOptions(wrapperBin, rest);
+  return tryStripWrapperOptions(wrapperBin, rest, dialect);
 }
 
 // Single-hop resolution: strip at most one leading-assignment-run and at most one wrapper layer
@@ -987,7 +1033,13 @@ function resolveGitAlias(startToken, aliasMap, assignments) {
     if (hops > MAX_GIT_ALIAS_DEPTH) return { ambiguous: true };
     const val = String(aliasMap[token]).trim();
     if (val.startsWith('!')) return { shellAlias: val };
-    const bodyTokens = tokenizeArgs(val);
+    // Real git splits an alias command-line value using its own internal quoting/escaping parser
+    // (always POSIX-like backslash-escape rules, regardless of whatever outer dialect the top-level
+    // command came from) - `p\ush` (a literal backslash, e.g. from a single-quoted top-level value
+    // where the outer shell already preserved it literally) is git's own escaped form of `push`.
+    const bodyResult = tokenizeCookedPosix(val);
+    if (!bodyResult.ok) return { ambiguous: true };
+    const bodyTokens = bodyResult.tokens;
     const g = parseGitGlobalOptions(bodyTokens, assignments);
     if (g.unresolvedAliasNames.length > 0) return { ambiguous: true };
     for (const k of Object.keys(g.aliasMap)) {
@@ -1002,8 +1054,40 @@ function resolveGitAlias(startToken, aliasMap, assignments) {
   return { subcommand: token, tail };
 }
 
-function classifyGit(rest, ctx, assignments) {
-  const tokens = tokenizeArgs(rest);
+// `git submodule foreach [-q|--recursive]* <command>` runs `<command>` (a single shell-command-
+// string argument, exactly as if passed to `sh -c`) once per submodule - a dynamic command runner
+// that must never silently defer just because the payload isn't recognized.
+function classifyGitSubmodule(subTokens, ctx) {
+  if (subTokens[0] !== 'foreach') return deferResult();
+  let i = 1;
+  while (subTokens[i] === '--recursive' || subTokens[i] === '-q' || subTokens[i] === '--quiet') i += 1;
+  const cmdToken = subTokens[i];
+  const askFloor = askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a command via git submodule foreach for each submodule.' });
+  if (cmdToken === undefined) return askFloor;
+  const inner = classifyCommandString(cmdToken, 'posix', ctx, 0, { segments: 0 });
+  return inner.decision === 'defer' ? askFloor : inner;
+}
+
+// `git bisect run <cmd> [args...]` runs `<cmd>` (its own separate argv, not one quoted string) at
+// each bisection step - same dynamic-runner invariant as submodule foreach: always at least ask,
+// deny if the payload resolves to something specifically protected, never silently defer.
+function classifyGitBisect(subTokens, ctx) {
+  if (subTokens[0] !== 'run') return deferResult();
+  const askFloor = askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs a command via git bisect run at each step.' });
+  const payloadTokens = subTokens.slice(1);
+  if (payloadTokens.length === 0) return askFloor;
+  const rawPayload = payloadTokens.join(' ');
+  const inner = classifyCommandString(rawPayload, 'posix', ctx, 0, { segments: 0 });
+  return inner.decision === 'defer' ? askFloor : inner;
+}
+
+function classifyGit(rest, ctx, assignments, dialect) {
+  const td = dialectTokenStrings(rest, dialect);
+  if (!td.ok) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git command arguments could not be resolved with confidence.' });
+  }
+  const tokens = td.tokens;
+  const meta = td.meta;
   const parsed = parseGitGlobalOptions(tokens, assignments);
   const i = parsed.index;
   const aliasMap = parsed.aliasMap;
@@ -1017,14 +1101,22 @@ function classifyGit(rest, ctx, assignments) {
   let subcommand = tokens[i];
   let subRestTokens = tokens.slice(i + 1);
 
-  if (subcommand && unresolvedAliasNames.indexOf(subcommand) !== -1) {
+  if (subcommand === undefined) {
+    return envCfg.hasGitConfigEnv ? askResult(RULE.TAMPER) : deferResult();
+  }
+
+  // The subcommand token's identity can't be trusted for a security decision if its escape/quote
+  // structure was unresolvable, or part of its text is left to runtime shell/environment/glob
+  // expansion this scanner never performs (`git "$CMD"`, `git ${CMD}`) - floor to ask rather than
+  // comparing possibly-wrong cooked text (which would otherwise silently defer).
+  if (tokenNeedsFloor(meta[i])) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git subcommand could not be resolved with confidence (dynamic or glob token).' });
+  }
+
+  if (unresolvedAliasNames.indexOf(subcommand) !== -1) {
     // `--config-env` named an env var we have no value for - can't rule out it resolves to
     // something dangerous, so ask rather than silently defer.
     return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: git alias source could not be resolved with confidence.' });
-  }
-
-  if (subcommand === undefined) {
-    return envCfg.hasGitConfigEnv ? askResult(RULE.TAMPER) : deferResult();
   }
 
   if (Object.prototype.hasOwnProperty.call(aliasMap, subcommand)) {
@@ -1050,6 +1142,8 @@ function classifyGit(rest, ctx, assignments) {
 
   if (subcommand === 'config') return classifyGitConfig(subRestTokens);
   if (subcommand === 'remote') return classifyGitRemote(subRestTokens);
+  if (subcommand === 'submodule') return classifyGitSubmodule(subRestTokens, ctx);
+  if (subcommand === 'bisect') return classifyGitBisect(subRestTokens, ctx);
 
   // git commit is a recognized ASK family (shared baseline: Bash(git commit *)) that a wrapper
   // can hide from the literal-prefix matcher - always ask here too, direct or wrapped.
@@ -1118,13 +1212,21 @@ function classifyGitRemote(tokens) {
 const VERCEL_BOOLEAN_FLAGS = new Set(['--yes', '-y', '--force', '-f']);
 const VERCEL_VALUE_FLAGS = new Set(['--token', '--scope', '--cwd']);
 
-function classifyVercel(rest) {
-  const tokens = tokenizeArgs(rest);
+function classifyVercel(rest, dialect) {
+  const td = dialectTokenStrings(rest, dialect);
+  if (!td.ok) return askResult(RULE.PROD_DEPLOY, { safeMessage: 'Needs approval: this Vercel command could not be resolved with confidence.' });
+  const tokens = td.tokens;
+  const meta = td.meta;
   let i = 0;
   while (i < tokens.length) {
     if (VERCEL_BOOLEAN_FLAGS.has(tokens[i])) { i += 1; continue; }
     if (VERCEL_VALUE_FLAGS.has(tokens[i])) { i += 2; continue; }
     break;
+  }
+  // Subcommand/flag token dynamic or glob-affected - can't compare its cooked text with
+  // confidence (Blocker F floor: never silently defer a deploy-family command).
+  if (tokens[i] !== undefined && tokenNeedsFloor(meta[i])) {
+    return askResult(RULE.PROD_DEPLOY, { safeMessage: 'Needs approval: this Vercel command could not be resolved with confidence.' });
   }
   if (tokens[i] === 'deploy') return denyResult(RULE.PROD_DEPLOY);
   if (tokens.indexOf('--prod') !== -1) return denyResult(RULE.PROD_DEPLOY);
@@ -1133,13 +1235,19 @@ function classifyVercel(rest) {
 
 const FIREBASE_VALUE_FLAGS = new Set(['--project', '--config']);
 
-function classifyFirebase(rest) {
-  const tokens = tokenizeArgs(rest);
+function classifyFirebase(rest, dialect) {
+  const td = dialectTokenStrings(rest, dialect);
+  if (!td.ok) return askResult(RULE.PROD_DEPLOY, { safeMessage: 'Needs approval: this Firebase command could not be resolved with confidence.' });
+  const tokens = td.tokens;
+  const meta = td.meta;
   let i = 0;
   while (i < tokens.length) {
     if (FIREBASE_VALUE_FLAGS.has(tokens[i])) { i += 2; continue; }
     if (tokens[i].startsWith('-')) { i += 1; continue; }
     break;
+  }
+  if (tokens[i] !== undefined && tokenNeedsFloor(meta[i])) {
+    return askResult(RULE.PROD_DEPLOY, { safeMessage: 'Needs approval: this Firebase command could not be resolved with confidence.' });
   }
   const subcommand = tokens[i];
   if (subcommand === 'deploy') return denyResult(RULE.PROD_DEPLOY);
@@ -1148,8 +1256,13 @@ function classifyFirebase(rest) {
 
 const PACKAGE_MANAGER_VALUE_FLAGS = { npm: new Set(['--prefix', '--userconfig']), pnpm: new Set(['-C']) };
 
-function classifyPackageManager(bin, rest, ctx) {
-  const tokens = tokenizeArgs(rest);
+function classifyPackageManager(bin, rest, ctx, dialect) {
+  const td = dialectTokenStrings(rest, dialect);
+  if (!td.ok) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: package manager command arguments could not be resolved with confidence.' });
+  }
+  const tokens = td.tokens;
+  const meta = td.meta;
   let i = 0;
   let prefixPath = null;
   while (i < tokens.length) {
@@ -1177,6 +1290,11 @@ function classifyPackageManager(bin, rest, ctx) {
       return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: package manager global option is not recognized.' });
     }
     break;
+  }
+  // Subcommand token dynamic/glob/ambiguous - can't compare its cooked text with confidence
+  // (Blocker F floor: never silently defer a package-manager command on this basis).
+  if (tokens[i] !== undefined && tokenNeedsFloor(meta[i])) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: package manager subcommand could not be resolved with confidence (dynamic or glob token).' });
   }
   const subcommand = tokens[i];
   if (subcommand === 'publish') return denyResult(RULE.PUBLISH);
@@ -1217,9 +1335,13 @@ function classifyPackageManager(bin, rest, ctx) {
 
 // codegraph init is a recognized ASK family (shared baseline: Bash(codegraph init *)) that a
 // wrapper can hide from the literal-prefix matcher - always ask here too.
-function classifyCodegraph(rest) {
-  const tokens = tokenizeArgs(rest);
-  if (tokens[0] === 'init') return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this initializes a CodeGraph index.' });
+function classifyCodegraph(rest, dialect) {
+  const td = dialectTokenStrings(rest, dialect);
+  if (!td.ok) return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: codegraph command arguments could not be resolved with confidence.' });
+  if (td.tokens[0] !== undefined && tokenNeedsFloor(td.meta[0])) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: codegraph subcommand could not be resolved with confidence.' });
+  }
+  if (td.tokens[0] === 'init') return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this initializes a CodeGraph index.' });
   return deferResult();
 }
 
@@ -1262,8 +1384,12 @@ function hasFlag(tokens, names) {
   return names.some((n) => lower.indexOf(n.toLowerCase()) !== -1);
 }
 
-function classifyPosixRm(rest) {
-  const tokens = tokenizeArgs(rest);
+function classifyPosixRm(rest, dialect) {
+  const td = dialectTokenStrings(rest, dialect);
+  // An unresolvable token never widens to "safe" here - the function already defaults to ask
+  // (never defer) when no recursive flag is confidently found, so falling back to an empty token
+  // list on ambiguity is still fail-closed, not a silent pass.
+  const tokens = td.ok ? td.tokens : [];
   const hasRecursive = hasFlag(tokens, ['-r', '-R', '--recursive']) || tokens.some((t) => /^-[a-zA-Z]*[rR][a-zA-Z]*$/.test(t) && t.startsWith('-') && !t.startsWith('--'));
   if (hasRecursive) return denyResult(RULE.DELETE);
   return askResult(RULE.DELETE);
@@ -1273,8 +1399,9 @@ function classifyPosixRm(rest) {
 // PowerShell aliases for Remove-Item (-Recurse -Force flags) — the same token can mean either
 // depending on which shell actually executes it, so flag-syntax is checked for both forms
 // regardless of which tool_name/dialect the segment arrived through (conservative: either shape denies).
-function classifyDeleteAlias(rest) {
-  const tokens = tokenizeArgs(rest);
+function classifyDeleteAlias(rest, dialect) {
+  const td = dialectTokenStrings(rest, dialect);
+  const tokens = td.ok ? td.tokens : [];
   const lower = tokens.map((t) => t.toLowerCase());
   const hasCmdRecursive = lower.some((t) => t === '/s');
   const hasPsRecurse = lower.some((t) => /^-r(ecurse)?$/.test(t));
@@ -1289,47 +1416,58 @@ function classifyDeleteAlias(rest) {
 const SECRET_READ_PRIMITIVES = new Set(['cat', 'head', 'tail', 'less', 'more', 'sed', 'awk', 'grep', 'type', 'get-content', 'gc', 'base64', 'xxd', 'strings']);
 const SECRET_COPY_PRIMITIVES = new Set(['cp', 'copy', 'copy-item']);
 
-// Cook a raw argument token into its semantic value before path checks, so an escape sequence
-// like `.e\nv` (POSIX: backslash escapes the literal `n`, semantic value `.env`) is resolved
-// correctly instead of comparing the wrong raw string. Non-POSIX dialects pass through unchanged
-// (no cooking model implemented for CMD/PowerShell argument escaping here). Returns
-// {ok:true, cooked} or {ambiguous:true} if the escape/quote structure can't be resolved with
-// confidence - callers must ask rather than silently use the raw (possibly wrong) token.
+// Cook a raw argument token into its semantic value before path checks, dialect-aware, so an
+// escape sequence like `.e\nv` (POSIX: backslash escapes the literal `n`, semantic value `.env`),
+// `.e^nv` (CMD caret) or `` .e`nv `` (PowerShell backtick) all resolve to their real semantic value
+// instead of comparing the wrong raw string. Returns {ok:true, cooked} or {ambiguous:true} if the
+// escape/quote structure can't be resolved with confidence - callers must ask rather than silently
+// use the raw (possibly wrong) token.
 function cookArgForPath(raw, dialect) {
-  if (dialect !== 'posix') return { ok: true, cooked: raw };
-  const cooked = cookPosixWord(raw);
-  if (!cooked.ok) return { ambiguous: true };
-  return { ok: true, cooked: cooked.cooked };
+  return cookDialectTarget(raw, dialect);
+}
+
+// A path-argument token whose escape/quote structure is unresolvable, or that contains an unquoted
+// glob character or dynamic (env-var) expansion, is never safe to compare against isSecretPath -
+// the real path it resolves to at runtime could be anything, including a protected secret. Returns
+// an ask/deny result if the token must floor, or null if it's safe to use `.cooked` for a decision.
+function secretPathTokenFloor(tokenMeta) {
+  if (!tokenMeta || tokenMeta.ambiguous) return askResult(RULE.COMPLEX);
+  if (tokenMeta.hasUnquotedGlob || tokenMeta.hasDynamicExpansion) {
+    return askResult(RULE.SECRET, { safeMessage: 'Needs approval: this command reads a file whose path contains an unresolved shell glob or expansion character.' });
+  }
+  return null;
 }
 
 function classifySecretPrimitive(bin, rest, segment, dialect, ctx) {
   if (bin === '.' || bin === 'source') {
-    const tokens = tokenizeArgs(rest);
-    if (tokens[0]) {
-      const cooked = cookArgForPath(tokens[0], dialect);
-      if (cooked.ambiguous) return askResult(RULE.COMPLEX);
-      if (isSecretPath(cooked.cooked, ctx)) return denyResult(RULE.SECRET);
+    const td = tokenizeDialectWords(rest, dialect);
+    const first = td.tokens[0];
+    if (first) {
+      const floor = secretPathTokenFloor(first);
+      if (floor) return floor;
+      if (isSecretPath(first.cooked, ctx)) return denyResult(RULE.SECRET);
       return askResult(RULE.COMPLEX);
     }
     return null;
   }
   if (SECRET_READ_PRIMITIVES.has(bin)) {
-    const tokens = tokenizeArgs(rest).filter((t) => !t.startsWith('-'));
+    const td = tokenizeDialectWords(rest, dialect);
+    const tokens = td.tokens.filter((t) => t.raw && t.raw[0] !== '-');
     if (tokens.length === 0) return null;
     for (const t of tokens) {
-      const cooked = cookArgForPath(t, dialect);
-      if (cooked.ambiguous) return askResult(RULE.COMPLEX);
-      if (isSecretPath(cooked.cooked, ctx)) return denyResult(RULE.SECRET);
+      const floor = secretPathTokenFloor(t);
+      if (floor) return floor;
+      if (isSecretPath(t.cooked, ctx)) return denyResult(RULE.SECRET);
     }
-    if (tokens.some((t) => t.indexOf('$') !== -1 || t === '*' || /\*$/.test(t))) return askResult(RULE.SECRET);
     return null;
   }
   if (SECRET_COPY_PRIMITIVES.has(bin)) {
-    const tokens = tokenizeArgs(rest).filter((t) => !t.startsWith('-'));
+    const td = tokenizeDialectWords(rest, dialect);
+    const tokens = td.tokens.filter((t) => t.raw && t.raw[0] !== '-');
     if (tokens[0]) {
-      const cooked = cookArgForPath(tokens[0], dialect);
-      if (cooked.ambiguous) return askResult(RULE.COMPLEX);
-      if (isSecretPath(cooked.cooked, ctx)) return denyResult(RULE.SECRET);
+      const floor = secretPathTokenFloor(tokens[0]);
+      if (floor) return floor;
+      if (isSecretPath(tokens[0].cooked, ctx)) return denyResult(RULE.SECRET);
     }
     return null;
   }
@@ -1397,7 +1535,10 @@ const UPLOAD_FLAGS = ['-d', '--data', '--data-binary', '--data-raw', '-f', '--fo
 
 function classifyEgress(bin, rest, dialect) {
   if (!EGRESS_BINARIES.has(bin)) return null;
-  const tokens = tokenizeArgs(rest);
+  const td = dialectTokenStrings(rest, dialect);
+  // Every branch below already resolves to ask/deny (never defer) - an unresolvable token list
+  // simply keeps that same fail-closed default rather than needing a distinct ambiguous path.
+  const tokens = td.ok ? td.tokens : [];
   const lowerTokens = tokens.map((t) => t.toLowerCase());
   const hasUploadFlag = lowerTokens.some((t) => UPLOAD_FLAGS.indexOf(t) !== -1) || rest.indexOf('@') !== -1 && /@[^\s]+/.test(rest);
 
@@ -1431,13 +1572,19 @@ const TAMPER_MUTATION_BINARIES = new Set(['rm', 'rmdir', 'del', 'erase', 'remove
 
 function classifyShellMutationTamper(bin, rest, segment, dialect, ctx) {
   if (!TAMPER_MUTATION_BINARIES.has(bin)) return null;
-  const tokens = tokenizeArgs(rest).filter((t) => !t.startsWith('-'));
+  const td = tokenizeDialectWords(rest, dialect);
+  const tokens = td.tokens.filter((t) => t.raw && t.raw[0] !== '-');
   for (const t of tokens) {
-    const cooked = cookArgForPath(t, dialect);
-    if (cooked.ambiguous) return askResult(RULE.COMPLEX);
-    const r = checkTamperPath(cooked.cooked, ctx);
+    if (t.ambiguous) return askResult(RULE.COMPLEX);
+    // An unquoted glob/dynamic-expansion argument is not compared against checkTamperPath here -
+    // for binaries like `cp` that are ALSO a secret-read primitive (SECRET_COPY_PRIMITIVES), the
+    // source argument's glob/secret concern must be evaluated by classifySecretPrimitive, which
+    // runs after this returns null; asking TAMPER here unconditionally would wrongly preempt that
+    // (e.g. `cp .e?v out` is a secret-source concern, not a tamper-target one).
+    if (t.hasUnquotedGlob || t.hasDynamicExpansion) continue;
+    const r = checkTamperPath(t.cooked, ctx);
     if (r) return r;
-    if (/claude\.md$/i.test(cooked.cooked.replace(/\\/g, '/'))) return askResult(RULE.TAMPER);
+    if (/claude\.md$/i.test(t.cooked.replace(/\\/g, '/'))) return askResult(RULE.TAMPER);
   }
   return null;
 }
@@ -1536,6 +1683,132 @@ function cookDialectTarget(rawWord, dialect) {
   return { ok: true, cooked: rawWord };
 }
 
+// Whether `rawWord` is a single whole-token quote pair (e.g. `"git"`, `'git'`) with nothing outside
+// it - the same shape `extractBinaryAndRest` already treats as a non-glob-expanded literal for the
+// executable token. Used to decide whether a wildcard-looking token should still be trusted as a
+// literal (fully quoted) or must be treated as filesystem-dependent (not fully quoted).
+function isWholeTokenQuoted(rawWord, dialect) {
+  if (dialect === 'cmd') return /^"[^"]*"$/.test(rawWord);
+  return /^"[^"]*"$/.test(rawWord) || /^'[^']*'$/.test(rawWord);
+}
+
+// Whether `rawWord` contains a shell pathname-expansion (glob) metacharacter OUTSIDE of any quoted
+// region, dialect-aware. POSIX/CMD both glob-expand `*`/`?` (POSIX also `[...]`) when unquoted;
+// which real file (if any) such a token resolves to depends on the filesystem at execution time,
+// which this scanner never inspects - the caller must treat this as "result is filesystem-
+// dependent", not attempt to compare the literal/cooked text as if it were the real target.
+function detectUnquotedGlob(rawWord, dialect) {
+  const globRe = dialect === 'cmd' ? /[*?]/ : /[*?[\]]/;
+  let inS = false;
+  let inD = false;
+  const n = rawWord.length;
+  for (let i = 0; i < n; i++) {
+    const c = rawWord[i];
+    if (dialect === 'posix') {
+      if (c === '\\' && !inS) { i += 1; continue; }
+      if (c === "'" && !inD) { inS = !inS; continue; }
+      if (c === '"' && !inS) { inD = !inD; continue; }
+    } else if (dialect === 'cmd') {
+      if (c === '^' && !inD) { i += 1; continue; }
+      if (c === '"') { inD = !inD; continue; }
+    } else if (dialect === 'powershell') {
+      if (c === '`') { i += 1; continue; }
+      if (c === "'" && !inD) { inS = !inS; continue; }
+      if (c === '"' && !inS) { inD = !inD; continue; }
+    }
+    if (!inS && !inD && globRe.test(c)) return true;
+  }
+  return false;
+}
+
+// Whether `rawWord` contains a dynamic (runtime-resolved) expansion construct this scanner never
+// evaluates, dialect-aware. POSIX/PowerShell: a `$` outside single quotes (double quotes do NOT
+// block `$var`/`$(...)`/backtick expansion in POSIX, matching real shell semantics - only single
+// quotes make it literal) or a backtick outside single quotes. CMD: `%VAR%` / `!VAR!` anywhere
+// (delayed expansion tokens are not neutralized by double-quoting in cmd.exe). PowerShell also
+// treats an unquoted `@(` as dynamic (array subexpression).
+function detectDynamicExpansion(rawWord, dialect) {
+  if (dialect === 'cmd') {
+    return /%[A-Za-z_][A-Za-z0-9_]*%/.test(rawWord) || /![A-Za-z_][A-Za-z0-9_]*!/.test(rawWord);
+  }
+  if (dialect === 'powershell') {
+    let inS = false;
+    const n = rawWord.length;
+    for (let i = 0; i < n; i++) {
+      const c = rawWord[i];
+      if (c === '`' && !inS) { i += 1; continue; }
+      if (c === "'") { inS = !inS; continue; }
+      if (!inS && (c === '$' || (c === '@' && rawWord[i + 1] === '('))) return true;
+    }
+    return false;
+  }
+  // posix
+  let inS = false;
+  const n = rawWord.length;
+  for (let i = 0; i < n; i++) {
+    const c = rawWord[i];
+    if (c === '\\' && !inS) { i += 1; continue; }
+    if (c === "'") { inS = !inS; continue; }
+    if (!inS && (c === '$' || c === '`')) return true;
+  }
+  return false;
+}
+
+// Dialect-aware word tokenizer: splits `raw` into shell words (quote/escape-boundary-aware, via
+// scanDialectWord) and annotates each with the metadata a security decision needs - the raw text,
+// the semantically-cooked value (quotes stripped, escapes resolved, NO environment/glob expansion
+// performed), and flags for whether the token is safe to compare literally at all. A word whose
+// quoting/escaping can't be resolved with confidence stops tokenization (ambiguous:true on that
+// token, `ok:false` on the result) rather than guessing past it.
+function tokenizeDialectWords(raw, dialect) {
+  const tokens = [];
+  let rem = raw;
+  let guard = 0;
+  while (guard < 200) {
+    rem = rem.replace(/^\s+/, '');
+    if (rem.length === 0) break;
+    const w = scanDialectWord(rem, dialect);
+    if (w.ambiguous) {
+      tokens.push({ raw: rem, cooked: null, fullyQuoted: false, hadEscape: false, hasUnquotedGlob: false, hasDynamicExpansion: false, ambiguous: true });
+      return { ok: false, tokens };
+    }
+    const rawWord = w.word;
+    const cooked = cookDialectTarget(rawWord, dialect);
+    const escapeChar = dialect === 'cmd' ? '^' : (dialect === 'powershell' ? '`' : '\\');
+    tokens.push({
+      raw: rawWord,
+      cooked: cooked.ok ? cooked.cooked : null,
+      fullyQuoted: isWholeTokenQuoted(rawWord, dialect),
+      hadEscape: rawWord.indexOf(escapeChar) !== -1,
+      hasUnquotedGlob: detectUnquotedGlob(rawWord, dialect),
+      hasDynamicExpansion: detectDynamicExpansion(rawWord, dialect),
+      ambiguous: !cooked.ok,
+    });
+    rem = rem.slice(w.endIndex);
+    guard += 1;
+  }
+  return { ok: true, tokens };
+}
+
+// Convenience string-array view over tokenizeDialectWords for classifiers that only need cooked
+// token identity comparisons (e.g. `tokens[i] === 'push'`), plus the full per-token metadata for
+// callers that additionally need to floor-to-ask on a specific (usually the subcommand-determining)
+// token's hasDynamicExpansion/hasUnquotedGlob/ambiguous flags rather than trusting its cooked text.
+// `ok:false` (any token unresolvable) means the caller must not use `tokens` for a decision at all.
+function dialectTokenStrings(raw, dialect) {
+  const t = tokenizeDialectWords(raw, dialect);
+  if (!t.ok) return { ok: false, tokens: [], meta: t.tokens };
+  return { ok: true, tokens: t.tokens.map((x) => x.cooked), meta: t.tokens };
+}
+
+// A token is not safe to use for a security-relevant identity comparison (subcommand name, flag
+// name, alias name) if its quoting/escaping couldn't be resolved, or if part of its text is left to
+// runtime shell/environment/glob expansion this scanner never performs - in all three cases the
+// cooked text is not reliably "what the command will actually see".
+function tokenNeedsFloor(tokenMeta) {
+  return !tokenMeta || tokenMeta.ambiguous || tokenMeta.hasDynamicExpansion || tokenMeta.hasUnquotedGlob;
+}
+
 // Try to match a redirection operator starting exactly at position i of s. Longer/more specific
 // forms are tried first so e.g. `>>` is never seen as just `>`. A single leading fd digit only
 // counts when it sits at a real word boundary (start of string, or preceded by whitespace/`;&|(`)
@@ -1590,11 +1863,21 @@ function scanRedirections(s, dialect) {
     const wsSkip = /^\s*/.exec(s.slice(j))[0];
     j += wsSkip.length;
 
-    if (op.direction === 'out' && s[j] === '&' && /^[0-9-]/.test(s[j + 1] || '')) {
-      let k = j + 1;
-      while (k < n && /[0-9-]/.test(s[k])) k += 1;
-      i = k;
-      continue;
+    if (op.direction === 'out' && s[j] === '&') {
+      const afterAmp = s[j + 1];
+      if (afterAmp !== undefined && /[0-9-]/.test(afterAmp)) {
+        // fd duplication/close (`2>&1`, `1>&2`, `3>&-`, `>&-`) - not a file path, skip entirely.
+        let k = j + 1;
+        while (k < n && /[0-9-]/.test(s[k])) k += 1;
+        i = k;
+        continue;
+      }
+      // Bash `>&word` (with or without a space) is shorthand for `&> word` - duplicate stdout+
+      // stderr to a file, NOT fd-duplication. The `&` is part of the operator; the real target
+      // begins right after it (optionally preceded by more whitespace).
+      j += 1;
+      const wsSkip2 = /^\s*/.exec(s.slice(j))[0];
+      j += wsSkip2.length;
     }
 
     if (j >= n) {
@@ -1621,6 +1904,7 @@ function scanRedirections(s, dialect) {
       direction: op.direction,
       rawTarget: wordScan.word,
       cookedTarget: cooked.ok ? cooked.cooked : null,
+      hasUnquotedGlob: detectUnquotedGlob(wordScan.word, dialect),
       ambiguous: !cooked.ok,
     });
     i = j + wordScan.endIndex;
@@ -1644,6 +1928,17 @@ function classifyGlobalRedirection(segment, ctx, dialect) {
       return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: redirection target could not be resolved with confidence.' });
     }
     const target = r.cookedTarget;
+    // An unquoted glob metacharacter in the target means the real file it resolves to depends on
+    // the filesystem at execution time (never inspected here) - the cooked literal text is not a
+    // reliable basis for either a confident deny or a silent pass, so this floors to ask instead of
+    // comparing it as if it were the real target.
+    if (r.hasUnquotedGlob) {
+      return askResult(r.direction === 'in' ? RULE.SECRET : RULE.TAMPER, {
+        safeMessage: r.direction === 'in'
+          ? 'Needs approval: input redirection source contains an unresolved shell glob character.'
+          : 'Needs approval: output redirection target contains an unresolved shell glob character.',
+      });
+    }
     if (r.direction === 'out' || r.direction === 'inout') {
       const tamperHit = checkTamperPath(target, ctx);
       if (tamperHit) return tamperHit;
@@ -1674,6 +1969,12 @@ function classifyGlobalRedirection(segment, ctx, dialect) {
 // worseOf, so the aggregate decision for the whole command line is never weaker than ask.
 const UNSUPPORTED_GRAMMAR_BINS = new Set(['if', 'then', 'else', 'elif', 'fi', 'for', 'while', 'until', 'do', 'done', 'case', 'esac', 'function', '!', 'eval', 'exec']);
 
+// CMD compound-statement / scope keywords this conservative scanner will never attempt to parse
+// (`if`/`for` conditionals, `setlocal`/`endlocal` variable scoping) - mirrors UNSUPPORTED_GRAMMAR_BINS
+// for the POSIX dialect, so a protected action hidden inside one (`if 1==1 git push`, `for %A in
+// (*) do git push`) asks rather than silently falling through to defer as an "unrecognized" binary.
+const CMD_UNSUPPORTED_GRAMMAR_BINS = new Set(['if', 'for', 'setlocal', 'endlocal', 'else', 'goto']);
+
 // ===================== Segment / command classification =====================
 
 function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
@@ -1703,8 +2004,14 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
   if (dialect === 'posix' && !be.quoted && /[*?[\]]/.test(be.first)) {
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: executable name contains unresolved shell glob characters.' });
   }
+  // CMD executable token containing an unquoted `*`/`?` wildcard - same filesystem-dependent-result
+  // rationale as the POSIX case above (CMD does not support `[...]` globbing).
+  if (dialect === 'cmd' && !be.quoted && /[*?]/.test(be.first)) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: executable name contains unresolved shell glob characters.' });
+  }
   const binRaw = basenameOf(be.first);
   if (dialect === 'posix' && UNSUPPORTED_GRAMMAR_BINS.has(binRaw)) return askResult(RULE.COMPLEX);
+  if (dialect === 'cmd' && CMD_UNSUPPORTED_GRAMMAR_BINS.has(binRaw)) return askResult(RULE.COMPLEX);
   // `wsl`/`wsl.exe` runs a command inside a full Linux subsystem with its own independent grammar
   // and quoting rules this scanner does not attempt to parse - always ask rather than try (and
   // risk getting wrong) a full WSL command-line parser.
@@ -1724,7 +2031,7 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
   const rest = be.rest;
 
   if (bin === 'claude') return classifyNestedClaude(rest);
-  if (bin === 'git') return classifyGit(rest, ctx, assignments || []);
+  if (bin === 'git') return classifyGit(rest, ctx, assignments || [], dialect);
   // `git-push`/`git-send-pack` are the real standalone binaries git's own subcommands dispatch
   // to internally (present on PATH alongside `git` itself on most POSIX installs) - invoking them
   // directly bypasses the `bin === 'git'` dispatch entirely unless handled here too.
@@ -1735,13 +2042,13 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
     if (t) return t;
   }
 
-  if (bin === 'vercel') return classifyVercel(rest);
-  if (bin === 'firebase' || bin === 'firebase-tools') return classifyFirebase(rest);
-  if (bin === 'npm' || bin === 'pnpm' || bin === 'yarn') return classifyPackageManager(bin, rest, ctx);
-  if (bin === 'codegraph') return classifyCodegraph(rest);
+  if (bin === 'vercel') return classifyVercel(rest, dialect);
+  if (bin === 'firebase' || bin === 'firebase-tools') return classifyFirebase(rest, dialect);
+  if (bin === 'npm' || bin === 'pnpm' || bin === 'yarn') return classifyPackageManager(bin, rest, ctx, dialect);
+  if (bin === 'codegraph') return classifyCodegraph(rest, dialect);
 
-  if (bin === 'rm' && dialect !== 'powershell') return classifyPosixRm(rest);
-  if (['rmdir', 'rd', 'del', 'erase', 'remove-item', 'ri', 'rm'].indexOf(bin) !== -1) return classifyDeleteAlias(rest);
+  if (bin === 'rm' && dialect !== 'powershell') return classifyPosixRm(rest, dialect);
+  if (['rmdir', 'rd', 'del', 'erase', 'remove-item', 'ri', 'rm'].indexOf(bin) !== -1) return classifyDeleteAlias(rest, dialect);
 
   const secretHit = classifySecretPrimitive(bin, rest, segment, dialect, ctx);
   if (secretHit) return secretHit;
