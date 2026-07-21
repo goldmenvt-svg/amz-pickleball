@@ -3809,3 +3809,208 @@ test('IO 42: required negative controls all defer or at least never hard-deny th
     assert.notEqual(decision, 'deny', `must not hard-deny: ${cmd}`);
   }
 });
+
+// ===================== 43: R14 - Git shell-alias argv modeling, alias override precedence, rsync path-bearing options =====================
+
+// --- 43A: Blocker A Section 4 - exact static appended arguments must be modeled as real argv ---
+test("43A. git -c alias.x='!git' x push -> deny GIT_PUSH (appended arg is real argv, not ignored)", () => {
+  assertDecision(classifyBash("git -c alias.x='!git' x push"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("43A. git -c alias.x='!git -c core.fsmonitor=false' x push -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git -c alias.x='!git -c core.fsmonitor=false' x push"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("43A. git -c alias.x='!git --no-lazy-fetch' x push -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git -c alias.x='!git --no-lazy-fetch' x push"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("43A. git -c alias.x='!git' x -c alias.p=push p -> deny GIT_PUSH (appended argv itself defines a fresh alias that resolves to push)", () => {
+  assertDecision(classifyBash("git -c alias.x='!git' x -c alias.p=push p"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("43A. git -c alias.x='!git' x -C C:/other push -> deny GIT_PUSH (selector in appended argv never weakens the push deny)", () => {
+  assertDecision(classifyBash("git -c alias.x='!git' x -C C:/other push"), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 43B: Blocker A Section 4 - safe shapes can defer once the whole effective invocation is proven safe ---
+test("43B. git -c alias.x='!git -c core.fsmonitor=false status' x --short -> defer (effective invocation fully proven safe)", () => {
+  assertDecision(classifyBash("git -c alias.x='!git -c core.fsmonitor=false status' x --short"), 'defer');
+});
+test("43B. git -c alias.x='!git --no-lazy-fetch log' x -1 --oneline -> defer", () => {
+  assertDecision(classifyBash("git -c alias.x='!git --no-lazy-fetch log' x -1 --oneline"), 'defer');
+});
+
+// --- 43C: Blocker A Section 5 - dynamic/glob/ambiguous appended arguments cannot be modeled with confidence ---
+test('43C. CMD=push git -c alias.x=\'!git\' x "$CMD" -> ask COMPLEX (command substitution marker triggers the pre-existing global complex-marker check)', () => {
+  assertDecision(classifyBash('CMD=push git -c alias.x=\'!git\' x "$CMD"'), 'ask', hook.RULE.COMPLEX);
+});
+test('43C. git -c alias.x=\'!git\' x "${CMD:-push}" -> ask COMPLEX (dynamic appended argument)', () => {
+  assertDecision(classifyBash('git -c alias.x=\'!git\' x "${CMD:-push}"'), 'ask', hook.RULE.COMPLEX);
+});
+test('43C. git -c alias.x=\'!git\' x "$(printf push)" -> ask COMPLEX (command substitution)', () => {
+  assertDecision(classifyBash('git -c alias.x=\'!git\' x "$(printf push)"'), 'ask', hook.RULE.COMPLEX);
+});
+test("43C. git -c alias.x='!git' x p* -> ask COMPLEX (unquoted glob appended argument)", () => {
+  assertDecision(classifyBash("git -c alias.x='!git' x p*"), 'ask', hook.RULE.COMPLEX);
+});
+
+// --- 43D: Blocker A Section 6 - tail accumulated from earlier alias hops must reach a terminal shell alias ---
+test("43D. git -c alias.a='b push' -c alias.b='!git' a -> deny GIT_PUSH (tail from hop 1 forwarded to the shell alias at hop 2)", () => {
+  assertDecision(classifyBash("git -c alias.a='b push' -c alias.b='!git' a"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("43D. git -c alias.a='b -c alias.p=push p' -c alias.b='!git' a -> deny GIT_PUSH (tail carries its own alias.p definition through)", () => {
+  assertDecision(classifyBash("git -c alias.a='b -c alias.p=push p' -c alias.b='!git' a"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("43D. git -c alias.a=b -c alias.b=c -c alias.c='!git' a push -> deny GIT_PUSH (nested plain-alias chain terminating in a shell alias)", () => {
+  assertDecision(classifyBash("git -c alias.a=b -c alias.b=c -c alias.c='!git' a push"), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 43E: Blocker B Section 8 - alias-body override must take precedence over a stale outer alias, in both directions ---
+test("43E. outer alias.y=safe-log, inner alias.x sets alias.y=push -> deny GIT_PUSH (later/inner override wins)", () => {
+  assertDecision(classifyBash("git -c alias.y='--no-lazy-fetch log -1 --oneline' -c alias.x='-c alias.y=push y' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("43E. outer alias.y=safe-fsmonitor-status, inner alias.x sets alias.y=push -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git -c alias.y='-c core.fsmonitor=false status' -c alias.x='-c alias.y=push y' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("43E. outer alias.y=safe-log, inner alias.x sets alias.y=push via --config-env -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("V=push git -c alias.y='--no-lazy-fetch log -1 --oneline' -c alias.x='--config-env=alias.y=V y' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('43E. outer alias.y=push, inner alias.x redefines alias.y as a safe proven log command -> defer (must use the inner value, not deny on the stale outer alias)', () => {
+  assertDecision(classifyBash('git -c alias.y=push -c alias.x=\'-c alias.y="--no-lazy-fetch log -1 --oneline" y\' x'), 'defer');
+});
+
+// --- 43F: Section 9 - multiple overrides of the same alias name within one alias body ---
+test("43F. alias.x='-c alias.y=status -c alias.y=push y' x -> deny GIT_PUSH (last -c within the same body wins)", () => {
+  assertDecision(classifyBash("git -c alias.x='-c alias.y=status -c alias.y=push y' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('43F. alias.x=\'-c alias.y=push -c alias.y="--no-lazy-fetch log -1 --oneline" y\' x -> defer (last value wins, safe)', () => {
+  assertDecision(classifyBash('git -c alias.x=\'-c alias.y=push -c alias.y="--no-lazy-fetch log -1 --oneline" y\' x'), 'defer');
+});
+test("43F. V=push, alias.x='--config-env=alias.y=V -c alias.y=status y' x -> not deny (the later plain -c=status is final, not push)", () => {
+  const r = classifyBash("V=push git -c alias.x='--config-env=alias.y=V -c alias.y=status y' x");
+  assert.notEqual(r.decision, 'deny');
+});
+test("43F. V=push, alias.x='-c alias.y=status --config-env=alias.y=V y' x -> deny GIT_PUSH (the later --config-env=V is final)", () => {
+  assertDecision(classifyBash("V=push git -c alias.x='-c alias.y=status --config-env=alias.y=V y' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 43G: Section 10 - shared recursion/segment budget must bound a deep shell-alias chain (never crash, never defer) ---
+test('43G. a deep chain of nested shell aliases exceeding MAX_GIT_SHELL_ALIAS_DEPTH -> ask COMPLEX, not a crash and not a silent defer', () => {
+  const hops = [];
+  for (let idx = 0; idx < 8; idx++) hops.push(`-c alias.a${idx}='!git a${idx + 1}'`);
+  const cmd = 'git ' + hops.join(' ') + ' a0';
+  assertDecision(classifyBash(cmd), 'ask', hook.RULE.COMPLEX);
+});
+
+// --- 43H: Blocker C - rsync write-destination path-bearing options (file-style and directory-style) ---
+test('43H. rsync --log-file=<protected settings.json> -> deny TAMPER', () => {
+  assertDecision(classifyBash('rsync --log-file=C:/repo/.claude/settings.json README.md backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('43H. rsync --write-batch=<protected settings.json> -> deny TAMPER', () => {
+  assertDecision(classifyBash('rsync --write-batch=C:/repo/.claude/settings.json README.md backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('43H. rsync --only-write-batch=<protected settings.json> -> deny TAMPER', () => {
+  assertDecision(classifyBash('rsync --only-write-batch=C:/repo/.claude/settings.json README.md backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('43H. rsync --partial-dir=<.claude dir itself> -> deny TAMPER (directory contains a protected entry)', () => {
+  assertDecision(classifyBash('rsync --partial-dir=C:/repo/.claude README.md backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('43H. rsync --backup-dir=<.claude dir itself> -> deny TAMPER', () => {
+  assertDecision(classifyBash('rsync --backup-dir=C:/repo/.claude README.md backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('43H. rsync -T <.claude dir itself> -> deny TAMPER', () => {
+  assertDecision(classifyBash('rsync -T C:/repo/.claude README.md backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('43H. rsync --temp-dir=<.claude dir itself> -> deny TAMPER', () => {
+  assertDecision(classifyBash('rsync --temp-dir=C:/repo/.claude README.md backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('43H. negative control: rsync --backup-dir=<unrelated dir> -> not a hard-deny', () => {
+  assertDecision(classifyBash('rsync --backup-dir=/tmp/rsync-backup README.md backup/'), 'ask', hook.RULE.UNKNOWN);
+});
+test('43H. negative control: rsync --log-file=<unrelated file> -> not a hard-deny', () => {
+  assertDecision(classifyBash('rsync --log-file=/tmp/log.txt README.md backup/'), 'ask', hook.RULE.UNKNOWN);
+});
+
+// --- 43I: Blocker C - rsync read-source path-bearing options ---
+test('43I. rsync --read-batch=.env backup/ -> deny SECRET', () => {
+  assertDecision(classifyBash('rsync --read-batch=.env backup/'), 'deny', hook.RULE.SECRET);
+});
+test('43I. rsync --early-input=.env source/ destination/ -> deny SECRET', () => {
+  assertDecision(classifyBash('rsync --early-input=.env source/ destination/'), 'deny', hook.RULE.SECRET);
+});
+test('43I. rsync --compare-dest=secrets/ source/ destination/ -> deny SECRET', () => {
+  assertDecision(classifyBash('rsync --compare-dest=secrets/ source/ destination/'), 'deny', hook.RULE.SECRET);
+});
+test('43I. rsync --copy-dest=.env source/ destination/ -> deny SECRET', () => {
+  assertDecision(classifyBash('rsync --copy-dest=.env source/ destination/'), 'deny', hook.RULE.SECRET);
+});
+test('43I. rsync --link-dest=.env source/ destination/ -> deny SECRET', () => {
+  assertDecision(classifyBash('rsync --link-dest=.env source/ destination/'), 'deny', hook.RULE.SECRET);
+});
+
+// --- 43J: Blocker C - rsync --filter/-f is never silently consumed as opaque ---
+test("43J. rsync --filter='merge /etc/rsync-filter' README.md backup/ -> ask COMPLEX (external merge-file grammar not parsed)", () => {
+  assertDecision(classifyBash("rsync --filter='merge /etc/rsync-filter' README.md backup/"), 'ask', hook.RULE.COMPLEX);
+});
+test("43J. rsync -f '. /etc/rsync-filter' README.md backup/ -> ask COMPLEX", () => {
+  assertDecision(classifyBash("rsync -f '. /etc/rsync-filter' README.md backup/"), 'ask', hook.RULE.COMPLEX);
+});
+
+// ===================== Direct hook I/O tests (R14 Section 12 gate) =====================
+
+test('IO 43: required alias-argv/precedence fixtures always deny GIT_PUSH through the real process (defer count = 0)', () => {
+  const required = [
+    "git -c alias.x='!git' x push",
+    "git -c alias.x='!git -c core.fsmonitor=false' x push",
+    "git -c alias.a='b push' -c alias.b='!git' a",
+    "git -c alias.y='--no-lazy-fetch log -1 --oneline' -c alias.x='-c alias.y=push y' x",
+    "V=push git -c alias.y='--no-lazy-fetch log -1 --oneline' -c alias.x='--config-env=alias.y=V y' x",
+  ];
+  let denyCount = 0;
+  for (const cmd of required) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    assert.notEqual(r.stdout.trim(), '', `must not defer: ${cmd}`);
+    const parsed = JSON.parse(r.stdout);
+    assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny', `must deny: ${cmd}`);
+    assert.equal(parsed.hookSpecificOutput.ruleId || parsed.hookSpecificOutput.permissionDecisionReason.length > 0, true);
+    if (parsed.hookSpecificOutput.permissionDecision === 'deny') denyCount += 1;
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), `must not leak raw command for: ${cmd}`);
+  }
+  assert.equal(denyCount, 5);
+});
+
+test('IO 43: required rsync path-bearing fixtures always deny through the real process (deny count = 3)', () => {
+  const required = [
+    'rsync --log-file=C:/repo/.claude/settings.json README.md backup/',
+    'rsync --write-batch=C:/repo/.claude/settings.json README.md backup/',
+    'rsync --read-batch=.env backup/',
+  ];
+  let denyCount = 0;
+  for (const cmd of required) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    const parsed = JSON.parse(r.stdout);
+    assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny', `must deny: ${cmd}`);
+    if (parsed.hookSpecificOutput.permissionDecision === 'deny') denyCount += 1;
+  }
+  assert.equal(denyCount, 3);
+});
+
+test('IO 43: required negative controls never hard-deny through the real process', () => {
+  const negatives = [
+    "git -c alias.x='!git -c core.fsmonitor=false status' x --short",
+    "git -c alias.x='!git --no-lazy-fetch log' x -1 --oneline",
+    'git -c alias.y=push -c alias.x=\'-c alias.y="--no-lazy-fetch log -1 --oneline" y\' x',
+  ];
+  for (const cmd of negatives) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    let decision = 'defer';
+    if (r.stdout.trim() !== '') decision = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision;
+    assert.notEqual(decision, 'deny', `must not hard-deny: ${cmd}`);
+  }
+});

@@ -16,6 +16,11 @@ const MAX_SEGMENTS = 20;
 const MAX_TOTAL_SEGMENTS = 40;
 const MAX_WRAPPER_DEPTH = 6;
 const MAX_GIT_ALIAS_DEPTH = 6;
+// R14 Section 10: bounds how many times a `!`-prefixed Git shell-alias body may itself be
+// reclassified as a brand-new command string (crossing the "shell-alias boundary") - independent of,
+// but combined with, MAX_WRAPPER_DEPTH (see classifyGitShellAliasInvocation), so a chain of nested
+// shell aliases can never bypass the recursion bound the ordinary wrapper-hop path already enforces.
+const MAX_GIT_SHELL_ALIAS_DEPTH = 4;
 const MAX_PACKAGE_JSON_SIZE = 10 * 1024;
 
 const RULE = {
@@ -1355,15 +1360,26 @@ function parseGitGlobalOptions(tokens, assignments) {
 // with global options (skipped via parseGitGlobalOptions) and its own trailing tokens, which are
 // prepended - in resolution order, innermost first - to the tokens the caller already had. Returns
 // `{subcommand, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch}` on success,
-// `{shellAlias, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch}` if a hop resolves to a `!`-
-// prefixed shell alias (which is not a plain subcommand rewrite and must be evaluated as its own
-// shell command by the caller), or `{ambiguous:true}` on a cycle, exceeding MAX_GIT_ALIAS_DEPTH, or
-// an unresolved `--config-env` reference inside an alias body - never silently falls through to
-// defer. R13 Blocker B: `selectorHits`/`nonAliasConfigOverrides`/`hasNoLazyFetch` accumulate across
-// EVERY hop of the chain (never reset per-hop) so a repository selector, a safe/unsafe
-// core.fsmonitor override, or a --no-lazy-fetch proof buried inside an alias BODY is never silently
-// dropped just because it didn't appear on the top-level command line - the caller (classifyGit)
-// merges these into the same floors it already computes for its own top-level `-c`/global options.
+// `{shellAlias, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch}` if a hop resolves to a
+// `!`-prefixed shell alias (which is not a plain subcommand rewrite and must be evaluated as its own
+// shell command by the caller - see classifyGitShellAliasInvocation), or `{ambiguous:true}` on a
+// cycle, exceeding MAX_GIT_ALIAS_DEPTH, or an unresolved `--config-env` reference inside an alias
+// body - never silently falls through to defer. R13 Blocker B: `selectorHits`/
+// `nonAliasConfigOverrides`/`hasNoLazyFetch` accumulate across EVERY hop of the chain (never reset
+// per-hop) so a repository selector, a safe/unsafe core.fsmonitor override, or a --no-lazy-fetch
+// proof buried inside an alias BODY is never silently dropped just because it didn't appear on the
+// top-level command line - the caller (classifyGit) merges these into the same floors it already
+// computes for its own top-level `-c`/global options. R14 Blocker A: `tail` (tokens accumulated from
+// EARLIER hops, e.g. `alias.a='b push'` contributes tail=['push'] before reaching `b`) is now
+// returned on the shellAlias exit too - previously only the plain-subcommand exit preserved it,
+// silently discarding real git argv the shell alias would actually receive. R14 Blocker B: merging a
+// hop's freshly-parsed `g.aliasMap` into the accumulating `aliasMap` now ALWAYS overwrites an
+// existing entry for the same name (last-hop-wins), never guarded by a "first definition wins" check
+// - an alias body's own `-c alias.NAME=...`/`--config-env=alias.NAME=...` override is evaluated at
+// THIS hop, strictly later (in real git's own re-application-of-config-during-expansion sense) than
+// whatever the same name meant before this hop began, and must take precedence in BOTH directions
+// (a body redefining a dangerous outer alias as safe, or vice versa) - see the required precedence
+// fixtures in R14 Section 8/9.
 function resolveGitAlias(startToken, aliasMap, assignments) {
   let token = startToken;
   const visited = new Set();
@@ -1378,7 +1394,7 @@ function resolveGitAlias(startToken, aliasMap, assignments) {
     hops += 1;
     if (hops > MAX_GIT_ALIAS_DEPTH) return { ambiguous: true };
     const val = String(aliasMap[token]).trim();
-    if (val.startsWith('!')) return { shellAlias: val, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch };
+    if (val.startsWith('!')) return { shellAlias: val, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch };
     // Real git splits an alias command-line value using its own internal quoting/escaping parser
     // (always POSIX-like backslash-escape rules, regardless of whatever outer dialect the top-level
     // command came from) - `p\ush` (a literal backslash, e.g. from a single-quoted top-level value
@@ -1390,7 +1406,7 @@ function resolveGitAlias(startToken, aliasMap, assignments) {
     if (g.unresolvedAliasNames.length > 0) return { ambiguous: true };
     if (g.unknownGlobalOption) return { ambiguous: true };
     for (const k of Object.keys(g.aliasMap)) {
-      if (!Object.prototype.hasOwnProperty.call(aliasMap, k)) aliasMap[k] = g.aliasMap[k];
+      aliasMap[k] = g.aliasMap[k];
     }
     for (const hit of g.selectorHits || []) selectorHits.push(hit);
     for (const ov of g.nonAliasConfigOverrides || []) nonAliasConfigOverrides.push(ov);
@@ -1992,7 +2008,74 @@ function classifyGitStash(subTokens) {
   return null;
 }
 
-function classifyGit(rest, ctx, assignments, dialect) {
+// Safe single-quote POSIX quoting of an already-cooked literal string value: wraps it in single
+// quotes, escaping any embedded single quote as `'\''` (close quote, escaped literal quote, reopen
+// quote) - re-tokenizing the result with this scanner's own POSIX word-scanner/cooker reproduces the
+// exact original value, regardless of what characters it contains (spaces, `$`, backticks, ...).
+function posixQuoteLiteral(s) {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'";
+}
+
+// R14 Blocker A: a `!`-prefixed Git shell alias receives, as real appended argv, both any tokens
+// accumulated from EARLIER alias hops (`resolveGitAlias`'s `tail`) and whatever followed the alias
+// name on the actual invocation (`subRestTokens`) - R13 classified only the static alias-body text in
+// isolation, silently discarding these arguments (so `git -c alias.x='!git' x push` was misread as
+// bare `git` instead of `git push`). `appendedTokens`/`appendedMetadata` are parallel arrays (cooked
+// string, token metadata) covering exactly those appended arguments. `recursionState` carries
+// `{depth, budget, aliasDepth}` inherited from the ENTIRE outer classification (see Section 10) so
+// that crossing this shell-alias boundary can never reset the wrapper-depth/total-segment-budget
+// counters, and is itself bounded by MAX_GIT_SHELL_ALIAS_DEPTH independent of those.
+//
+// Approach (Section 4): (1) classify the static alias body alone - a confidently-resolved deny from
+// the text alone always wins outright, regardless of what the appended arguments turn out to be;
+// (2) if every appended argument is exact/static (never ambiguous/dynamic/glob), POSIX-quote each one
+// and build the effective invocation git would actually run, classify THAT too, and combine both
+// results via worseOf; (3) if any appended argument is dynamic/glob/ambiguous, the effective
+// invocation can't be modeled with confidence, so this floors to ask AMZ-COMPLEX-WRAPPER (unless the
+// static-alone classification already denied in step 1). When the alias payload is itself a `git ...`
+// invocation, the combined result (including a proven-safe defer) is trusted as-is - re-entering
+// classifyGit re-derives its own selector/fsmonitor/lazy-fetch floors exactly as rigorously as a
+// top-level command would; a non-git payload keeps the prior conservative floor (never surfaces a
+// bare defer/ask-UNKNOWN, only a confidently resolved ask/deny).
+function classifyGitShellAliasInvocation(shellCommand, appendedTokens, appendedMetadata, ctx, recursionState) {
+  const shellCmd = String(shellCommand).slice(1).trim();
+  if (shellCmd.length === 0) return askResult(RULE.COMPLEX);
+
+  const aliasDepth = recursionState.aliasDepth || 0;
+  if (aliasDepth >= MAX_GIT_SHELL_ALIAS_DEPTH) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git shell-alias chain exceeds the supported recursion depth.' });
+  }
+  const nextDepth = (recursionState.depth || 0) + 1;
+  const nextAliasDepth = aliasDepth + 1;
+  const budget = recursionState.budget || { segments: 0 };
+
+  const staticInner = classifyCommandString(shellCmd, 'posix', ctx, nextDepth, budget, undefined, nextAliasDepth);
+  if (staticInner.decision === 'deny') return staticInner;
+
+  const shellBinary = extractBinaryAndRest(shellCmd, 'posix');
+  const isGitPassthrough = !!(shellBinary && !shellBinary.ambiguous && basenameOf(shellBinary.first) === 'git');
+  const unresolvedFloor = askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git alias runs a shell command that could not be fully resolved.' });
+
+  if (!appendedTokens || appendedTokens.length === 0) {
+    if (isGitPassthrough) return staticInner;
+    return unresolvedFloor;
+  }
+
+  const allExact = (appendedMetadata || []).every((m) => m && !m.ambiguous && !m.hasDynamicExpansion && !m.hasUnquotedGlob);
+  if (!allExact) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git alias receives an invocation argument that could not be resolved with confidence (dynamic or glob).' });
+  }
+
+  const quotedArgs = appendedTokens.map(posixQuoteLiteral).join(' ');
+  const effectiveInvocation = shellCmd + ' ' + quotedArgs;
+  const effectiveInner = classifyCommandString(effectiveInvocation, 'posix', ctx, nextDepth, budget, undefined, nextAliasDepth);
+  const combined = worseOf(staticInner, effectiveInner);
+
+  if (isGitPassthrough) return combined;
+  return resolvedOrFloor(combined, unresolvedFloor);
+}
+
+function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth) {
   const td = dialectTokenStrings(rest, dialect);
   if (!td.ok) {
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git command arguments could not be resolved with confidence.' });
@@ -2122,33 +2205,30 @@ function classifyGit(rest, ctx, assignments, dialect) {
       selectorFloor = mergeSelectorHitsIntoFloor(selectorFloor, resolved.selectorHits);
       if (resolved.hasNoLazyFetch) lazyFetchProven = true;
 
+      // R14 Blocker A: whatever followed the alias name on the command line (subRestTokens) plus
+      // any tail already accumulated from earlier hops (resolved.tail) are real invocation
+      // arguments - real git passes them as argv to a plain subcommand rewrite AND to a `!`-
+      // prefixed shell alias alike, so both branches below need the same merged token/metadata
+      // pair. Alias-body tail tokens come from git's own static config value (already resolved,
+      // cooked via tokenizeCookedPosix at alias-expansion time), not from live shell input - there
+      // is no further dynamic/glob concern to carry for them, so they get "already resolved"
+      // placeholder metadata.
+      const tailMeta = resolved.tail.map(() => ({ ambiguous: false, hasDynamicExpansion: false, hasUnquotedGlob: false }));
+      const appendedTokens = resolved.tail.concat(subRestTokens);
+      const appendedMeta = tailMeta.concat(subRestMeta);
+
       if (resolved.shellAlias) {
-        // A `!`-prefixed alias value runs its payload as a shell command in its own right. Unlike a
-        // genuinely dynamic-runner payload (npm exec, git submodule foreach, ...), this text is
-        // fully known static config data at parse time, not a runtime-unknown value - when the
-        // payload is itself a `git ...` invocation, re-entering classifyCommandString re-derives its
-        // OWN selector/fsmonitor/lazy-fetch floors exactly as rigorously as a top-level command
-        // would, so that result (including a proven-safe defer) is trusted as-is rather than force-
-        // floored to a generic ask. A non-git shell payload keeps the prior conservative floor - an
-        // arbitrary shell command's bare "nothing matched" defer is not backed by the same proof
-        // chain, and R13 must not flip any existing "!<harmless-non-git-cmd>" -> ask test to defer.
-        const shellCmd = resolved.shellAlias.slice(1).trim();
-        if (shellCmd.length === 0) return askResult(RULE.COMPLEX);
-        const inner = classifyCommandString(shellCmd, 'posix', ctx, 0, { segments: 0 });
-        if (inner.decision === 'deny') return inner;
-        const shellBinary = extractBinaryAndRest(shellCmd, 'posix');
-        if (shellBinary && !shellBinary.ambiguous && basenameOf(shellBinary.first) === 'git') {
-          return inner;
-        }
-        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git alias runs a shell command that could not be fully resolved.' });
+        // A `!`-prefixed alias value runs its payload as a shell command in its own right, with the
+        // appended invocation arguments as real argv - see classifyGitShellAliasInvocation.
+        return classifyGitShellAliasInvocation(resolved.shellAlias, appendedTokens, appendedMeta, ctx, {
+          depth: depth || 0,
+          budget: budget || { segments: 0 },
+          aliasDepth: aliasDepth || 0,
+        });
       }
       subcommand = resolved.subcommand;
-      // Alias-body tail tokens come from git's own static config value (already resolved, cooked via
-      // tokenizeCookedPosix at alias-expansion time), not from live shell input - there is no further
-      // dynamic/glob concern to carry for them, so they get "already resolved" placeholder metadata.
-      const tailMeta = resolved.tail.map(() => ({ ambiguous: false, hasDynamicExpansion: false, hasUnquotedGlob: false }));
-      subRestTokens = resolved.tail.concat(subRestTokens);
-      subRestMeta = tailMeta.concat(subRestMeta);
+      subRestTokens = appendedTokens;
+      subRestMeta = appendedMeta;
     }
 
     if (subcommand === 'push' || subcommand === 'send-pack') return denyResult(RULE.GIT_PUSH);
@@ -3486,6 +3566,38 @@ function classifyRsyncDestinationToken(tokenMeta, ctx) {
   return null;
 }
 
+// R14 Blocker C: like checkTamperPath, but additionally denies when the target DIRECTORY itself
+// (rather than the target being exactly a protected entry) contains a known protected entry
+// somewhere underneath it - e.g. a directory-style rsync destination option (--backup-dir/
+// --partial-dir/--temp-dir) pointed straight at the AMZ safety-control directory itself
+// (`.claude`, not `.claude/hooks`) is not one of checkTamperPath's exact protected paths, but rsync
+// can still create/overwrite arbitrary files anywhere underneath it using its own relative-path
+// structure, which is exactly as dangerous as writing the protected entry directly.
+function checkTamperDirectoryTarget(rawPath, ctx) {
+  const direct = checkTamperPath(rawPath, ctx);
+  if (direct) return direct;
+  const norm = normalizeProtectedPath(rawPath, ctx);
+  if (!norm.ok || norm.networkUnc) return null;
+  const entries = buildProtectedPathEntries(ctx);
+  const prefix = norm.comparisonPath + '/';
+  for (const e of entries) {
+    if (e.path.indexOf(prefix) === 0) return denyResult(RULE.TAMPER);
+  }
+  return null;
+}
+
+function classifyRsyncDestinationDirToken(tokenMeta, ctx) {
+  if (!tokenMeta || tokenMeta.ambiguous) return askResult(RULE.COMPLEX);
+  if (tokenMeta.hasUnquotedGlob || tokenMeta.hasDynamicExpansion) {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this command writes to a directory containing an unresolved shell glob or expansion character.' });
+  }
+  const netHit = classifyRsyncNetworkToken(tokenMeta.cooked, ctx);
+  if (netHit) return netHit;
+  const tamperHit = checkTamperDirectoryTarget(tokenMeta.cooked, ctx);
+  if (tamperHit) return tamperHit;
+  return null;
+}
+
 // `-e`/`--rsh`/`--rsync-path` name an external command rsync invokes for the remote-shell transport
 // or the remote rsync binary path - never a silent defer, deny on a confidently-resolved protected
 // payload, ask otherwise.
@@ -3512,8 +3624,26 @@ function isRsyncBooleanFlag(raw) {
 // Value-bearing rsync options whose value this scanner does not need to inspect for security purposes
 // (a pattern, a numeric limit, a chmod spec, ...) - consumed as flag+value (or flag=value) so the
 // value token is never mistaken for a positional source/destination operand or an unrecognized flag.
-const RSYNC_OPAQUE_VALUE_FLAGS = new Set(['--exclude', '--include', '--filter', '-f', '--bwlimit', '--timeout', '--port', '--max-size', '--min-size', '--suffix', '--backup-dir', '--compare-dest', '--link-dest', '--copy-dest', '--partial-dir', '--log-file', '--out-format', '--chmod', '--chown']);
-const RSYNC_OPAQUE_VALUE_EQ_RE = /^--(exclude|include|filter|bwlimit|timeout|port|max-size|min-size|suffix|backup-dir|compare-dest|link-dest|copy-dest|partial-dir|log-file|out-format|chmod|chown)=/;
+// R14 Blocker C: path-bearing options (log-file/backup-dir/partial-dir/temp-dir/write-batch/
+// only-write-batch/read-batch/early-input/compare-dest/copy-dest/link-dest) and --filter/-f
+// (external merge-file reference) are deliberately NOT in this set any more - see
+// RSYNC_WRITE_FILE_OPTIONS/RSYNC_WRITE_DIR_OPTIONS/RSYNC_READ_PATH_OPTIONS/RSYNC_FILTER_FLAGS below.
+const RSYNC_OPAQUE_VALUE_FLAGS = new Set(['--exclude', '--include', '--bwlimit', '--timeout', '--port', '--max-size', '--min-size', '--suffix', '--out-format', '--chmod', '--chown']);
+const RSYNC_OPAQUE_VALUE_EQ_RE = /^--(exclude|include|bwlimit|timeout|port|max-size|min-size|suffix|out-format|chmod|chown)=/;
+
+// R14 Blocker C: destination options whose value names a single FILE (checkTamperPath's ordinary
+// exact-path semantics apply directly) vs a DIRECTORY that rsync will write arbitrary content under
+// using its own internal relative-path structure (--backup-dir/--partial-dir/--temp-dir) - a
+// directory-style destination must ALSO deny when a protected file/dir (.claude/settings.json,
+// .claude/hooks/...) lives inside it, not merely when the directory IS one of those exact entries,
+// since rsync can create arbitrarily-named files anywhere under it.
+const RSYNC_WRITE_FILE_OPTIONS = { '--log-file': 'logFile', '--write-batch': 'writeBatch', '--only-write-batch': 'onlyWriteBatch' };
+const RSYNC_WRITE_DIR_OPTIONS = { '--backup-dir': 'backupDir', '--partial-dir': 'partialDir', '--temp-dir': 'tempDir' };
+// Read-side path-bearing options (a single file to read, or a comparison/hard-link-source
+// directory rsync reads from) - all get the same network/secret/dynamic/8.3 policy as an ordinary
+// read source (classifyRsyncSourceToken already covers the directory case too via isSecretPath's
+// `secrets/` substring match).
+const RSYNC_READ_PATH_OPTIONS = { '--read-batch': 'readBatch', '--early-input': 'earlyInput', '--compare-dest': 'compareDest', '--copy-dest': 'copyDest', '--link-dest': 'linkDest' };
 
 // `rsync [OPTION...] SOURCE... DEST` - every positional operand except the last is a source, the
 // last is the destination; fewer than 2 positional operands (after option parsing) leaves the
@@ -3525,6 +3655,8 @@ function parseRsyncOperands(rest, dialect) {
   const tokens = td.tokens;
   const sourceFileOptions = {};
   const commandOptions = {};
+  const destinationOptions = {};
+  let filterPresent = false;
   let endOfOptions = false;
   const positional = [];
   let i = 0;
@@ -3554,6 +3686,54 @@ function parseRsyncOperands(rest, dialect) {
       i += 1; continue;
     }
 
+    // R14 Blocker C: read-side path-bearing options (--read-batch/--early-input/--compare-dest/
+    // --copy-dest/--link-dest) get the same network/secret/dynamic/8.3 read-source policy as
+    // --files-from et al above - never silently consumed as opaque.
+    {
+      const readOptMatched = Object.keys(RSYNC_READ_PATH_OPTIONS).find((flag) => t.raw === flag);
+      if (readOptMatched) {
+        const v = tokens[i + 1]; if (!v) return { ambiguous: true };
+        sourceFileOptions[RSYNC_READ_PATH_OPTIONS[readOptMatched]] = v; i += 2; continue;
+      }
+      const readOptEq = Object.keys(RSYNC_READ_PATH_OPTIONS).find((flag) => typeof t.cooked === 'string' && t.cooked.indexOf(flag + '=') === 0);
+      if (readOptEq) {
+        sourceFileOptions[RSYNC_READ_PATH_OPTIONS[readOptEq]] = { cooked: t.cooked.slice((readOptEq + '=').length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+        i += 1; continue;
+      }
+    }
+
+    // R14 Blocker C: write-side path-bearing options - FILE-style (--log-file/--write-batch/
+    // --only-write-batch) get the ordinary exact-file destination policy; DIRECTORY-style
+    // (--backup-dir/--partial-dir/--temp-dir/-T) additionally deny when a protected entry lives
+    // underneath the directory (see classifyRsyncDestinationDirToken/checkTamperDirectoryTarget) -
+    // never silently consumed as opaque.
+    {
+      const writeFileMatched = Object.keys(RSYNC_WRITE_FILE_OPTIONS).find((flag) => t.raw === flag);
+      if (writeFileMatched) {
+        const v = tokens[i + 1]; if (!v) return { ambiguous: true };
+        destinationOptions[RSYNC_WRITE_FILE_OPTIONS[writeFileMatched]] = { tok: v, kind: 'file' }; i += 2; continue;
+      }
+      const writeFileEq = Object.keys(RSYNC_WRITE_FILE_OPTIONS).find((flag) => typeof t.cooked === 'string' && t.cooked.indexOf(flag + '=') === 0);
+      if (writeFileEq) {
+        const v = { cooked: t.cooked.slice((writeFileEq + '=').length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+        destinationOptions[RSYNC_WRITE_FILE_OPTIONS[writeFileEq]] = { tok: v, kind: 'file' }; i += 1; continue;
+      }
+      if (t.raw === '-T') {
+        const v = tokens[i + 1]; if (!v) return { ambiguous: true };
+        destinationOptions.tempDir = { tok: v, kind: 'dir' }; i += 2; continue;
+      }
+      const writeDirMatched = Object.keys(RSYNC_WRITE_DIR_OPTIONS).find((flag) => t.raw === flag);
+      if (writeDirMatched) {
+        const v = tokens[i + 1]; if (!v) return { ambiguous: true };
+        destinationOptions[RSYNC_WRITE_DIR_OPTIONS[writeDirMatched]] = { tok: v, kind: 'dir' }; i += 2; continue;
+      }
+      const writeDirEq = Object.keys(RSYNC_WRITE_DIR_OPTIONS).find((flag) => typeof t.cooked === 'string' && t.cooked.indexOf(flag + '=') === 0);
+      if (writeDirEq) {
+        const v = { cooked: t.cooked.slice((writeDirEq + '=').length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+        destinationOptions[RSYNC_WRITE_DIR_OPTIONS[writeDirEq]] = { tok: v, kind: 'dir' }; i += 1; continue;
+      }
+    }
+
     if (t.raw === '-e') { const v = tokens[i + 1]; if (!v) return { ambiguous: true }; commandOptions.rsh = v; i += 2; continue; }
     if (t.raw === '--rsh') { const v = tokens[i + 1]; if (!v) return { ambiguous: true }; commandOptions.rsh = v; i += 2; continue; }
     if (typeof t.cooked === 'string' && t.cooked.indexOf('--rsh=') === 0) {
@@ -3565,6 +3745,14 @@ function parseRsyncOperands(rest, dialect) {
       commandOptions.rsyncPath = { cooked: t.cooked.slice('--rsync-path='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
       i += 1; continue;
     }
+
+    // R14 Blocker C: --filter/-f can reference an external merge file (`merge FILE`, `. FILE`) this
+    // scanner does not parse - never silently consumed as opaque; always floors to at least ask.
+    if (t.raw === '--filter' || t.raw === '-f') {
+      if (!tokens[i + 1]) return { ambiguous: true };
+      filterPresent = true; i += 2; continue;
+    }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--filter=') === 0) { filterPresent = true; i += 1; continue; }
 
     if (RSYNC_OPAQUE_VALUE_FLAGS.has(t.raw)) {
       if (!tokens[i + 1]) return { ambiguous: true };
@@ -3579,11 +3767,11 @@ function parseRsyncOperands(rest, dialect) {
   }
 
   if (positional.length < 2) {
-    return { ok: true, sources: [], destination: null, sourceFileOptions, commandOptions, insufficientOperands: true };
+    return { ok: true, sources: [], destination: null, sourceFileOptions, commandOptions, destinationOptions, filterPresent, insufficientOperands: true };
   }
   const destination = positional[positional.length - 1];
   const sources = positional.slice(0, -1);
-  return { ok: true, sources, destination, sourceFileOptions, commandOptions };
+  return { ok: true, sources, destination, sourceFileOptions, commandOptions, destinationOptions, filterPresent };
 }
 
 function classifyRsync(rest, ctx, dialect) {
@@ -3606,11 +3794,22 @@ function classifyRsync(rest, ctx, dialect) {
     result = worseOf(result, hit);
   }
 
-  for (const key of ['filesFrom', 'excludeFrom', 'includeFrom', 'passwordFile']) {
+  for (const key of ['filesFrom', 'excludeFrom', 'includeFrom', 'passwordFile', 'readBatch', 'earlyInput', 'compareDest', 'copyDest', 'linkDest']) {
     const tok = parsed.sourceFileOptions[key];
     if (tok === undefined) continue;
     const hit = classifyRsyncSourceToken(tok, ctx);
     if (hit) result = worseOf(result, hit);
+  }
+
+  for (const key of ['logFile', 'writeBatch', 'onlyWriteBatch', 'backupDir', 'partialDir', 'tempDir']) {
+    const entry = parsed.destinationOptions[key];
+    if (entry === undefined) continue;
+    const hit = entry.kind === 'dir' ? classifyRsyncDestinationDirToken(entry.tok, ctx) : classifyRsyncDestinationToken(entry.tok, ctx);
+    if (hit) result = worseOf(result, hit);
+  }
+
+  if (parsed.filterPresent) {
+    result = worseOf(result, askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: rsync --filter/-f can reference an external merge file, which this scanner does not parse.' }));
   }
 
   if (parsed.insufficientOperands) {
@@ -4275,7 +4474,7 @@ const CMD_UNSUPPORTED_GRAMMAR_BINS = new Set(['if', 'for', 'setlocal', 'endlocal
 
 // ===================== Segment / command classification =====================
 
-function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
+function classifyEffectiveBinary(segment, dialect, ctx, assignments, depth, budget, aliasDepth) {
   // Must run before any binary-specific dispatch below - see classifyGlobalRedirection.
   const globalRedir = classifyGlobalRedirection(segment, ctx, dialect);
   if (globalRedir) return globalRedir;
@@ -4329,7 +4528,7 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
   const rest = be.rest;
 
   if (bin === 'claude') return classifyNestedClaude(rest);
-  if (bin === 'git') return classifyGit(rest, ctx, assignments || [], dialect);
+  if (bin === 'git') return classifyGit(rest, ctx, assignments || [], dialect, depth, budget, aliasDepth);
   // `git-push`/`git-send-pack` are the real standalone binaries git's own subcommands dispatch
   // to internally (present on PATH alongside `git` itself on most POSIX installs) - invoking them
   // directly bypasses the `bin === 'git'` dispatch entirely unless handled here too.
@@ -4383,7 +4582,7 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
     const inner = extractBinaryAndRest(rest, dialect);
     if (!inner || inner.ambiguous) return askResult(RULE.COMPLEX);
     if (/^\$/.test(inner.first) || inner.first.startsWith('(')) return askResult(RULE.COMPLEX);
-    return classifyEffectiveBinary(rest, dialect, ctx);
+    return classifyEffectiveBinary(rest, dialect, ctx, assignments, depth, budget, aliasDepth);
   }
 
   // R9 fail-closed policy: only a binary PROVEN read-only (and, by reaching this point, already
@@ -4406,7 +4605,7 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments) {
 // `depth` bounds recursion (MAX_WRAPPER_DEPTH); `budget` is a mutable {segments} counter shared
 // across the whole recursive classification of one top-level command, bounding total segments
 // processed across all wrapper layers combined (MAX_TOTAL_SEGMENTS), not just per-layer.
-function classifySegment(rawSegment, dialect, ctx, depth, budget, inheritedAssignments) {
+function classifySegment(rawSegment, dialect, ctx, depth, budget, inheritedAssignments, aliasDepth) {
   if (depth > MAX_WRAPPER_DEPTH) return askResult(RULE.COMPLEX);
   if (hasComplexMarkers(rawSegment, dialect)) return askResult(RULE.COMPLEX);
   if (hasUnbalancedQuotes(rawSegment, dialect)) return askResult(RULE.COMPLEX);
@@ -4417,7 +4616,7 @@ function classifySegment(rawSegment, dialect, ctx, depth, budget, inheritedAssig
     // environment-inheritance semantics); a same-named assignment declared at the payload's own
     // level (resolved one hop further down) must still win over this one - see mergeAssignments.
     const effectiveAssignments = mergeAssignments(inheritedAssignments, resolved.assignments);
-    const inner = classifyCommandString(resolved.payload, resolved.dialect, ctx, depth + 1, budget, effectiveAssignments);
+    const inner = classifyCommandString(resolved.payload, resolved.dialect, ctx, depth + 1, budget, effectiveAssignments, aliasDepth);
     // Package-runner invariant (npx / pnpm dlx / yarn dlx): always at least ask, regardless of
     // payload. A protected-action payload already denies/asks on its own merits and passes
     // through unchanged; only an otherwise-unrecognized payload (defer, or - under the R9 fail-
@@ -4429,12 +4628,20 @@ function classifySegment(rawSegment, dialect, ctx, depth, budget, inheritedAssig
     return inner;
   }
   const effectiveAssignments = mergeAssignments(inheritedAssignments, resolved.assignments);
-  return classifyEffectiveBinary(resolved.segment, resolved.dialect, ctx, effectiveAssignments);
+  return classifyEffectiveBinary(resolved.segment, resolved.dialect, ctx, effectiveAssignments, depth, budget, aliasDepth);
 }
 
-function classifyCommandString(raw, initialDialect, ctx, depth, budget, inheritedAssignments) {
+// R14 Section 10: `aliasDepth` threads the git-shell-alias recursion counter (see
+// classifyGitShellAliasInvocation/MAX_GIT_SHELL_ALIAS_DEPTH) through the SAME recursive chain that
+// already carries `depth`/`budget` - a top-level command starts at aliasDepth 0; it only increases
+// when a `!`-prefixed Git alias body is reclassified as a fresh command string, and that increased
+// value must survive any ordinary wrapper hops (env/bash/sh/...) encountered afterward, exactly like
+// `depth`/`budget` already do, so alternating wrapper-hops and shell-alias-hops can never bypass the
+// combined recursion bound.
+function classifyCommandString(raw, initialDialect, ctx, depth, budget, inheritedAssignments, aliasDepth) {
   const effectiveDepth = depth || 0;
   const effectiveBudget = budget || { segments: 0 };
+  const effectiveAliasDepth = aliasDepth || 0;
   if (effectiveDepth > MAX_WRAPPER_DEPTH) return askResult(RULE.COMPLEX);
   if (raw.length > MAX_COMMAND_LENGTH) return askResult(RULE.TOO_LONG);
   const normalized = initialDialect === 'posix' ? normalizeBackslashNewline(raw) : raw;
@@ -4446,7 +4653,7 @@ function classifyCommandString(raw, initialDialect, ctx, depth, budget, inherite
   if (seg.segments.length === 0) return deferResult();
   let worst = null;
   for (const s of seg.segments) {
-    const r = classifySegment(s, initialDialect, ctx, effectiveDepth, effectiveBudget, inheritedAssignments);
+    const r = classifySegment(s, initialDialect, ctx, effectiveDepth, effectiveBudget, inheritedAssignments, effectiveAliasDepth);
     worst = worseOf(worst, r);
   }
   return worst || deferResult();
