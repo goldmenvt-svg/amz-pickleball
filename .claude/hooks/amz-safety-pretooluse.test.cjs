@@ -4555,3 +4555,49 @@ test('IO 46: required negative controls never hard-deny through the real process
     assert.notEqual(decision, 'deny', `must not hard-deny: ${cmd}`);
   }
 });
+
+// ===================== 47: R18 - last-effective Windows env precedence for --config-env =====================
+
+// R18 root cause: parseGitGlobalOptions resolved the environment variable `--config-env` names via
+// Array.prototype.find() (canonical/case-insensitive since R17, but still FIRST-match) - a real shell
+// (and R17's own "last effective occurrence wins" model, see buildEffectiveEnvironment) resolves a
+// name declared more than once (including under a differing case, since identity is case-insensitive
+// on Windows) to the LAST assignment, not the first. `V='<safe log alias>' v=push` must resolve `V`
+// (or `v`) to `push` - the first-match bug instead kept resolving to the stale safe value, incorrectly
+// deferring (or asking) what is really an exact, provable `git push`.
+const SAFE_LOG_ALIAS = '--no-lazy-fetch log -1 --oneline';
+
+test('47A. mixed-case duplicate, final value is push -> deny GIT_PUSH, never defer', () => {
+  assertDecision(classifyBash(`V='${SAFE_LOG_ALIAS}' v=push git --config-env=alias.p=V p`), 'deny', hook.RULE.GIT_PUSH);
+});
+test('47B. mixed-case duplicate, final value is the proven-safe log alias -> defer, not deny from the stale first value', () => {
+  assertDecision(classifyBash(`v=push V='${SAFE_LOG_ALIAS}' git --config-env=alias.p=v p`), 'defer');
+});
+test('47C. same-case duplicate, final value is push -> deny GIT_PUSH', () => {
+  assertDecision(classifyBash(`V='${SAFE_LOG_ALIAS}' V=push git --config-env=alias.p=V p`), 'deny', hook.RULE.GIT_PUSH);
+});
+test('47D. plain nested alias body containing --config-env=alias.p=V p, final assignment push -> deny GIT_PUSH', () => {
+  assertDecision(classifyBash(`V='${SAFE_LOG_ALIAS}' v=push git -c alias.x='--config-env=alias.p=V p' x`), 'deny', hook.RULE.GIT_PUSH);
+});
+test("47E. nested '!' shell alias executing git --config-env=alias.p=V p, final assignment push -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash(`V='${SAFE_LOG_ALIAS}' v=push git -c alias.x='!git --config-env=alias.p=V p' x`), 'deny', hook.RULE.GIT_PUSH);
+});
+test('47F. final matching assignment is ambiguous (invalid ANSI-C escape) -> ask, never defer, never reuse the earlier safe value', () => {
+  // The first `V=<safe log alias>` assignment is a fully resolvable, provably-safe value; the LATER
+  // same-canonical-name assignment `v=$'\xZZ'` fails to cook (invalid hex escape in ANSI-C quoting) and
+  // is the one actually in effect - resolution must not silently fall back to the earlier safe value.
+  assertDecision(classifyBash(`V='${SAFE_LOG_ALIAS}' v=$'\\xZZ' git --config-env=alias.p=V p`), 'ask', hook.RULE.TAMPER);
+});
+test('47G. IO: real process, mixed-case duplicate/final-push command -> JSON deny, no raw leak, no crash', () => {
+  const cmd = `V='${SAFE_LOG_ALIAS}' v=push git --config-env=alias.p=V p`;
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0, 'exit code');
+  assert.equal(r.stderr, '', 'stderr');
+  assert.notEqual(r.stdout.trim(), '', 'must not defer');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal(parsed.hookSpecificOutput.permissionDecisionReason, hook.DENY_MESSAGES[hook.RULE.GIT_PUSH]);
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), 'must not leak raw command');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(SAFE_LOG_ALIAS), 'must not leak raw env value');
+});

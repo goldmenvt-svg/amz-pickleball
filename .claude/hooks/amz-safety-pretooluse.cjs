@@ -1301,6 +1301,28 @@ function collectGitConfigEnvAliases(assignments) {
   return { aliasMap, hasGitConfigEnv, parametersAmbiguous };
 }
 
+// R18: `Array.prototype.find()` scans left-to-right and returns the FIRST match - but real shell/
+// process environment semantics (and the "last effective occurrence wins" precedence R17 itself
+// established for duplicate/mixed-case assignment names - see buildEffectiveEnvironment) require the
+// LAST one. `V='<safe>' v=push git --config-env=alias.p=V p` declares TWO assignments that canonicalize
+// to the same name (`V`); the second (`v=push`) is the one actually in effect, exactly like a real
+// shell where a later assignment of the same name shadows an earlier one. A plain `.find()` here
+// silently resolved to the STALE first value, which could turn a real, exact `git push` into an
+// unresolved-alias ask/defer - the inverse of fail-closed. Explicit backward loop (not
+// Array.prototype.findLast, to avoid raising this file's minimum supported Node version) - scans from
+// the end so the first canonical match encountered IS the last one in source order; returns that exact
+// assignment object unchanged (so its own `.ambiguous` metadata is preserved, never merged/weakened
+// with any earlier same-named assignment's metadata) and never falls back to an earlier match just
+// because the final one turned out to be ambiguous/unresolved.
+function findLastAssignmentByCanonicalName(assignments, name) {
+  const list = assignments || [];
+  const canonicalTarget = canonicalSecurityEnvName(name);
+  for (let idx = list.length - 1; idx >= 0; idx -= 1) {
+    if (canonicalSecurityEnvName(list[idx].name) === canonicalTarget) return list[idx];
+  }
+  return undefined;
+}
+
 // Parse a leading run of git global options from `tokens`, collecting any `-c alias.x=y` and
 // `--config-env=alias.x=ENVVAR` entries into an alias map along the way. Shared between top-level
 // command parsing and re-parsing an alias-expanded token stream, since an alias value can itself
@@ -1367,13 +1389,16 @@ function parseGitGlobalOptions(tokens, assignments, meta) {
           const envName = spec.slice(eq + 1);
           const am = /^alias\.(.+)$/i.exec(key);
           if (am) {
-            // R17 Blocker A: the env-var NAME `--config-env` names (`envName`, taken verbatim from
-            // the git command's own `--config-env=key=ENVVAR` text) must be matched against the
+            // R17 Blocker A / R18: the env-var NAME `--config-env` names (`envName`, taken verbatim
+            // from the git command's own `--config-env=key=ENVVAR` text) must be matched against the
             // collected leading assignments by canonical (case-insensitive) identity, exactly like
             // every other environment-variable lookup - `v=push git --config-env=alias.p=V p` is a
             // real, exact push alias to real Git on any case-insensitive-environment platform, not an
-            // unresolved reference.
-            const envAssign = (assignments || []).find((a) => canonicalSecurityEnvName(a.name) === canonicalSecurityEnvName(envName));
+            // unresolved reference. R18: among multiple assignments that canonicalize to the same
+            // name, the LAST one in source order is the one actually in effect (last-effective-
+            // occurrence-wins - see findLastAssignmentByCanonicalName's doc comment); a plain
+            // first-match lookup could resolve a real push to a stale earlier "safe" value instead.
+            const envAssign = findLastAssignmentByCanonicalName(assignments, envName);
             if (envAssign && !envAssign.ambiguous) aliasMap[am[1]] = envAssign.value;
             else unresolvedAliasNames.push(am[1]);
           }
