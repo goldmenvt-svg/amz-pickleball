@@ -415,6 +415,63 @@ function isSecretPath(rawArg, ctx) {
   return false;
 }
 
+// R12 Blocker H: an 8.3 short-name-shaped path component (see SHORT_83_COMPONENT_RE /
+// hasShort83Component) inside/near the repository root or a home directory cannot be ruled out as an
+// alias for a protected secret file's real short name without filesystem access this scanner never
+// performs - e.g. `ENV~1` could well be Windows' own short name for `.env`. Only flags the ambiguity
+// when the long-form path is actually near a secret-bearing location (repo root or a home candidate);
+// an 8.3-shaped component somewhere completely unrelated (e.g. deep in an unrelated system directory)
+// is not a plausible alias for one of THIS project's secrets and is left alone.
+function hasSecretAmbiguous83(cookedPath, ctx) {
+  if (typeof cookedPath !== 'string' || cookedPath.length === 0) return false;
+  if (!hasShort83Component(cookedPath)) return false;
+  const norm = normalizePathString(cookedPath, ctx.cwd);
+  if (!norm.ok) return false;
+  const repoRoot = normalizePathString(ctx.repoRoot, ctx.cwd);
+  if (repoRoot.ok && (norm.comparisonPath === repoRoot.comparisonPath || norm.comparisonPath.startsWith(repoRoot.comparisonPath + '/'))) {
+    return true;
+  }
+  const homeCandidates = getHomeCandidates(ctx.env, ctx.osHomedir);
+  for (const h of homeCandidates) {
+    if (norm.comparisonPath === h.comparisonPath || norm.comparisonPath.startsWith(h.comparisonPath + '/')) return true;
+  }
+  return false;
+}
+
+// R12 Blockers A + H: combined read-source path check shared by every classifier that reads a file's
+// CONTENT (not merely lists/writes it) - a network target (dev/tcp, dev/udp, UNC share) asks EGRESS
+// (never resolved/opened by this scanner); a known secret basename denies; an 8.3-ambiguous component
+// near a secret-bearing location asks SECRET rather than silently comparing the long-name text and
+// passing. Returns null when none apply (safe to defer as far as this check is concerned).
+function classifyReadSourcePath(cooked, ctx) {
+  const netHit = classifyNetworkPathToken(cooked);
+  if (netHit) return netHit;
+  if (isSecretPath(cooked, ctx)) return denyResult(RULE.SECRET);
+  if (hasSecretAmbiguous83(cooked, ctx)) {
+    return askResult(RULE.SECRET, { safeMessage: 'Needs approval: this path contains an 8.3 short-name-shaped component near a protected location and could not be confirmed safe.' });
+  }
+  return null;
+}
+
+// R12 Blocker A follow-up: token-aware variant of classifyReadSourcePath, used wherever the caller
+// has the full `{cooked, ambiguous, hasUnquotedGlob, hasDynamicExpansion}` token metadata (a plain
+// positional read-command operand) rather than just a cooked string (redirection targets, which
+// classifyGlobalRedirection already order-checks for network-ness ahead of its OWN exact/dynamic
+// floor). The network check runs BEFORE the unresolved-glob/dynamic-expansion floor here too - a
+// target like `//server/$SHARE/file` still has its literal `//server/` prefix survive cooking (which
+// never evaluates variables) even though the share segment itself is dynamic, so it must still ask
+// EGRESS specifically, not fall through to the less specific SECRET ask a naive dynamic-expansion
+// check-first ordering would produce.
+function classifyReadSourceToken(tokenMeta, ctx) {
+  if (!tokenMeta || tokenMeta.ambiguous) return askResult(RULE.COMPLEX);
+  const netHit = classifyNetworkPathToken(tokenMeta.cooked);
+  if (netHit) return netHit;
+  if (tokenMeta.hasUnquotedGlob || tokenMeta.hasDynamicExpansion) {
+    return askResult(RULE.SECRET, { safeMessage: 'Needs approval: this command reads a file whose path contains an unresolved shell glob or expansion character.' });
+  }
+  return classifyReadSourcePath(tokenMeta.cooked, ctx);
+}
+
 // ===================== Tokenizing helpers =====================
 
 function tokenizeArgs(s) {
@@ -1211,6 +1268,13 @@ function parseGitGlobalOptions(tokens, assignments) {
   const aliasMap = {};
   const unresolvedAliasNames = [];
   const nonAliasConfigOverrides = [];
+  // R12 Blocker D: repository/config-selector global options recorded (not resolved/compared, just
+  // their presence) so the caller can floor the decision - a repository selected via -C/--git-dir/
+  // --work-tree can carry a completely different (attacker-controlled) config this scanner never
+  // reads, including its own command-bearing core.fsmonitor/core.pager/etc, and --namespace/--bare
+  // change which refs/config git operates against in ways this scanner does not model either.
+  const selectorHits = [];
+  let hasNoLazyFetch = false; // R12 Blocker F
   while (i < tokens.length) {
     const t = tokens[i];
     if (t === '-c') {
@@ -1257,19 +1321,33 @@ function parseGitGlobalOptions(tokens, assignments) {
       }
       continue;
     }
-    if (t === '-C' || t === '--git-dir' || t === '--work-tree' || t === '--namespace' || t === '--exec-path') { i += 2; continue; }
-    if (/^--(git-dir|work-tree|namespace|exec-path)=/.test(t)) { i += 1; continue; }
+    if (t === '-C' || t === '--git-dir' || t === '--work-tree') {
+      selectorHits.push({ flag: t });
+      i += 2;
+      continue;
+    }
+    if (/^--(git-dir|work-tree)=/.test(t)) {
+      selectorHits.push({ flag: t.slice(0, t.indexOf('=')) });
+      i += 1;
+      continue;
+    }
+    if (t === '--namespace') { selectorHits.push({ flag: t }); i += 2; continue; }
+    if (/^--namespace=/.test(t)) { selectorHits.push({ flag: '--namespace' }); i += 1; continue; }
+    if (t === '--exec-path') { i += 2; continue; }
+    if (/^--exec-path=/.test(t)) { i += 1; continue; }
+    if (t === '--no-lazy-fetch') { hasNoLazyFetch = true; i += 1; continue; }
     if (t === '--no-pager' || t === '-p' || t === '--paginate' || t === '--no-replace-objects') { i += 1; continue; }
-    if (/^(--bare|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--html-path|--man-path|--info-path|--version|-v|--help|-h)$/.test(t)) { i += 1; continue; }
+    if (t === '--bare') { selectorHits.push({ flag: t }); i += 1; continue; }
+    if (/^(--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--html-path|--man-path|--info-path|--version|-v|--help|-h)$/.test(t)) { i += 1; continue; }
     // R10 Section 5: a leading global option this scanner does not specifically recognize must not
     // be silently treated as a zero-argument boolean flag and skipped - it might consume the very
     // next token as its value (in which case that token is NOT the subcommand), and this scanner has
     // no way to tell with confidence. Stop here and let the caller ask, rather than risk misreading
     // an option's value as the subcommand (which could silently defer on the wrong identity).
-    if (t.startsWith('-')) return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, unknownGlobalOption: true };
+    if (t.startsWith('-')) return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch, unknownGlobalOption: true };
     break;
   }
-  return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides };
+  return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch };
 }
 
 // Recursively resolve `startToken` through `aliasMap` (mutated in place as nested alias values are
@@ -1331,7 +1409,20 @@ function classifyGitSubmodule(subTokens, subMeta, ctx) {
   // `status`/`summary` are genuinely read-only queries. Previously ANY non-"foreach" subcommand
   // (including `add`) silently deferred - a real fail-open gap, not something this scanner ever
   // proved safe.
-  if (sub === 'status' || sub === 'summary') return deferResult();
+  // R12 Blocker G: subcommand-name membership alone is not proof either - any option this scanner
+  // doesn't specifically recognize still asks rather than silently deferring just because the
+  // sub-subcommand matched "status"/"summary". Not required to recognize real git's own status/
+  // summary flags (--cached, --recursive, ...) narrowly in R12 - a blanket ask on ANY dash-prefixed
+  // token satisfies the invariant without guessing at option arity.
+  if (sub === 'status' || sub === 'summary') {
+    for (let idx = 1; idx < subTokens.length; idx++) {
+      const t = subTokens[idx];
+      if (typeof t === 'string' && t[0] === '-' && t !== '-' && t !== '--') {
+        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option for git submodule status/summary.' });
+      }
+    }
+    return deferResult();
+  }
   if (sub !== 'foreach') {
     return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git submodule command can modify submodule configuration or working-tree content.' });
   }
@@ -1356,7 +1447,17 @@ function classifyGitBisect(subTokens, subMeta, ctx) {
   // (the same working-tree-mutation concern as a git checkout branch switch, which already asks) and
   // `replay <file>` re-executes bisect commands recorded in an arbitrary file - only `log` is a pure
   // read (prints the current bisect log). Previously every non-"run" subcommand silently deferred.
-  if (sub === 'log') return deferResult();
+  // R12 Blocker G: same unsupported-option invariant as git submodule status/summary above - any
+  // unrecognized option on "log" still asks, never a silent defer.
+  if (sub === 'log') {
+    for (let idx = 1; idx < subTokens.length; idx++) {
+      const t = subTokens[idx];
+      if (typeof t === 'string' && t[0] === '-' && t !== '-' && t !== '--') {
+        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option for git bisect log.' });
+      }
+    }
+    return deferResult();
+  }
   if (sub !== 'run') {
     return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git bisect command can change working-tree state by checking out a different commit.' });
   }
@@ -1516,7 +1617,39 @@ function classifyGitReadonlyUnknownOptionGuard(subcommand, subTokens) {
   return null;
 }
 
-function classifyGitReadonlySubcommand(subcommand, subTokens, subMeta, ctx) {
+// R12 Blocker E: status/diff/ls-files can trigger a repository-configured core.fsmonitor hook
+// program on every invocation (verified via a disposable marker) - this scanner never reads
+// repository/global git config, so it can never confirm the monitor is disabled purely by looking at
+// the command line, UNLESS the invocation itself proves it via `-c core.fsmonitor=<safe-value>`
+// (see FSMONITOR_SAFE_VALUE_RE / fsmonitorDisabledProven in classifyGit).
+const FSMONITOR_REFRESH_SUBCOMMANDS = new Set(['status', 'diff', 'ls-files']);
+
+// R12 Blocker F: log/show/ls-tree/cat-file consume repository objects, which in a partial clone can
+// trigger an implicit fetch from the promisor remote for any object missing locally - this scanner
+// never knows whether the repository is a partial clone, so it can never confirm no such fetch can
+// happen UNLESS the invocation itself proves it via `--no-lazy-fetch`/`GIT_NO_LAZY_FETCH=1` (see
+// lazyFetchProven in classifyGit). `diff` is deliberately NOT included here - it already has its own
+// strictly narrower Blocker C (textconv/ext-diff) gate, and the required negative control (`git -c
+// core.fsmonitor=false diff --stat` -> defer, no --no-lazy-fetch needed) proves diff is gated by
+// Blocker E only, not this one.
+const LAZY_FETCH_OBJECT_SUBCOMMANDS = new Set(['log', 'show', 'ls-tree', 'cat-file']);
+
+function classifyGitReadonlySubcommand(subcommand, subTokens, subMeta, ctx, fsmonitorDisabledProven, lazyFetchProven) {
+  const result = classifyGitReadonlySubcommandInner(subcommand, subTokens, subMeta, ctx);
+  // Only a would-be DEFER is intercepted - every ask/deny the inner classifier already produced
+  // (signature verification, --output, --textconv, unknown-option guard, ...) is strictly at least as
+  // protective as this floor and must pass through unchanged.
+  if (result.decision !== 'defer') return result;
+  if (FSMONITOR_REFRESH_SUBCOMMANDS.has(subcommand) && !fsmonitorDisabledProven) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: core.fsmonitor may run an external hook program on this refresh-triggering command; pass -c core.fsmonitor=false to prove it is disabled.' });
+  }
+  if (LAZY_FETCH_OBJECT_SUBCOMMANDS.has(subcommand) && !lazyFetchProven) {
+    return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: this reads a repository object, which in a partial clone can trigger an implicit network fetch from the promisor remote; pass --no-lazy-fetch or GIT_NO_LAZY_FETCH=1 to prove it cannot.' });
+  }
+  return result;
+}
+
+function classifyGitReadonlySubcommandInner(subcommand, subTokens, subMeta, ctx) {
   if (subcommand === 'cat-file') {
     for (const t of subTokens) {
       if (t === '--filters' || t === '--textconv') {
@@ -1834,14 +1967,55 @@ function classifyGit(rest, ctx, assignments, dialect) {
   // a command-bearing key with a `!`-prefixed value can deny outright, regardless of which
   // subcommand follows (credential/editor/pager/filter hooks can fire for many git operations, not
   // just an obviously-matching one); anything else floors to at least ask.
+  // R12 Blocker E: core.fsmonitor also accepts a literal boolean (disabling git's built-in
+  // filesystem-monitor integration entirely, not naming an external hook program) - a literal safe
+  // value here is not a command at all and must NOT go through the generic command-bearing-value ask
+  // below; it instead proves (for classifyGitReadonlySubcommand's benefit) that the refresh-time
+  // execution risk is closed for THIS invocation. Any other core.fsmonitor value (a hook path, `!cmd`,
+  // a dynamic token) still goes through the normal command-bearing-key handling unchanged.
+  const FSMONITOR_SAFE_VALUE_RE = /^(false|0|no|off)$/i;
   let configOverrideFloor = null;
+  let fsmonitorDisabledProven = false;
   for (const ov of parsed.nonAliasConfigOverrides || []) {
+    if (/^core\.fsmonitor$/i.test(ov.key) && typeof ov.value === 'string' && FSMONITOR_SAFE_VALUE_RE.test(ov.value.trim())) {
+      fsmonitorDisabledProven = true;
+      continue;
+    }
     if (isGitCommandBearingConfigKey(ov.key)) {
       const r = classifyGitConfigBearingValue(ov.value, ctx);
       if (r.decision === 'deny') return r;
       configOverrideFloor = worseOf(configOverrideFloor, r);
     } else {
       configOverrideFloor = worseOf(configOverrideFloor, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git command sets a config value that could not be resolved with confidence.' }));
+    }
+  }
+
+  // R12 Blocker F: --no-lazy-fetch (global option, tracked by parseGitGlobalOptions) or
+  // GIT_NO_LAZY_FETCH=1/true (leading env assignment) proves this invocation cannot trigger an
+  // implicit promisor-remote fetch for a missing object in a partial clone. An env value that's
+  // dynamic/ambiguous or anything other than 1/true simply leaves this unproven (same as it being
+  // absent entirely) - classifyGitReadonlySubcommand's own floor below already asks EGRESS by
+  // default whenever this stays false, so no separate ask/deny branch is needed here.
+  let lazyFetchProven = !!parsed.hasNoLazyFetch;
+  for (const a of assignments || []) {
+    if (a.name !== 'GIT_NO_LAZY_FETCH') continue;
+    if (!a.ambiguous && typeof a.value === 'string' && /^(1|true)$/i.test(a.value.trim())) {
+      lazyFetchProven = true;
+    }
+  }
+
+  // R12 Blocker D: repository/config selector global options (-C/--git-dir/--work-tree/--namespace/
+  // --bare) floor the decision - see parseGitGlobalOptions' selectorHits doc comment for why. -C/
+  // --git-dir/--work-tree select an entirely different (potentially attacker-controlled) repository
+  // and config; --namespace/--bare change which refs/config are in play. Combined via worseOf like
+  // every other floor here, so it can never PREEMPT a stronger result (e.g. `git -C x push` still
+  // denies GIT_PUSH) - it only ever raises a would-be weaker outcome.
+  let selectorFloor = null;
+  for (const hit of parsed.selectorHits || []) {
+    if (hit.flag === '-C' || hit.flag === '--git-dir' || hit.flag === '--work-tree') {
+      selectorFloor = worseOf(selectorFloor, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation selects a different repository/config or work-tree location, which this scanner cannot audit.' }));
+    } else {
+      selectorFloor = worseOf(selectorFloor, askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git invocation changes the ref namespace or bare-repository mode, which this scanner does not model.' }));
     }
   }
 
@@ -1935,12 +2109,14 @@ function classifyGit(rest, ctx, assignments, dialect) {
     // R9 fail-closed fallback: only a subcommand proven read-only may defer here. R10 Section 5:
     // the subcommand name alone is not proof - classifyGitReadonlySubcommand inspects the option
     // shape too (--output/--ext-diff/--textconv/cat-file --filters) before allowing it to defer.
-    if (GIT_READONLY_SUBCOMMANDS.has(subcommand)) return classifyGitReadonlySubcommand(subcommand, subRestTokens, subRestMeta, ctx);
+    if (GIT_READONLY_SUBCOMMANDS.has(subcommand)) {
+      return classifyGitReadonlySubcommand(subcommand, subRestTokens, subRestMeta, ctx, fsmonitorDisabledProven, lazyFetchProven);
+    }
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized git subcommand.' });
   }
 
   const result = resolveSubcommandDecision();
-  const floor = worseOf(worseOf(configOverrideFloor, envVarFloor), pathEnvFloor);
+  const floor = worseOf(worseOf(worseOf(configOverrideFloor, envVarFloor), pathEnvFloor), selectorFloor);
   return floor ? worseOf(floor, result) : result;
 }
 
@@ -1963,6 +2139,16 @@ function classifyGitConfig(rawTokens, rawMeta) {
   }
   const joined = tokens.map((p) => p.value).join(' ');
   if (/(^|\s)(--get-all|--get|--list|-l|--show-origin|--show-scope)(\s|$)/i.test(' ' + joined + ' ')) {
+    // R12 Blocker G: presence of a recognized read-only flag somewhere in the token list is not
+    // proof every OTHER token is also safe - an unrecognized option (or a config-key positional
+    // this scanner doesn't need to further examine while read-only) must still ask rather than
+    // silently defer just because one keyword matched. A non-dash positional (the key being
+    // queried, for `--get <key>`) is left unexamined, same as before.
+    for (const p of tokens) {
+      if (p.value.startsWith('-') && !/^(--get-all|--get|--list|-l|--show-origin|--show-scope)$/i.test(p.value)) {
+        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option for this git config read-only command.' });
+      }
+    }
     return deferResult();
   }
   const unsetIdx = tokens.findIndex((p) => /^(--unset|--unset-all|--remove-section)$/i.test(p.value));
@@ -2010,7 +2196,41 @@ function classifyGitRemote(tokens, meta) {
   // stale remote-tracking refs, `update` fetches from every configured remote (network egress plus
   // ref changes), and `set-head`/`set-branches` rewrite tracking configuration. Previously every
   // subcommand other than the deny-listed ones silently deferred.
-  if (/^(show|get-url)$/i.test(sub)) return deferResult();
+  // R12 Blocker C: `git remote show <name>` contacts the named remote over the network to list its
+  // branches/HEAD (unless `-n` is given, which suppresses that query and only prints locally-cached
+  // information) - genuinely read-only only in the `-n` shape. R12 Blocker G: any option this scanner
+  // doesn't specifically recognize (for either `show` or `get-url`) asks rather than silently
+  // deferring just because the sub-subcommand name matched.
+  if (/^show$/i.test(sub)) {
+    const after = tokens.slice(i + 1);
+    let hasNoQuery = false;
+    let endOfOptions = false;
+    for (const t of after) {
+      if (endOfOptions) continue;
+      if (t === '--') { endOfOptions = true; continue; }
+      if (t === '-n') { hasNoQuery = true; continue; }
+      if (/^(-v|--verbose)$/i.test(t)) continue;
+      if (typeof t === 'string' && t[0] === '-' && t !== '-') {
+        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option for git remote show.' });
+      }
+      // positional (remote name) - passes through unexamined, same as before.
+    }
+    if (hasNoQuery) return deferResult();
+    return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: git remote show without -n queries the remote over the network.' });
+  }
+  if (/^get-url$/i.test(sub)) {
+    const after = tokens.slice(i + 1);
+    let endOfOptions = false;
+    for (const t of after) {
+      if (endOfOptions) continue;
+      if (t === '--') { endOfOptions = true; continue; }
+      if (/^(--push|--all)$/i.test(t)) continue;
+      if (typeof t === 'string' && t[0] === '-' && t !== '-') {
+        return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option for git remote get-url.' });
+      }
+    }
+    return deferResult();
+  }
   return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git remote command can modify remote-tracking configuration or contact the network.' });
 }
 
@@ -2065,10 +2285,20 @@ function classifyFirebase(rest, dialect) {
 
 const PACKAGE_MANAGER_VALUE_FLAGS = { npm: new Set(['--prefix', '--userconfig']), pnpm: new Set(['-C']) };
 
-// Explicit read-only package-manager subcommands - the only shapes allowed to defer once every
-// mutating built-in above has been ruled out (R9 fail-closed policy: unknown subcommand must never
-// default to "probably safe").
-const PACKAGE_READONLY_SUBCOMMANDS = new Set(['view', 'info', 'list', 'ls', 'why']);
+// Explicit LOCAL-ONLY read-only package-manager subcommands - the only shapes allowed to defer once
+// every mutating built-in above has been ruled out (R9 fail-closed policy: unknown subcommand must
+// never default to "probably safe"). R12 Blocker B: `view`/`info`/`show`/`v` moved OUT of this set -
+// they query the configured package registry over the network (see
+// PACKAGE_REGISTRY_QUERY_SUBCOMMANDS below) and are never local-only, unlike `list`/`ls`/`why` which
+// only inspect the local node_modules/lockfile tree.
+const PACKAGE_READONLY_SUBCOMMANDS = new Set(['list', 'ls', 'why']);
+
+// R12 Blocker B: npm/pnpm subcommands (and aliases) that fetch package metadata from the configured
+// registry over the network - `show`/`v` are documented npm aliases for `view`; pnpm recognizes the
+// same `view`/`info`/`show` aliases. Checked uniformly across bin (npm/pnpm/yarn) since the set of
+// alias names is the same and this scanner does not need to distinguish which package manager it is
+// to know a registry fetch is about to happen.
+const PACKAGE_REGISTRY_QUERY_SUBCOMMANDS = new Set(['view', 'info', 'show', 'v']);
 
 // R10 Section 6: subcommand-name membership alone does not prove the invocation is read-only -
 // a dynamic/glob argument, or an option shape this scanner doesn't specifically recognize (e.g. a
@@ -2136,6 +2366,29 @@ function classifyPackageManager(bin, rest, ctx, dialect) {
   }
   const subcommand = tokens[i];
   if (subcommand === 'publish') return denyResult(RULE.PUBLISH);
+  // R12 Blocker B: view/info/show/v (npm and pnpm aliases for the same registry-metadata query) hit
+  // the configured package registry over the network to fetch the requested package's metadata -
+  // this scanner never resolves the registry URL or makes the request, so it is at least ask EGRESS
+  // regardless of option shape (unlike list/ls/why below, this is intentionally not narrowed further
+  // in R12 - asking the whole group is accepted policy, not a required optimization).
+  if (PACKAGE_REGISTRY_QUERY_SUBCOMMANDS.has(subcommand)) {
+    return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: this queries the package registry over the network for package metadata.' });
+  }
+  if (bin === 'yarn' && subcommand === 'npm') {
+    // Yarn Berry's `yarn npm <command>` command group - only `info` is recognized as a registry
+    // query here (mirrors `yarn info`/npm/pnpm `view`/`info`/`show`/`v`); any other `yarn npm`
+    // sub-subcommand (publish, whoami, tag, ...) is not specifically modeled and must ask rather
+    // than fall through to classifyPackageScript, which would misread "npm" as a package.json
+    // script name.
+    if (tokenNeedsFloor(meta[i + 1])) {
+      return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: yarn npm sub-subcommand could not be resolved with confidence (dynamic or glob token).' });
+    }
+    const sub2 = tokens[i + 1];
+    if (sub2 === 'info') {
+      return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: this queries the package registry over the network for package metadata.' });
+    }
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized yarn npm sub-subcommand.' });
+  }
   if (subcommand === 'exec' || subcommand === 'x') {
     // `npm exec [--] <cmd...>` / `npm x [--] <cmd...>` (an alias for exec) / `pnpm exec <cmd...>` /
     // `yarn exec <cmd...>` runs an arbitrary command through the package manager - same package-
@@ -2321,7 +2574,10 @@ function classifyDeleteAlias(rest, dialect) {
 // each cover both option-shape validation AND this same secret-path check - they no longer need (or
 // use) this generic flag-blind fallback.
 const SECRET_READ_PRIMITIVES = new Set(['less', 'more', 'sed', 'awk', 'type', 'get-content', 'gc', 'base64', 'xxd', 'strings']);
-const SECRET_COPY_PRIMITIVES = new Set(['cp', 'copy', 'copy-item']);
+// R12: `install` copies files exactly like `cp` (same src/dest operand grammar, already shares
+// parseWriterOperands with cp for its tamper-destination check) - its source side gets the same
+// secret-read/network-path scrutiny.
+const SECRET_COPY_PRIMITIVES = new Set(['cp', 'copy', 'copy-item', 'install']);
 
 // Cook a raw argument token into its semantic value before path checks, dialect-aware, so an
 // escape sequence like `.e\nv` (POSIX: backslash escapes the literal `n`, semantic value `.env`),
@@ -2333,26 +2589,13 @@ function cookArgForPath(raw, dialect) {
   return cookDialectTarget(raw, dialect);
 }
 
-// A path-argument token whose escape/quote structure is unresolvable, or that contains an unquoted
-// glob character or dynamic (env-var) expansion, is never safe to compare against isSecretPath -
-// the real path it resolves to at runtime could be anything, including a protected secret. Returns
-// an ask/deny result if the token must floor, or null if it's safe to use `.cooked` for a decision.
-function secretPathTokenFloor(tokenMeta) {
-  if (!tokenMeta || tokenMeta.ambiguous) return askResult(RULE.COMPLEX);
-  if (tokenMeta.hasUnquotedGlob || tokenMeta.hasDynamicExpansion) {
-    return askResult(RULE.SECRET, { safeMessage: 'Needs approval: this command reads a file whose path contains an unresolved shell glob or expansion character.' });
-  }
-  return null;
-}
-
 function classifySecretPrimitive(bin, rest, segment, dialect, ctx) {
   if (bin === '.' || bin === 'source') {
     const td = tokenizeDialectWords(rest, dialect);
     const first = td.tokens[0];
     if (first) {
-      const floor = secretPathTokenFloor(first);
-      if (floor) return floor;
-      if (isSecretPath(first.cooked, ctx)) return denyResult(RULE.SECRET);
+      const hit = classifyReadSourceToken(first, ctx);
+      if (hit) return hit;
       return askResult(RULE.COMPLEX);
     }
     return null;
@@ -2362,9 +2605,8 @@ function classifySecretPrimitive(bin, rest, segment, dialect, ctx) {
     const tokens = td.tokens.filter((t) => t.raw && t.raw[0] !== '-');
     if (tokens.length === 0) return null;
     for (const t of tokens) {
-      const floor = secretPathTokenFloor(t);
-      if (floor) return floor;
-      if (isSecretPath(t.cooked, ctx)) return denyResult(RULE.SECRET);
+      const hit = classifyReadSourceToken(t, ctx);
+      if (hit) return hit;
     }
     return null;
   }
@@ -2378,17 +2620,17 @@ function classifySecretPrimitive(bin, rest, segment, dialect, ctx) {
       return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option shape for this file-reading command.' });
     }
     // Every source argument (every positional token except the last, which is the destination) is
-    // a potential secret-read source for `cp`/`copy`/`copy-item`, not only the first (`cp a b c
-    // dest` has three sources); with an explicit target directory (`-t DIR`) every positional token
-    // is a source. A single lone token (no clear destination position) is still checked as a source.
+    // a potential secret-read source for `cp`/`copy`/`copy-item`/`install`, not only the first (`cp
+    // a b c dest` has three sources); with an explicit target directory (`-t DIR`) every positional
+    // token is a source. A single lone token (no clear destination position) is still checked as a
+    // source.
     let sources;
     if (parsed.targetDir) sources = parsed.positional;
     else if (parsed.positional.length > 1) sources = parsed.positional.slice(0, -1);
     else sources = parsed.positional;
     for (const t of sources) {
-      const floor = secretPathTokenFloor(t);
-      if (floor) return floor;
-      if (isSecretPath(t.cooked, ctx)) return denyResult(RULE.SECRET);
+      const hit = classifyReadSourceToken(t, ctx);
+      if (hit) return hit;
     }
     return null;
   }
@@ -2574,9 +2816,8 @@ function classifyDateCommand(rest, dialect, ctx) {
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option shape for date.' });
   }
   if (fileTok) {
-    const floor = secretPathTokenFloor(fileTok);
-    if (floor) return floor;
-    if (isSecretPath(fileTok.cooked, ctx)) return denyResult(RULE.SECRET);
+    const hit = classifyReadSourceToken(fileTok, ctx);
+    if (hit) return hit;
   }
   return deferResult();
 }
@@ -2671,14 +2912,12 @@ function classifySortCommand(rest, dialect, ctx) {
     result = worseOf(result, hit || askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this writes sorted output to a file.' }));
   }
   if (files0Tok) {
-    const floor = secretPathTokenFloor(files0Tok);
-    if (floor) result = worseOf(result, floor);
-    else if (isSecretPath(files0Tok.cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+    const hit = classifyReadSourceToken(files0Tok, ctx);
+    if (hit) result = worseOf(result, hit);
   }
   for (const p of positional) {
-    const floor = secretPathTokenFloor(p);
-    if (floor) { result = worseOf(result, floor); continue; }
-    if (isSecretPath(p.cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+    const hit = classifyReadSourceToken(p, ctx);
+    if (hit) result = worseOf(result, hit);
   }
   return result || deferResult();
 }
@@ -2715,9 +2954,8 @@ function classifyUniqCommand(rest, dialect, ctx) {
   if (positional.length > 2) return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized operand shape for uniq.' });
   let result = null;
   if (positional[0]) {
-    const floor = secretPathTokenFloor(positional[0]);
-    if (floor) result = worseOf(result, floor);
-    else if (isSecretPath(positional[0].cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+    const hit = classifyReadSourceToken(positional[0], ctx);
+    if (hit) result = worseOf(result, hit);
   }
   if (positional[1]) {
     const hit = checkTamperToken(positional[1], ctx);
@@ -2760,9 +2998,8 @@ function classifyWcCommand(rest, dialect, ctx) {
     i += 1;
   }
   if (filesFromTok) {
-    const floor = secretPathTokenFloor(filesFromTok);
-    if (floor) return floor;
-    if (isSecretPath(filesFromTok.cooked, ctx)) return denyResult(RULE.SECRET);
+    const hit = classifyReadSourceToken(filesFromTok, ctx);
+    if (hit) return hit;
   }
   return deferResult();
 }
@@ -2810,9 +3047,8 @@ function classifyCatHeadTailCut(bin, rest, dialect, ctx) {
   }
   let result = null;
   for (const p of positional) {
-    const floor = secretPathTokenFloor(p);
-    if (floor) { result = worseOf(result, floor); continue; }
-    if (isSecretPath(p.cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+    const hit = classifyReadSourceToken(p, ctx);
+    if (hit) result = worseOf(result, hit);
   }
   return result || deferResult();
 }
@@ -2874,9 +3110,8 @@ function classifyGrepOptions(bin, rest, dialect, ctx) {
   }
   let result = null;
   if (fileTok) {
-    const floor = secretPathTokenFloor(fileTok);
-    if (floor) result = worseOf(result, floor);
-    else if (isSecretPath(fileTok.cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+    const hit = classifyReadSourceToken(fileTok, ctx);
+    if (hit) result = worseOf(result, hit);
   }
   if (preTok) {
     const askFloor = askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this runs an external preprocessor command for each searched file.' });
@@ -2888,9 +3123,8 @@ function classifyGrepOptions(bin, rest, dialect, ctx) {
     }
   }
   for (const p of positional) {
-    const floor = secretPathTokenFloor(p);
-    if (floor) { result = worseOf(result, floor); continue; }
-    if (isSecretPath(p.cooked, ctx)) result = worseOf(result, denyResult(RULE.SECRET));
+    const hit = classifyReadSourceToken(p, ctx);
+    if (hit) result = worseOf(result, hit);
   }
   return result || deferResult();
 }
@@ -3650,6 +3884,18 @@ function isUncNetworkTarget(cooked) {
   return /^\/\/[^\/]/.test(normalizeSlashes(cooked));
 }
 
+// R12 Blocker A: shared network-path-token classifier, consulted from every surface that names a
+// file-like operand - redirection (any direction: input redirection opens the same TCP/UDP socket or
+// SMB session as output/bidirectional does), a plain read command's positional argument, or a copy/
+// install source. A `/dev/tcp`/`/dev/udp` special device file or a plain UNC network share is never a
+// local file regardless of whether it is being read from or written to, so this asks EGRESS either
+// way - hostname/share is never resolved and no connection is ever opened by this scanner.
+function classifyNetworkPathToken(cooked) {
+  if (typeof cooked !== 'string') return null;
+  if (!isDevNetworkTarget(cooked) && !isUncNetworkTarget(cooked)) return null;
+  return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: this references a network destination (TCP/UDP device file or UNC share), not a local file - hostname is not resolved and no socket is opened.' });
+}
+
 function classifyGlobalRedirection(segment, ctx, dialect) {
   const redirs = scanRedirections(segment, dialect);
   for (const r of redirs) {
@@ -3657,9 +3903,12 @@ function classifyGlobalRedirection(segment, ctx, dialect) {
       return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: redirection target could not be resolved with confidence.' });
     }
     const target = r.cookedTarget;
-    if ((r.direction === 'out' || r.direction === 'inout') && (isDevNetworkTarget(target) || isUncNetworkTarget(target))) {
-      return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: this redirects to a network destination (TCP/UDP device file or UNC share), not a local file - hostname is not resolved and no socket is opened.' });
-    }
+    // R12 Blocker A: input redirection (`cat < /dev/tcp/host/80`) opens the network socket exactly
+    // as reading FROM it as the shell's stdin - the direction restriction that used to gate this
+    // check (out/inout only) left plain input redirection from a network device file/UNC share
+    // completely unchecked. Every direction is checked now.
+    const netHit = classifyNetworkPathToken(target);
+    if (netHit) return netHit;
     // A target that is not `exact` (unquoted glob, or a dynamic construct this scanner does not
     // fully resolve - `${P:-...}`, `${!P}`, bare `$VAR`, tilde expansion, etc.) means the real file
     // it resolves to depends on filesystem/environment state never inspected here - the cooked
@@ -3687,7 +3936,10 @@ function classifyGlobalRedirection(segment, ctx, dialect) {
       }
     }
     if (r.direction === 'in' || r.direction === 'inout') {
-      if (isSecretPath(target, ctx)) return denyResult(RULE.SECRET);
+      // R12 Blocker H: classifyReadSourcePath also flags an 8.3-ambiguous component near a secret
+      // location (in addition to the pre-existing exact-secret-basename deny this replaces).
+      const readHit = classifyReadSourcePath(target, ctx);
+      if (readHit) return readHit;
       if (looksUnresolvedVar(target)) {
         return askResult(RULE.SECRET, { safeMessage: 'Needs approval: input redirection source could not be resolved with confidence.' });
       }

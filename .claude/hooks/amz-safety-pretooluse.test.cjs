@@ -319,9 +319,9 @@ test('12. timeout 10 git push -> deny', () => { assertDecision(classifyBash('tim
 test('12. git -c alias.p=push p origin master -> deny', () => { assertDecision(classifyBash('git -c alias.p=push p origin master'), 'deny', hook.RULE.GIT_PUSH); });
 test('12. git shell alias (!) -> deny (R6: shell-alias payload resolves confidently to git push, was ask)', () => { assertDecision(classifyBash('git -c alias.p="!git push" p'), 'deny', hook.RULE.GIT_PUSH); });
 test('12. git alias not defined in command -> ask COMPLEX (R9: unrecognized git subcommand fails closed, was defer)', () => { assertDecision(classifyBash('git p origin master'), 'ask', hook.RULE.COMPLEX); });
-test('12. git status -> defer (no hard-deny)', () => { assertDecision(classifyBash('git status'), 'defer'); });
+test('12. git status -> ask COMPLEX (R12 Blocker E: core.fsmonitor not proven disabled, was defer, no hard-deny)', () => { assertDecision(classifyBash('git status'), 'ask', hook.RULE.COMPLEX); });
 test('12. git diff -> ask COMPLEX (R11 Blocker C: content diff not proven textconv/ext-diff-safe, was defer)', () => { assertDecision(classifyBash('git diff'), 'ask', hook.RULE.COMPLEX); });
-test('12. git log -> defer', () => { assertDecision(classifyBash('git log'), 'defer'); });
+test('12. git log -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => { assertDecision(classifyBash('git log'), 'ask', hook.RULE.EGRESS); });
 test('12. git commit -> ask (R1: recognized ASK family, wrapper-proof)', () => { assertDecision(classifyBash('git commit -m "x"'), 'ask', hook.RULE.COMPLEX); });
 test('12. echo "git push" -> defer (basename is echo, not git)', () => { assertDecision(classifyBash('echo "git push"'), 'defer'); });
 test('12. echo "rm -rf" -> defer (basename is echo)', () => { assertDecision(classifyBash('echo "rm -rf"'), 'defer'); });
@@ -429,7 +429,7 @@ test('15. yarn publish -> deny', () => { assertDecision(classifyBash('yarn publi
 test('15. npm --prefix <path> publish -> deny', () => { assertDecision(classifyBash('npm --prefix ./pkg publish'), 'deny', hook.RULE.PUBLISH); });
 test('15. pnpm -C <path> publish -> deny', () => { assertDecision(classifyBash('pnpm -C ./pkg publish'), 'deny', hook.RULE.PUBLISH); });
 test('15. corepack npm publish -> deny', () => { assertDecision(classifyBash('corepack npm publish'), 'deny', hook.RULE.PUBLISH); });
-test('15. npm view -> defer', () => { assertDecision(classifyBash('npm view react'), 'defer'); });
+test('15. npm view -> ask EGRESS (R12 Blocker B: registry query, was defer)', () => { assertDecision(classifyBash('npm view react'), 'ask', hook.RULE.EGRESS); });
 test('15. npm pack -> ask COMPLEX (R9: unrecognized package subcommand fails closed, was defer - pack writes a tarball)', () => { assertDecision(classifyBash('npm pack'), 'ask', hook.RULE.COMPLEX); });
 test('15. npm test -> ask (R1: recognized ASK family, wrapper-proof)', () => { assertDecision(classifyBash('npm test'), 'ask', hook.RULE.COMPLEX); });
 
@@ -1157,8 +1157,8 @@ test('35A. env -i git push -> ask, fails closed instead of trusting cleared/inhe
 test('35A. env -i FOO=bar git push -> ask, fails closed', () => {
   assertDecision(classifyBash('env -i FOO=bar git push'), 'ask', hook.RULE.COMPLEX);
 });
-test('35A. negative control: unrelated leading assignment through wrapper -> defer', () => {
-  assertDecision(classifyBash("A=1 B=2 bash -lc 'git status'"), 'defer');
+test('35A. negative control: unrelated leading assignment through wrapper -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash("A=1 B=2 bash -lc 'git status'"), 'ask', hook.RULE.COMPLEX);
 });
 
 // --- 35B: Blocker B - recursive git alias resolution (depth/cycle bounded, global options preserved) ---
@@ -1186,11 +1186,11 @@ test('35B. alias chain exceeding MAX_GIT_ALIAS_DEPTH -> ask, not defer', () => {
 test('35B. alias value starting with a git global option is not truncated to its first token -> deny', () => {
   assertDecision(classifyBash('git -c alias.p="-c alias.q=push q" p'), 'deny', hook.RULE.GIT_PUSH);
 });
-test('35B. alias value starting with -C global option resolves to harmless subcommand -> defer', () => {
-  assertDecision(classifyBash('git -c alias.p="-C /tmp status" p'), 'defer');
+test('35B. alias value starting with -C global option resolves to harmless subcommand -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git -c alias.p="-C /tmp status" p'), 'ask', hook.RULE.COMPLEX);
 });
-test('35B. negative control: alias to harmless subcommand -> defer', () => {
-  assertDecision(classifyBash('git -c alias.p=status p'), 'defer');
+test('35B. negative control: alias to harmless subcommand -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git -c alias.p=status p'), 'ask', hook.RULE.COMPLEX);
 });
 
 // --- 35C: Blocker C - quote-aware redirection enumeration (every redirection, not just the first) ---
@@ -1218,8 +1218,8 @@ test('35C. 2>&1 fd-duplication is never misread as a file target -> defer', () =
 test('35C. 2>&1 followed by a real background separator still segments correctly -> deny', () => {
   assertDecision(classifyBash('echo test 2>&1 & git push'), 'deny', hook.RULE.GIT_PUSH);
 });
-test('35C. negative control: single harmless redirect -> defer', () => {
-  assertDecision(classifyBash('git status > /tmp/harmless'), 'defer');
+test('35C. negative control: single harmless redirect -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git status > /tmp/harmless'), 'ask', hook.RULE.COMPLEX);
 });
 
 // --- 35D: Blocker D - dialect-aware redirection target cooking (shared with argument-path cooking) ---
@@ -1336,14 +1336,14 @@ test('36B. git status >&.claude/settings.json (no space) -> deny TAMPER', () => 
 test('36B. git status >& "$TARGET" (dynamic target) -> ask TAMPER, not defer', () => {
   assertDecision(classifyBash('git status >& "$TARGET"'), 'ask', hook.RULE.TAMPER);
 });
-test('36B. negative control: git status 2>&1 (fd duplication) -> defer, not treated as file write', () => {
-  assertDecision(classifyBash('git status 2>&1'), 'defer');
+test('36B. negative control: git status 2>&1 (fd duplication) -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer), not treated as file write', () => {
+  assertDecision(classifyBash('git status 2>&1'), 'ask', hook.RULE.COMPLEX);
 });
-test('36B. negative control: git status 1>&2 (fd duplication) -> defer', () => {
-  assertDecision(classifyBash('git status 1>&2'), 'defer');
+test('36B. negative control: git status 1>&2 (fd duplication) -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git status 1>&2'), 'ask', hook.RULE.COMPLEX);
 });
-test('36B. negative control: git status 3>&- (fd close) -> defer', () => {
-  assertDecision(classifyBash('git status 3>&-'), 'defer');
+test('36B. negative control: git status 3>&- (fd close) -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git status 3>&-'), 'ask', hook.RULE.COMPLEX);
 });
 test('36B. existing operators still work: git status &> .claude/settings.json -> deny TAMPER', () => {
   assertDecision(classifyBash('git status &> .claude/settings.json'), 'deny', hook.RULE.TAMPER);
@@ -1365,8 +1365,8 @@ test('36C. cat .e?v -> ask SECRET, not defer', () => {
 test('36C. cp .e?v out -> ask SECRET (source-glob concern, not dest-tamper), not defer', () => {
   assertDecision(classifyBash('cp .e?v out'), 'ask', hook.RULE.SECRET);
 });
-test('36C. negative control: quoted wildcard is literal, not auto-ask: git status > ".clau?e/settings.json" -> defer', () => {
-  assertDecision(classifyBash('git status > ".clau?e/settings.json"'), 'defer');
+test('36C. negative control: quoted wildcard is literal, not auto-ask: git status > ".clau?e/settings.json" -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git status > ".clau?e/settings.json"'), 'ask', hook.RULE.COMPLEX);
 });
 test('36C. negative control: quoted wildcard is literal: cat ".e?v" -> defer', () => {
   assertDecision(classifyBash('cat ".e?v"'), 'defer');
@@ -1895,12 +1895,14 @@ test('IO 36B: >&word redirection to a protected target resolves through real pro
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('.claude/settings.json'));
 });
 
-test('IO 36B: fd-duplication control (2>&1) resolves through real process -> defer (empty stdout), not treated as a file write', () => {
+test('IO 36B: fd-duplication control (2>&1) resolves through real process -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer), not treated as a file write', () => {
   const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'git status 2>&1' }, cwd: 'C:/repo' });
   const r = runHookProcess(fixture);
   assert.equal(r.status, 0);
   assert.equal(r.stderr, '');
-  assert.equal(r.stdout, '');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'ask');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes('settings.json'));
 });
 
 test('IO 36C: unquoted glob in a secret-read path resolves through real process -> ask, no raw glob token leaked', () => {
@@ -2001,8 +2003,8 @@ test("37A. negative control: git status > '\\$HOME/literal' (single-quoted liter
   const r = classifyBash("git status > '$HOME/literal'");
   assert.notEqual(r.decision, 'deny');
 });
-test("37A. negative control: git status > '.clau?e/settings.json' (fully quoted wildcard, literal) -> defer", () => {
-  assertDecision(classifyBash("git status > '.clau?e/settings.json'"), 'defer');
+test("37A. negative control: git status > '.clau?e/settings.json' (fully quoted wildcard, literal) -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)", () => {
+  assertDecision(classifyBash("git status > '.clau?e/settings.json'"), 'ask', hook.RULE.COMPLEX);
 });
 
 // --- 37B: Blocker B - source/destination-aware cp/mv/content-writer classification ---
@@ -2251,10 +2253,23 @@ test('38A. cat with exact non-secret args still defers', () => {
 test('38A. cat .env still denies SECRET (allowlist does not override existing secret check)', () => {
   assertDecision(classifyBash('cat .env'), 'deny', hook.RULE.SECRET);
 });
-test('38A. git status/log/rev-parse/ls-files/ls-tree/cat-file still defer (git read-only allowlist)', () => {
-  for (const c of ['git status', 'git log', 'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD', 'git cat-file -p HEAD']) {
-    assertDecision(classifyBash(c), 'defer', undefined, `expected defer for: ${c}`);
-  }
+test('38A. git rev-parse still defers (git read-only allowlist; not gated by R12 Blocker E/F)', () => {
+  assertDecision(classifyBash('git rev-parse HEAD'), 'defer');
+});
+test('38A. git status -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git status'), 'ask', hook.RULE.COMPLEX);
+});
+test('38A. git ls-files -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git ls-files'), 'ask', hook.RULE.COMPLEX);
+});
+test('38A. git log -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git log'), 'ask', hook.RULE.EGRESS);
+});
+test('38A. git ls-tree HEAD -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git ls-tree HEAD'), 'ask', hook.RULE.EGRESS);
+});
+test('38A. git cat-file -p HEAD -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git cat-file -p HEAD'), 'ask', hook.RULE.EGRESS);
 });
 test('38A. git diff (bare) -> ask COMPLEX (R11 Blocker C: content-producing by default, was defer)', () => {
   assertDecision(classifyBash('git diff'), 'ask', hook.RULE.COMPLEX);
@@ -2265,10 +2280,14 @@ test('38A. git show (bare) -> ask COMPLEX (R11 Blocker C: defaults to a patch fo
 test('38A. git unrecognized subcommand -> ask COMPLEX, not defer', () => {
   assertDecision(classifyBash('git bundle create x.bundle HEAD'), 'ask', hook.RULE.COMPLEX);
 });
-test('38A. npm/pnpm/yarn view/info/list/ls/why still defer (package read-only allowlist)', () => {
-  for (const c of ['npm view react', 'npm info react', 'npm list', 'npm ls', 'pnpm why react', 'yarn list']) {
+test('38A. npm/pnpm/yarn list/ls/why still defer (package local-only read allowlist)', () => {
+  for (const c of ['npm list', 'npm ls', 'pnpm why react', 'yarn list']) {
     assertDecision(classifyBash(c), 'defer', undefined, `expected defer for: ${c}`);
   }
+});
+test('38A. npm view / npm info -> ask EGRESS (R12 Blocker B: registry query, was defer)', () => {
+  assertDecision(classifyBash('npm view react'), 'ask', hook.RULE.EGRESS);
+  assertDecision(classifyBash('npm info react'), 'ask', hook.RULE.EGRESS);
 });
 test('38A. npm/pnpm unrecognized subcommand -> ask COMPLEX, not defer', () => {
   assertDecision(classifyBash('npm pack'), 'ask', hook.RULE.COMPLEX);
@@ -2422,9 +2441,11 @@ test('38H. unknown-tool arg / future-writer / custom-runner all ask UNKNOWN, nev
 
 // --- 38: negative controls that must not hard-deny or misclassify (Section 12) ---
 test('38.neg. git status / git diff --stat / git log -1 --oneline / git remote -v stay documented, never hard-deny', () => {
-  assertDecision(classifyBash('git status'), 'defer');
-  assertDecision(classifyBash('git diff --stat'), 'defer');
-  assertDecision(classifyBash('git log -1 --oneline'), 'defer');
+  // R12 Blockers E/F: git status/diff --stat (fsmonitor) and git log -1 --oneline (lazy-fetch) now
+  // ask rather than defer without an explicit safety proof - still never a hard-deny either way.
+  assertDecision(classifyBash('git status'), 'ask', hook.RULE.COMPLEX);
+  assertDecision(classifyBash('git diff --stat'), 'ask', hook.RULE.COMPLEX);
+  assertDecision(classifyBash('git log -1 --oneline'), 'ask', hook.RULE.EGRESS);
   assertDecision(classifyBash('git remote -v'), 'defer');
 });
 test('38.neg. echo hello / cat README.md stay defer', () => {
@@ -2678,11 +2699,11 @@ test('39H. git cat-file --filters HEAD:README.md -> ask COMPLEX, not defer', () 
 test('39H. git cat-file --textconv HEAD:README.md -> ask COMPLEX, not defer', () => {
   assertDecision(classifyBash('git cat-file --textconv HEAD:README.md'), 'ask', hook.RULE.COMPLEX);
 });
-test('39H. negative control: git cat-file -p HEAD -> defer', () => {
-  assertDecision(classifyBash('git cat-file -p HEAD'), 'defer');
+test('39H. negative control: git cat-file -p HEAD -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git cat-file -p HEAD'), 'ask', hook.RULE.EGRESS);
 });
-test('39H. negative control: git cat-file -t HEAD -> defer', () => {
-  assertDecision(classifyBash('git cat-file -t HEAD'), 'defer');
+test('39H. negative control: git cat-file -t HEAD -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git cat-file -t HEAD'), 'ask', hook.RULE.EGRESS);
 });
 
 // --- 39I: command-bearing git environment variables ---
@@ -2698,8 +2719,8 @@ test("39I. GIT_PAGER='git push' git status -> deny GIT_PUSH (command-bearing pag
 test("39I. GIT_SSH_COMMAND='ssh -o something' git status -> ask, not defer", () => {
   assertDecision(classifyBash("GIT_SSH_COMMAND='ssh -o something' git status"), 'ask', hook.RULE.TAMPER);
 });
-test('39I. negative control: git status (no command-bearing env) -> defer', () => {
-  assertDecision(classifyBash('git status'), 'defer');
+test('39I. negative control: git status (no command-bearing env) -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer; still unaffected by command-bearing env)', () => {
+  assertDecision(classifyBash('git status'), 'ask', hook.RULE.COMPLEX);
 });
 
 // --- 39J: unknown git global option arity ---
@@ -2709,8 +2730,8 @@ test('39J. git --unknown-flag status -> ask COMPLEX, not defer', () => {
 test('39J. git --unknown-flag push -> ask COMPLEX, not defer (never silently defer OR silently miss push)', () => {
   assertDecision(classifyBash('git --unknown-flag push'), 'ask', hook.RULE.COMPLEX);
 });
-test('39J. negative control: git -C /tmp/x status -> defer (recognized global option)', () => {
-  assertDecision(classifyBash('git -C /tmp/x status'), 'defer');
+test('39J. negative control: git -C /tmp/x status -> ask TAMPER (R12 Blocker D: repository selector floor, was defer)', () => {
+  assertDecision(classifyBash('git -C /tmp/x status'), 'ask', hook.RULE.TAMPER);
 });
 test('39J. negative control: git --version -> defer (recognized boolean global option)', () => {
   assertDecision(classifyBash('git --version'), 'defer');
@@ -2758,33 +2779,37 @@ test('39L. git remote prune origin -> ask TAMPER, not defer (was a silent gap pr
 test('39L. git remote update -> ask TAMPER, not defer (fetches from every configured remote)', () => {
   assertDecision(classifyBash('git remote update'), 'ask', hook.RULE.TAMPER);
 });
-test('39L. negative control: git remote show origin -> defer', () => {
-  assertDecision(classifyBash('git remote show origin'), 'defer');
+test('39L. negative control: git remote show origin -> ask EGRESS (R12 Blocker C: queries the remote over the network without -n, was defer)', () => {
+  assertDecision(classifyBash('git remote show origin'), 'ask', hook.RULE.EGRESS);
 });
 test('39L. negative control: git remote get-url origin -> defer', () => {
   assertDecision(classifyBash('git remote get-url origin'), 'defer');
 });
 
 // --- 39M: package readonly subcommands option-aware ---
-test('39M. npm view "$PKG" -> ask COMPLEX, not defer (dynamic argument)', () => {
-  assertDecision(classifyBash('npm view "$PKG"'), 'ask', hook.RULE.COMPLEX);
+test('39M. npm view "$PKG" -> ask EGRESS (R12 Blocker B: registry query is blanket-asked regardless of argument, was ask COMPLEX for dynamic argument)', () => {
+  assertDecision(classifyBash('npm view "$PKG"'), 'ask', hook.RULE.EGRESS);
 });
 test('39M. npm ls --unknown-flag -> ask COMPLEX, not defer', () => {
   assertDecision(classifyBash('npm ls --unknown-flag'), 'ask', hook.RULE.COMPLEX);
 });
-test('39M. negative control: npm view react --json -> defer (recognized display flag)', () => {
-  assertDecision(classifyBash('npm view react --json'), 'defer');
+test('39M. negative control: npm view react --json -> ask EGRESS (R12 Blocker B: registry query, was defer regardless of recognized display flag)', () => {
+  assertDecision(classifyBash('npm view react --json'), 'ask', hook.RULE.EGRESS);
 });
 test('39M. negative control: pnpm why react -> defer', () => { assertDecision(classifyBash('pnpm why react'), 'defer'); });
 test('39M. negative control: yarn list -> defer', () => { assertDecision(classifyBash('yarn list'), 'defer'); });
 
 // --- 39N: Section 8 gate - full negative-control list stays defer via the pure classifier too ---
+// R12 Blockers E/F: git status/diff --stat/ls-files (fsmonitor) and git log -1 --oneline/show --stat
+// HEAD/ls-tree/cat-file -t (lazy-fetch) moved OUT of this R10/R11-era negative-control list - they no
+// longer defer bare (see the dedicated 40C/40D/41E/41F tests below for their current, safety-proven
+// defer shapes: `-c core.fsmonitor=false` / `--no-lazy-fetch` / `GIT_NO_LAZY_FETCH=1`). git rev-parse
+// is unaffected by either blocker and stays here.
 test('39N. Section 8 required negative controls all defer', () => {
   const negatives = [
     'pwd', 'echo hello', "printf '%s' hello", 'sort input.txt', 'uniq input.txt', 'date', 'date +%F',
     'grep pattern README.md', 'rg pattern README.md', 'wc README.md', 'cat README.md',
-    'git status', 'git diff --stat', 'git log -1 --oneline', 'git show --stat HEAD',
-    'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD', 'git cat-file -t HEAD',
+    'git rev-parse HEAD',
   ];
   for (const c of negatives) assertDecision(classifyBash(c), 'defer', undefined, `expected defer for: ${c}`);
 });
@@ -2825,12 +2850,13 @@ test('IO 39: required dangerous fixtures never defer, never leak raw command, no
   }
 });
 
+// R12 Blockers E/F: see the 39N doc comment above - the same commands are removed from this
+// real-process negative-control list for the same reason.
 test('IO 39: required negative controls all defer through the real process (no hard-deny)', () => {
   const negatives = [
     'pwd', 'echo hello', "printf '%s' hello", 'sort input.txt', 'uniq input.txt', 'date', 'date +%F',
     'grep pattern README.md', 'rg pattern README.md', 'wc README.md', 'cat README.md',
-    'git status', 'git diff --stat', 'git log -1 --oneline', 'git show --stat HEAD',
-    'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD', 'git cat-file -t HEAD',
+    'git rev-parse HEAD',
   ];
   for (const cmd of negatives) {
     const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
@@ -2925,16 +2951,16 @@ test('40B. negative control: GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.name GIT_C
 test('40B. negative control: git -c alias.p=push p still resolves as before (unaffected)', () => {
   assertDecision(classifyBash('git -c alias.p=push p'), 'deny', hook.RULE.GIT_PUSH);
 });
-test('40B. negative control: git status (no path-bearing env) -> defer', () => {
-  assertDecision(classifyBash('git status'), 'defer');
+test('40B. negative control: git status (no path-bearing env) -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer; still unaffected by path-bearing env)', () => {
+  assertDecision(classifyBash('git status'), 'ask', hook.RULE.COMPLEX);
 });
 
 // --- 40C: Blocker C - textconv-risk default-to-ask, signature verification, config keys ---
 test('40C. git diff (bare) -> ask COMPLEX, not defer', () => {
   assertDecision(classifyBash('git diff'), 'ask', hook.RULE.COMPLEX);
 });
-test('40C. git diff --no-textconv --no-ext-diff --stat -> defer (explicitly proven safe)', () => {
-  assertDecision(classifyBash('git diff --no-textconv --no-ext-diff --stat'), 'defer');
+test('40C. git diff --no-textconv --no-ext-diff --stat -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer once textconv/ext-diff proven safe)', () => {
+  assertDecision(classifyBash('git diff --no-textconv --no-ext-diff --stat'), 'ask', hook.RULE.COMPLEX);
 });
 test('40C. git log -p -1 -> ask COMPLEX, not defer (patch-producing)', () => {
   assertDecision(classifyBash('git log -p -1'), 'ask', hook.RULE.COMPLEX);
@@ -2942,14 +2968,14 @@ test('40C. git log -p -1 -> ask COMPLEX, not defer (patch-producing)', () => {
 test('40C. git show HEAD -> ask COMPLEX, not defer (defaults to a patch)', () => {
   assertDecision(classifyBash('git show HEAD'), 'ask', hook.RULE.COMPLEX);
 });
-test('40C. git log -p -1 --no-textconv --no-ext-diff -> defer (patch explicitly driver-disabled)', () => {
-  assertDecision(classifyBash('git log -p -1 --no-textconv --no-ext-diff'), 'defer');
+test('40C. git log -p -1 --no-textconv --no-ext-diff -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer once patch explicitly driver-disabled)', () => {
+  assertDecision(classifyBash('git log -p -1 --no-textconv --no-ext-diff'), 'ask', hook.RULE.EGRESS);
 });
-test('40C. git show --stat HEAD -> defer (metadata-only, no content rendered)', () => {
-  assertDecision(classifyBash('git show --stat HEAD'), 'defer');
+test('40C. git show --stat HEAD -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git show --stat HEAD'), 'ask', hook.RULE.EGRESS);
 });
-test('40C. git diff --stat -> defer (metadata-only alone is sufficient)', () => {
-  assertDecision(classifyBash('git diff --stat'), 'defer');
+test('40C. git diff --stat -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git diff --stat'), 'ask', hook.RULE.COMPLEX);
 });
 test('40C. git log --show-signature -1 -> ask COMPLEX, not defer', () => {
   assertDecision(classifyBash('git log --show-signature -1'), 'ask', hook.RULE.COMPLEX);
@@ -2978,11 +3004,11 @@ test("40C. git -c diff.mydriver.textconv='!git push' diff -> deny GIT_PUSH", () 
 test("40C. git -c diff.mydriver.command=cat diff -> ask TAMPER, not defer", () => {
   assertDecision(classifyBash('git -c diff.mydriver.command=cat diff'), 'ask', hook.RULE.TAMPER);
 });
-test('40C. negative control: git log (bare, no patch flag) -> defer', () => {
-  assertDecision(classifyBash('git log'), 'defer');
+test('40C. negative control: git log (bare, no patch flag) -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git log'), 'ask', hook.RULE.EGRESS);
 });
-test('40C. negative control: git log -1 --oneline -> defer', () => {
-  assertDecision(classifyBash('git log -1 --oneline'), 'defer');
+test('40C. negative control: git log -1 --oneline -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git log -1 --oneline'), 'ask', hook.RULE.EGRESS);
 });
 
 // --- 40D: Blocker D - unsupported-option invariant ---
@@ -3007,15 +3033,15 @@ test('40D. ls --unknown-future-option -> ask COMPLEX, not defer', () => {
 test('40D. which --unknown-future-option git -> ask COMPLEX, not defer', () => {
   assertDecision(classifyBash('which --unknown-future-option git'), 'ask', hook.RULE.COMPLEX);
 });
-test('40D. negative control: git status -> defer', () => { assertDecision(classifyBash('git status'), 'defer'); });
-test('40D. negative control: git diff --no-textconv --no-ext-diff --stat -> defer', () => {
-  assertDecision(classifyBash('git diff --no-textconv --no-ext-diff --stat'), 'defer');
+test('40D. negative control: git status -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => { assertDecision(classifyBash('git status'), 'ask', hook.RULE.COMPLEX); });
+test('40D. negative control: git diff --no-textconv --no-ext-diff --stat -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
+  assertDecision(classifyBash('git diff --no-textconv --no-ext-diff --stat'), 'ask', hook.RULE.COMPLEX);
 });
-test('40D. negative control: git log -1 --oneline -> defer', () => { assertDecision(classifyBash('git log -1 --oneline'), 'defer'); });
+test('40D. negative control: git log -1 --oneline -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => { assertDecision(classifyBash('git log -1 --oneline'), 'ask', hook.RULE.EGRESS); });
 test('40D. negative control: git rev-parse HEAD -> defer', () => { assertDecision(classifyBash('git rev-parse HEAD'), 'defer'); });
-test('40D. negative control: git ls-files -> defer', () => { assertDecision(classifyBash('git ls-files'), 'defer'); });
-test('40D. negative control: git ls-tree HEAD -> defer', () => { assertDecision(classifyBash('git ls-tree HEAD'), 'defer'); });
-test('40D. negative control: git cat-file -t HEAD -> defer', () => { assertDecision(classifyBash('git cat-file -t HEAD'), 'defer'); });
+test('40D. negative control: git ls-files -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => { assertDecision(classifyBash('git ls-files'), 'ask', hook.RULE.COMPLEX); });
+test('40D. negative control: git ls-tree HEAD -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => { assertDecision(classifyBash('git ls-tree HEAD'), 'ask', hook.RULE.EGRESS); });
+test('40D. negative control: git cat-file -t HEAD -> ask EGRESS (R12 Blocker F: lazy-fetch not proven disabled, was defer)', () => { assertDecision(classifyBash('git cat-file -t HEAD'), 'ask', hook.RULE.EGRESS); });
 test('40D. negative control: ls -la -> defer', () => { assertDecision(classifyBash('ls -la'), 'defer'); });
 test('40D. negative control: which git -> defer', () => { assertDecision(classifyBash('which git'), 'defer'); });
 test('40D. negative control: ls *.txt (glob positional, still unexamined) -> defer', () => {
@@ -3079,10 +3105,12 @@ test('40E. negative control: git checkout HEAD~ -- src/harmless.js -> ask TAMPER
 });
 
 // --- 40F: pure-classifier confirmation of the Section 8 negative-control list ---
+// R12 Blockers E/F: git status/diff --no-textconv --no-ext-diff --stat/ls-files (fsmonitor) and git
+// log -1 --oneline/ls-tree/cat-file -t (lazy-fetch) moved OUT of this R11-era negative-control list -
+// see the 41E/41F tests below for their current, safety-proven defer shapes.
 test('40F. Section 8 required negative controls all defer (pure classifier)', () => {
   const negatives = [
-    'git status', 'git diff --no-textconv --no-ext-diff --stat', 'git log -1 --oneline',
-    'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD', 'git cat-file -t HEAD',
+    'git rev-parse HEAD',
     'ls -la', 'which git',
   ];
   for (const c of negatives) assertDecision(classifyBash(c), 'defer', undefined, `expected defer for: ${c}`);
@@ -3143,13 +3171,13 @@ test('IO 40: Windows path-identity write fixtures never defer, never leak raw pa
   }
 });
 
+// R12 Blockers E/F: see the 40F doc comment above - the same git commands are removed from this
+// real-process negative-control list for the same reason (they now ask rather than defer bare).
 test('IO 40: required negative controls all defer through the real process (no hard-deny)', () => {
   const negatives = [
     'pwd', 'echo hello', "printf '%s' hello", 'sort input.txt', 'uniq input.txt', 'date', 'date +%F',
     'grep pattern README.md', 'rg pattern README.md', 'wc README.md', 'cat README.md',
-    'git status', 'git diff --no-textconv --no-ext-diff --stat', 'git log -1 --oneline',
-    'git show --stat HEAD', 'git rev-parse HEAD', 'git ls-files', 'git ls-tree HEAD',
-    'git cat-file -t HEAD', 'ls -la', 'which git',
+    'git rev-parse HEAD', 'ls -la', 'which git',
   ];
   for (const cmd of negatives) {
     const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
@@ -3177,4 +3205,312 @@ test('IO 40E: device-drive-prefixed protected path resolves through real process
   assert.equal(r.stderr, '');
   const parsed = JSON.parse(r.stdout);
   assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+});
+
+// ===================== 41: R12 - network reads, registry queries, Git repository selectors =====================
+
+// --- 41A: Blocker A - network path tokens in every direction and operand surface ---
+test('41A. cat < /dev/tcp/example.com/80 -> ask EGRESS (input redirection)', () => {
+  assertDecision(classifyBash('cat < /dev/tcp/example.com/80'), 'ask', hook.RULE.EGRESS);
+});
+test('41A. cat < /dev/udp/example.com/53 -> ask EGRESS (input redirection)', () => {
+  assertDecision(classifyBash('cat < /dev/udp/example.com/53'), 'ask', hook.RULE.EGRESS);
+});
+test('41A. cat <> /dev/tcp/example.com/80 -> ask EGRESS (bidirectional redirection)', () => {
+  assertDecision(classifyBash('cat <> /dev/tcp/example.com/80'), 'ask', hook.RULE.EGRESS);
+});
+test('41A. cat //server/share/file -> ask EGRESS (simple read-command operand, UNC)', () => {
+  assertDecision(classifyBash('cat //server/share/file'), 'ask', hook.RULE.EGRESS);
+});
+test('41A. grep x //server/share/file -> ask EGRESS (simple read-command operand, UNC)', () => {
+  assertDecision(classifyBash('grep x //server/share/file'), 'ask', hook.RULE.EGRESS);
+});
+test('41A. head //server/share/file -> ask EGRESS (simple read-command operand, UNC)', () => {
+  assertDecision(classifyBash('head //server/share/file'), 'ask', hook.RULE.EGRESS);
+});
+test('41A. cp //server/share/file local.txt -> ask EGRESS (copy source operand, UNC)', () => {
+  assertDecision(classifyBash('cp //server/share/file local.txt'), 'ask', hook.RULE.EGRESS);
+});
+test("41A. PowerShell: cat '\\\\server\\share\\file' -> ask EGRESS (read alias, positional)", () => {
+  assertDecision(classifyPs(String.raw`cat '\\server\share\file'`), 'ask', hook.RULE.EGRESS);
+});
+test("41A. PowerShell: cat < '\\\\server\\share\\file' -> ask EGRESS (read alias, redirection)", () => {
+  assertDecision(classifyPs(String.raw`cat < '\\server\share\file'`), 'ask', hook.RULE.EGRESS);
+});
+test('41A. cat < "/dev/tcp/$HOST/$PORT" -> ask EGRESS (dynamic host/port, prefix still recognized)', () => {
+  assertDecision(classifyBash('cat < "/dev/tcp/$HOST/$PORT"'), 'ask', hook.RULE.EGRESS);
+});
+test('41A. cat "//server/$SHARE/file" -> ask EGRESS, not SECRET (dynamic share, network check ordered before dynamic-expansion floor)', () => {
+  assertDecision(classifyBash('cat "//server/$SHARE/file"'), 'ask', hook.RULE.EGRESS);
+});
+test('41A. negative control: cat README.md -> defer', () => {
+  assertDecision(classifyBash('cat README.md'), 'defer');
+});
+test('41A. negative control: echo hi > /tmp/harmless (plain input redirection unaffected) -> defer', () => {
+  assertDecision(classifyBash('echo hi > /tmp/harmless'), 'defer');
+});
+
+// --- 41B: Blocker B - package registry queries are egress ---
+test('41B. npm view react version -> ask EGRESS', () => {
+  assertDecision(classifyBash('npm view react version'), 'ask', hook.RULE.EGRESS);
+});
+test('41B. npm info react -> ask EGRESS', () => {
+  assertDecision(classifyBash('npm info react'), 'ask', hook.RULE.EGRESS);
+});
+test('41B. npm show react -> ask EGRESS (documented alias for view)', () => {
+  assertDecision(classifyBash('npm show react'), 'ask', hook.RULE.EGRESS);
+});
+test('41B. npm v react -> ask EGRESS (documented alias for view)', () => {
+  assertDecision(classifyBash('npm v react'), 'ask', hook.RULE.EGRESS);
+});
+test('41B. pnpm view react version -> ask EGRESS', () => {
+  assertDecision(classifyBash('pnpm view react version'), 'ask', hook.RULE.EGRESS);
+});
+test('41B. pnpm info react -> ask EGRESS', () => {
+  assertDecision(classifyBash('pnpm info react'), 'ask', hook.RULE.EGRESS);
+});
+test('41B. yarn info react -> ask EGRESS', () => {
+  assertDecision(classifyBash('yarn info react'), 'ask', hook.RULE.EGRESS);
+});
+test('41B. yarn npm info react -> ask EGRESS (Yarn Berry command group)', () => {
+  assertDecision(classifyBash('yarn npm info react'), 'ask', hook.RULE.EGRESS);
+});
+test('41B. yarn npm unknown-sub react -> ask COMPLEX (unrecognized yarn npm sub-subcommand, never routed to classifyPackageScript)', () => {
+  assertDecision(classifyBash('yarn npm whoami'), 'ask', hook.RULE.COMPLEX);
+});
+test('41B. negative control: npm list -> defer (local-only)', () => {
+  assertDecision(classifyBash('npm list'), 'defer');
+});
+test('41B. negative control: pnpm list -> defer (local-only)', () => {
+  assertDecision(classifyBash('pnpm list'), 'defer');
+});
+test('41B. negative control: yarn list -> defer (local-only)', () => {
+  assertDecision(classifyBash('yarn list'), 'defer');
+});
+test('41B. negative control: pnpm why react -> defer (local-only)', () => {
+  assertDecision(classifyBash('pnpm why react'), 'defer');
+});
+
+// --- 41C: Blocker C - git remote show contacts the network unless -n ---
+test('41C. git remote show origin -> ask EGRESS (queries the remote)', () => {
+  assertDecision(classifyBash('git remote show origin'), 'ask', hook.RULE.EGRESS);
+});
+test('41C. git remote show -n origin -> defer (local-only, no query)', () => {
+  assertDecision(classifyBash('git remote show -n origin'), 'defer');
+});
+test('41C. git remote show --unknown origin -> ask COMPLEX (unrecognized option)', () => {
+  assertDecision(classifyBash('git remote show --unknown origin'), 'ask', hook.RULE.COMPLEX);
+});
+test('41C. negative control: git remote -> defer', () => {
+  assertDecision(classifyBash('git remote'), 'defer');
+});
+test('41C. negative control: git remote -v -> defer', () => {
+  assertDecision(classifyBash('git remote -v'), 'defer');
+});
+test('41C. negative control: git remote get-url origin -> defer', () => {
+  assertDecision(classifyBash('git remote get-url origin'), 'defer');
+});
+test('41C. negative control: git remote get-url --push origin -> defer', () => {
+  assertDecision(classifyBash('git remote get-url --push origin'), 'defer');
+});
+test('41C. negative control: git remote get-url --all origin -> defer', () => {
+  assertDecision(classifyBash('git remote get-url --all origin'), 'defer');
+});
+
+// --- 41D: Blocker D - git repository/config selectors float the decision to ask ---
+test('41D. git -C C:/other status -> ask TAMPER', () => {
+  assertDecision(classifyBash('git -C C:/other status'), 'ask', hook.RULE.TAMPER);
+});
+test('41D. git --git-dir=C:/other/.git --work-tree=C:/other status -> ask TAMPER', () => {
+  assertDecision(classifyBash('git --git-dir=C:/other/.git --work-tree=C:/other status'), 'ask', hook.RULE.TAMPER);
+});
+test('41D. git --namespace=test status -> ask COMPLEX', () => {
+  assertDecision(classifyBash('git --namespace=test status'), 'ask', hook.RULE.COMPLEX);
+});
+test('41D. git --bare status -> ask COMPLEX', () => {
+  assertDecision(classifyBash('git --bare status'), 'ask', hook.RULE.COMPLEX);
+});
+test('41D. git -C C:/other push -> deny GIT_PUSH (selector floor never preempts a protected payload)', () => {
+  assertDecision(classifyBash('git -C C:/other push'), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 41E: Blocker E - core.fsmonitor execution risk on status/diff/ls-files ---
+test('41E. git status -> ask COMPLEX (fsmonitor not proven disabled)', () => {
+  assertDecision(classifyBash('git status'), 'ask', hook.RULE.COMPLEX);
+});
+test('41E. git diff --stat -> ask COMPLEX (fsmonitor not proven disabled)', () => {
+  assertDecision(classifyBash('git diff --stat'), 'ask', hook.RULE.COMPLEX);
+});
+test('41E. git ls-files -> ask COMPLEX (fsmonitor not proven disabled)', () => {
+  assertDecision(classifyBash('git ls-files'), 'ask', hook.RULE.COMPLEX);
+});
+test('41E. git -c core.fsmonitor=false status -> defer (explicitly proven safe)', () => {
+  assertDecision(classifyBash('git -c core.fsmonitor=false status'), 'defer');
+});
+test('41E. git -c core.fsmonitor=false diff --stat -> defer (explicitly proven safe, not gated by lazy-fetch)', () => {
+  assertDecision(classifyBash('git -c core.fsmonitor=false diff --stat'), 'defer');
+});
+test('41E. git -c core.fsmonitor=false ls-files -> defer (explicitly proven safe)', () => {
+  assertDecision(classifyBash('git -c core.fsmonitor=false ls-files'), 'defer');
+});
+test('41E. git -c core.fsmonitor=0 status -> defer (literal safe value "0")', () => {
+  assertDecision(classifyBash('git -c core.fsmonitor=0 status'), 'defer');
+});
+test('41E. git -c core.fsmonitor=no status -> defer (literal safe value "no")', () => {
+  assertDecision(classifyBash('git -c core.fsmonitor=no status'), 'defer');
+});
+test('41E. git -c core.fsmonitor=off status -> defer (literal safe value "off")', () => {
+  assertDecision(classifyBash('git -c core.fsmonitor=off status'), 'defer');
+});
+test('41E. git -c core.fsmonitor=/path/to/hook status -> ask (unsafe/program-shaped value still gated by generic command-bearing-key check)', () => {
+  assertDecision(classifyBash('git -c core.fsmonitor=/path/to/hook status'), 'ask', hook.RULE.TAMPER);
+});
+test('41E. git -c core.fsmonitor="!git push" status -> deny GIT_PUSH (shell-alias-style command-bearing value)', () => {
+  assertDecision(classifyBash('git -c core.fsmonitor="!git push" status'), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 41F: Blocker F - implicit Git lazy-fetch guard on log/show/ls-tree/cat-file ---
+test('41F. git log -1 --oneline -> ask EGRESS (lazy-fetch not proven disabled)', () => {
+  assertDecision(classifyBash('git log -1 --oneline'), 'ask', hook.RULE.EGRESS);
+});
+test('41F. git show --stat HEAD -> ask EGRESS (lazy-fetch not proven disabled)', () => {
+  assertDecision(classifyBash('git show --stat HEAD'), 'ask', hook.RULE.EGRESS);
+});
+test('41F. git ls-tree HEAD -> ask EGRESS (lazy-fetch not proven disabled)', () => {
+  assertDecision(classifyBash('git ls-tree HEAD'), 'ask', hook.RULE.EGRESS);
+});
+test('41F. git cat-file -t HEAD -> ask EGRESS (lazy-fetch not proven disabled)', () => {
+  assertDecision(classifyBash('git cat-file -t HEAD'), 'ask', hook.RULE.EGRESS);
+});
+test('41F. git --no-lazy-fetch log -1 --oneline -> defer (explicitly proven safe)', () => {
+  assertDecision(classifyBash('git --no-lazy-fetch log -1 --oneline'), 'defer');
+});
+test('41F. git --no-lazy-fetch show --stat HEAD -> defer (explicitly proven safe)', () => {
+  assertDecision(classifyBash('git --no-lazy-fetch show --stat HEAD'), 'defer');
+});
+test('41F. git --no-lazy-fetch ls-tree HEAD -> defer (explicitly proven safe)', () => {
+  assertDecision(classifyBash('git --no-lazy-fetch ls-tree HEAD'), 'defer');
+});
+test('41F. git --no-lazy-fetch cat-file -t HEAD -> defer (explicitly proven safe)', () => {
+  assertDecision(classifyBash('git --no-lazy-fetch cat-file -t HEAD'), 'defer');
+});
+test('41F. GIT_NO_LAZY_FETCH=1 git cat-file -t HEAD -> defer (env-proven safe)', () => {
+  assertDecision(classifyBash('GIT_NO_LAZY_FETCH=1 git cat-file -t HEAD'), 'defer');
+});
+test('41F. GIT_NO_LAZY_FETCH=true git cat-file -t HEAD -> defer (env-proven safe, "true" also accepted)', () => {
+  assertDecision(classifyBash('GIT_NO_LAZY_FETCH=true git cat-file -t HEAD'), 'defer');
+});
+test('41F. GIT_NO_LAZY_FETCH=0 git cat-file -t HEAD -> ask EGRESS (value other than 1/true leaves it unproven)', () => {
+  assertDecision(classifyBash('GIT_NO_LAZY_FETCH=0 git cat-file -t HEAD'), 'ask', hook.RULE.EGRESS);
+});
+test('41F. GIT_NO_LAZY_FETCH="$X" git cat-file -t HEAD -> ask EGRESS (dynamic value leaves it unproven)', () => {
+  assertDecision(classifyBash('GIT_NO_LAZY_FETCH="$X" git cat-file -t HEAD'), 'ask', hook.RULE.EGRESS);
+});
+test('41F. negative control: git diff --no-textconv --no-ext-diff --stat -> ask COMPLEX (diff gated by Blocker E fsmonitor only, not Blocker F lazy-fetch)', () => {
+  assertDecision(classifyBash('git diff --no-textconv --no-ext-diff --stat'), 'ask', hook.RULE.COMPLEX);
+});
+test('41F. negative control: git rev-parse HEAD -> defer (not an object-consuming subcommand in this list)', () => {
+  assertDecision(classifyBash('git rev-parse HEAD'), 'defer');
+});
+
+// --- 41G: Blocker G - nested unsupported-option invariant ---
+test('41G. git submodule status --unknown -> ask COMPLEX', () => {
+  assertDecision(classifyBash('git submodule status --unknown'), 'ask', hook.RULE.COMPLEX);
+});
+test('41G. git submodule summary --unknown -> ask COMPLEX', () => {
+  assertDecision(classifyBash('git submodule summary --unknown'), 'ask', hook.RULE.COMPLEX);
+});
+test('41G. git bisect log --unknown -> ask COMPLEX', () => {
+  assertDecision(classifyBash('git bisect log --unknown'), 'ask', hook.RULE.COMPLEX);
+});
+test('41G. git remote get-url --unknown origin -> ask COMPLEX', () => {
+  assertDecision(classifyBash('git remote get-url --unknown origin'), 'ask', hook.RULE.COMPLEX);
+});
+test('41G. git config --list --unknown -> ask COMPLEX', () => {
+  assertDecision(classifyBash('git config --list --unknown'), 'ask', hook.RULE.COMPLEX);
+});
+test('41G. negative control: git submodule status -> defer (documented safe shape)', () => {
+  assertDecision(classifyBash('git submodule status'), 'defer');
+});
+test('41G. negative control: git submodule summary -> defer (documented safe shape)', () => {
+  assertDecision(classifyBash('git submodule summary'), 'defer');
+});
+test('41G. negative control: git bisect log -> defer (documented safe shape)', () => {
+  assertDecision(classifyBash('git bisect log'), 'defer');
+});
+test('41G. negative control: git config --list -> defer (documented safe shape)', () => {
+  assertDecision(classifyBash('git config --list'), 'defer');
+});
+
+// --- 41H: Blocker H - Windows 8.3 secret-source ambiguity ---
+test('41H. cat C:/repo/ENV~1 -> ask SECRET (8.3-shaped component near repo root)', () => {
+  assertDecision(classifyBash('cat C:/repo/ENV~1'), 'ask', hook.RULE.SECRET);
+});
+test('41H. cat C:/repo/ENVPRO~1 -> ask SECRET (8.3-shaped component near repo root)', () => {
+  assertDecision(classifyBash('cat C:/repo/ENVPRO~1'), 'ask', hook.RULE.SECRET);
+});
+test('41H. grep x C:/repo/SECRET~1/FILE -> ask SECRET (8.3-shaped directory component near repo root)', () => {
+  assertDecision(classifyBash('grep x C:/repo/SECRET~1/FILE'), 'ask', hook.RULE.SECRET);
+});
+test('41H. negative control: cat C:/repo/README.md -> defer (no 8.3-shaped component)', () => {
+  assertDecision(classifyBash('cat C:/repo/README.md'), 'defer');
+});
+
+// ===================== Direct hook I/O tests (R12 Section 11 gate) =====================
+
+test('IO 41: required dangerous fixtures never defer, never leak raw command, no crash', () => {
+  const required = [
+    'cat < /dev/tcp/example.com/80',
+    'cat < /dev/udp/example.com/53',
+    'cat //server/share/file',
+    'grep x //server/share/file',
+    'npm view react version',
+    'npm info react',
+    'pnpm view react version',
+    'yarn info react',
+    'git remote show origin',
+    'git -C C:/other status',
+    'git --git-dir=C:/other/.git --work-tree=C:/other status',
+    'git status',
+    'git diff --stat',
+    'git ls-files',
+    'git log -1 --oneline',
+    'git show --stat HEAD',
+    'git ls-tree HEAD',
+    'git cat-file -t HEAD',
+    'git submodule status --unknown',
+    'git bisect log --unknown',
+    'cat C:/repo/ENV~1',
+  ];
+  for (const cmd of required) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    assert.notEqual(r.stdout.trim(), '', `must not silently defer: ${cmd}`);
+    const parsed = JSON.parse(r.stdout);
+    assert.notEqual(parsed.hookSpecificOutput.permissionDecision, 'defer', `must not defer: ${cmd}`);
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), `must not leak raw command for: ${cmd}`);
+  }
+});
+
+test('IO 41: required negative controls all defer through the real process (no hard-deny)', () => {
+  const negatives = [
+    'git remote', 'git remote -v', 'git remote get-url origin', 'git remote show -n origin',
+    'npm list', 'pnpm list', 'yarn list', 'pnpm why react',
+    'git -c core.fsmonitor=false status', 'git -c core.fsmonitor=false diff --stat', 'git -c core.fsmonitor=false ls-files',
+    'git --no-lazy-fetch log -1 --oneline', 'git --no-lazy-fetch show --stat HEAD',
+    'git --no-lazy-fetch ls-tree HEAD', 'git --no-lazy-fetch cat-file -t HEAD',
+    'cat README.md', 'grep x README.md',
+  ];
+  for (const cmd of negatives) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    let decision = 'defer';
+    if (r.stdout.trim() !== '') decision = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision;
+    assert.notEqual(decision, 'deny', `must not hard-deny: ${cmd}`);
+    assert.equal(r.stdout.trim(), '', `must defer (no stdout) for: ${cmd}`);
+  }
 });
