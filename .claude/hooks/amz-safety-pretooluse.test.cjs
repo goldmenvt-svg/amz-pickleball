@@ -4601,3 +4601,68 @@ test('47G. IO: real process, mixed-case duplicate/final-push command -> JSON den
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), 'must not leak raw command');
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(SAFE_LOG_ALIAS), 'must not leak raw env value');
 });
+
+// ===================== 48: R19 - preserve environment-assignment source order across mergeAssignments =====================
+
+// R19 root cause: mergeAssignments built a Map KEYED BY THE RAW (case-SENSITIVE) assignment name and
+// returned Array.from(map.values()) - Map.set() on an EXISTING key updates its value in place WITHOUT
+// moving that key to the end of iteration order. A same-exact-spelling duplicate (`V=1 ... V=2`)
+// collapsed correctly (one Map key, latest value, stays in its one position - order is irrelevant since
+// there's only one entry), but an A/a/A pattern (`V=<safe> v=status V=push`) does NOT collapse under a
+// case-sensitive Map key - `V` and `v` are two distinct keys, each keeping its own FIRST-seen position -
+// so the true final assignment (`V=push`, third in source order) silently jumped to the FRONT of the
+// resulting array, ahead of the stale `v=status` in the middle. R18's findLastAssignmentByCanonicalName
+// (which scans this array from the END to find the last canonical match) then found the stale
+// `v=status` last instead of the real final `V=push`, exactly inverting "last effective occurrence
+// wins". Fixed by no longer deduplicating/reordering in mergeAssignments at all - see its own doc
+// comment - outer assignments are simply concatenated before inner ones, preserving the full exact
+// source order (duplicates included) for every downstream consumer (findLastAssignmentByCanonicalName,
+// buildEffectiveEnvironment) to resolve precedence from correctly.
+const SAFE_LOG_ALIAS_R19 = '--no-lazy-fetch log -1 --oneline';
+
+test('48A. direct A/a/A duplicate in one command prefix, final value push -> deny GIT_PUSH, never defer', () => {
+  assertDecision(classifyBash(`V='${SAFE_LOG_ALIAS_R19}' v=status V=push git -c core.fsmonitor=false --config-env=alias.p=v p`), 'deny', hook.RULE.GIT_PUSH);
+});
+test('48B. direct A/a/A duplicate, final value is the proven-safe log alias -> defer, not deny from the stale middle push', () => {
+  assertDecision(classifyBash(`v='${SAFE_LOG_ALIAS_R19}' V=push v='${SAFE_LOG_ALIAS_R19}' git --config-env=alias.p=V p`), 'defer');
+});
+test('48C. direct A/a/A duplicate, final value ambiguous (invalid ANSI-C escape) -> ask, never deny/defer, never reuse an earlier value', () => {
+  assertDecision(classifyBash(`V='${SAFE_LOG_ALIAS_R19}' v=push V=$'\\xZZ' git --config-env=alias.p=v p`), 'ask', hook.RULE.TAMPER);
+});
+test('48D. A/a/A duplicate accumulated across env wrapper hops, final value push -> deny GIT_PUSH', () => {
+  assertDecision(classifyBash(`V='${SAFE_LOG_ALIAS_R19}' env v=status env V=push git -c core.fsmonitor=false --config-env=alias.p=v p`), 'deny', hook.RULE.GIT_PUSH);
+});
+test('48E. plain nested Git alias with A/a/A duplicate, final value push -> deny GIT_PUSH', () => {
+  assertDecision(classifyBash(`V='${SAFE_LOG_ALIAS_R19}' v=status V=push git -c alias.x='--config-env=alias.p=v p' x`), 'deny', hook.RULE.GIT_PUSH);
+});
+test("48F. nested '!' shell Git alias with A/a/A duplicate, final value push -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash(`V='${SAFE_LOG_ALIAS_R19}' v=status V=push git -c alias.x='!git --config-env=alias.p=v p' x`), 'deny', hook.RULE.GIT_PUSH);
+});
+test('48G. GIT_PAGER A/a/A duplicate, final value "git push", pagination-enabled proven-safe log command -> deny GIT_PUSH', () => {
+  assertDecision(classifyBash("GIT_PAGER=echo git_pager=less GIT_PAGER='git push' git --paginate --no-lazy-fetch log -1 --oneline"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('48H. GIT_TRACE A/a/A duplicate, final value targeting protected settings.json -> deny TAMPER', () => {
+  assertDecision(classifyBash('GIT_TRACE=0 git_trace=1 GIT_TRACE=C:/repo/.claude/settings.json git --no-pager --no-lazy-fetch log -1 --oneline'), 'deny', hook.RULE.TAMPER);
+});
+test('48I. GIT_EXEC_PATH A/a/A duplicate, final value .env -> deny SECRET', () => {
+  assertDecision(classifyBash('GIT_EXEC_PATH=C:/tmp/x git_exec_path=C:/tmp/y GIT_EXEC_PATH=.env git submodule status'), 'deny', hook.RULE.SECRET);
+});
+test('48J. RIPGREP_CONFIG_PATH A/a/A duplicate, final value .env -> deny SECRET', () => {
+  assertDecision(classifyBash('RIPGREP_CONFIG_PATH=C:/tmp/a.conf ripgrep_config_path=C:/tmp/b.conf RIPGREP_CONFIG_PATH=.env rg needle input.txt'), 'deny', hook.RULE.SECRET);
+});
+test('48K. RIPGREP_CONFIG_PATH A/a/A duplicate, final value empty with a stale earlier .env -> defer, not deny/ask from the stale value', () => {
+  assertDecision(classifyBash('RIPGREP_CONFIG_PATH=.env ripgrep_config_path=C:/tmp/b.conf RIPGREP_CONFIG_PATH= rg needle input.txt'), 'defer');
+});
+test('48L. IO: real process, case A (A/a/A duplicate, final push) -> JSON deny GIT_PUSH, no raw leak, no crash', () => {
+  const cmd = `V='${SAFE_LOG_ALIAS_R19}' v=status V=push git -c core.fsmonitor=false --config-env=alias.p=v p`;
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0, 'exit code');
+  assert.equal(r.stderr, '', 'stderr');
+  assert.notEqual(r.stdout.trim(), '', 'must not defer');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal(parsed.hookSpecificOutput.permissionDecisionReason, hook.DENY_MESSAGES[hook.RULE.GIT_PUSH]);
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), 'must not leak raw command');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(SAFE_LOG_ALIAS_R19), 'must not leak raw env value');
+});

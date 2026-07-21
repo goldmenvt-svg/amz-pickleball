@@ -685,11 +685,29 @@ function stripLeadingAssignments(segment, dialect) {
 // `A=1 env B=2 bash -lc 'C=3 cmd'` - `outer` assignments (declared further from the leaf) are
 // visible to everything the wrapper chain runs, but a same-named assignment declared at a more
 // nested hop (`inner`, closer to the leaf) shadows it, exactly like a real process environment.
+//
+// R19: this used to build a `Map` keyed by the assignment's raw (non-canonical, case-SENSITIVE)
+// name, relying on `Array.from(map.values())` to produce the effective list - but `Map.set()` on an
+// EXISTING key updates its value in place without moving that key to the end of iteration order. A
+// same-EXACT-spelling duplicate (`V=1 ... V=2`) collapsed correctly (one Map key, latest value), but a
+// DIFFERENTLY-cased duplicate of the same canonical name (`V=safe v=status V=push`) does NOT collapse
+// under a case-sensitive Map key - `V` and `v` are two distinct keys, each keeping its OWN first-seen
+// position - so the resulting array's order silently became `[V(=push, position of the FIRST 'V'),
+// v(=status, position of 'v')]`, i.e. the true LAST assignment in source order (`V=push`, third) was
+// relocated to the FRONT of the array. R18's `findLastAssignmentByCanonicalName` (and any other
+// consumer that resolves duplicate/mixed-case names by scanning this array for the LAST canonical
+// match) then found `v=status` as if it were final, silently reusing a stale value instead of the real
+// last assignment - the exact inverse of the "last effective occurrence wins" model this scanner
+// requires. Fixed by no longer deduplicating or reordering AT ALL here: outer assignments (in their
+// own original order) are simply concatenated before inner assignments (in their own original order),
+// preserving the FULL exact chronological/source stream, duplicates included. Precedence among any
+// duplicate/mixed-case names is left entirely to the consumer that actually needs it -
+// findLastAssignmentByCanonicalName (--config-env) and buildEffectiveEnvironment (every other
+// security-relevant environment variable) each already resolve "which one wins" by scanning for the
+// last canonical match themselves; neither needs (or should receive) a pre-collapsed, order-corrupted
+// list.
 function mergeAssignments(outer, inner) {
-  const map = new Map();
-  for (const a of outer || []) map.set(a.name, a);
-  for (const a of inner || []) map.set(a.name, a);
-  return Array.from(map.values());
+  return (outer || []).concat(inner || []);
 }
 
 function extractBinaryAndRest(segment, dialect) {
