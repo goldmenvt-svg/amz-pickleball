@@ -1213,6 +1213,18 @@ function classifyNestedClaude(rest) {
 // don't resolve to a specific known-dangerous alias).
 const GIT_CONFIG_ENV_RE = /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS)$/i;
 
+// R15 Blocker A: internal-only carrier assignment name used SOLELY to propagate a Git shell alias's
+// inherited execution context (the outer invocation's own already-accumulated alias/config state)
+// across the shell-alias boundary - see classifyGitShellAliasInvocation. Real git itself re-exports
+// every `-c` it was given as a GIT_CONFIG_PARAMETERS-shaped environment variable before running a
+// `!`-prefixed shell alias (confirmed empirically against git 2.55.0), which is exactly what this
+// models - but deliberately under a name that can never collide with a real Git/user environment
+// variable, and deliberately excluded from GIT_CONFIG_ENV_RE/hasGitConfigEnv's "arbitrary,
+// not-otherwise-understood config injection present" ask-floor below: this carries state the
+// scanner itself already derived and fully understands (the SAME aliasMap it already resolved
+// against), not unaudited external config injection.
+const AMZ_INHERITED_ALIAS_CONTEXT_VAR = '__AMZ_INHERITED_GIT_ALIAS_CONTEXT__';
+
 // GIT_CONFIG_PARAMETERS is a space-separated list of git's own single-quote-shell-encoded
 // `key=value` pairs (e.g. `'alias.p=push' 'alias.q=pull'`) - the same quoting convention as a
 // POSIX shell word, so the existing cooked-word tokenizer parses it correctly for the common case.
@@ -1258,6 +1270,18 @@ function collectGitConfigEnvAliases(assignments) {
       for (const k of Object.keys(parsed.aliasMap)) aliasMap[k] = parsed.aliasMap[k];
     } else {
       parametersAmbiguous = true;
+    }
+  }
+  // R15 Blocker A: the internal inherited-alias-context carrier (see AMZ_INHERITED_ALIAS_CONTEXT_VAR)
+  // uses the identical GIT_CONFIG_PARAMETERS wire format, so the same parser applies - but it is
+  // never treated as "arbitrary config injection" (does not affect hasGitConfigEnv/parametersAmbiguous)
+  // since it carries already-scanner-derived state, not unaudited external input. A malformed carrier
+  // is a scanner-internal bug, not user input, but still fails closed (silently contributes nothing)
+  // rather than throwing.
+  if (typeof byName[AMZ_INHERITED_ALIAS_CONTEXT_VAR] === 'string') {
+    const inherited = parseGitConfigParameters(byName[AMZ_INHERITED_ALIAS_CONTEXT_VAR]);
+    if (inherited.ok) {
+      for (const k of Object.keys(inherited.aliasMap)) aliasMap[k] = inherited.aliasMap[k];
     }
   }
   return { aliasMap, hasGitConfigEnv, parametersAmbiguous };
@@ -2016,6 +2040,32 @@ function posixQuoteLiteral(s) {
   return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
 
+// R15 Blocker A: serializes the CURRENT accumulated alias/config state (at the moment classifyGit
+// crosses a shell-alias boundary) into a GIT_CONFIG_PARAMETERS-shaped string, wrapped in the
+// internal AMZ_INHERITED_ALIAS_CONTEXT_VAR carrier assignment (see collectGitConfigEnvAliases) -
+// this models real git's OWN confirmed behavior (empirically verified against git 2.55.0: `git -c
+// alias.p=... -c alias.x='!...' x` re-exports EVERY `-c` it was given, alias.p AND alias.x alike, as
+// GIT_CONFIG_PARAMETERS in the child shell's environment) so a nested `git p` invoked from inside the
+// shell alias body can still resolve `p`. Every current alias definition is included (even the one
+// currently being invoked, matching real git's own unconditional re-export), plus the accumulated
+// non-alias `-c` overrides for completeness (parseGitConfigParameters currently only recovers
+// `alias.*` keys from this wire format, same as it does for a real GIT_CONFIG_PARAMETERS value - see
+// its doc comment - so a non-alias entry here is inert today but keeps the serialization faithful to
+// what real git actually re-exports, should that recovery ever be extended). Returns null when there
+// is nothing to carry (empty aliasMap and no overrides), so callers never add a no-op assignment.
+function buildInheritedAliasContextAssignment(aliasMap, nonAliasConfigOverrides) {
+  const pairs = [];
+  for (const name of Object.keys(aliasMap || {})) {
+    pairs.push('alias.' + name + '=' + aliasMap[name]);
+  }
+  for (const ov of nonAliasConfigOverrides || []) {
+    pairs.push(ov.value !== undefined ? ov.key + '=' + ov.value : ov.key);
+  }
+  if (pairs.length === 0) return null;
+  const serialized = pairs.map(posixQuoteLiteral).join(' ');
+  return { name: AMZ_INHERITED_ALIAS_CONTEXT_VAR, value: serialized, ambiguous: false };
+}
+
 // R14 Blocker A: a `!`-prefixed Git shell alias receives, as real appended argv, both any tokens
 // accumulated from EARLIER alias hops (`resolveGitAlias`'s `tail`) and whatever followed the alias
 // name on the actual invocation (`subRestTokens`) - R13 classified only the static alias-body text in
@@ -2024,7 +2074,13 @@ function posixQuoteLiteral(s) {
 // string, token metadata) covering exactly those appended arguments. `recursionState` carries
 // `{depth, budget, aliasDepth}` inherited from the ENTIRE outer classification (see Section 10) so
 // that crossing this shell-alias boundary can never reset the wrapper-depth/total-segment-budget
-// counters, and is itself bounded by MAX_GIT_SHELL_ALIAS_DEPTH independent of those.
+// counters, and is itself bounded by MAX_GIT_SHELL_ALIAS_DEPTH independent of those. R15 Blocker A:
+// `inheritedContext` (`{assignments, aliasMap, nonAliasConfigOverrides}`) carries the outer
+// invocation's own leading env assignments (real subprocess environment inheritance - e.g. a `V=push`
+// prefix) AND its currently-accumulated alias/config state (via the synthetic carrier above), neither
+// of which R14 propagated (it recursed with `inheritedAssignments = undefined`), so a nested `git`
+// invocation previously started from a blank context even though real git's own child process
+// inherits both.
 //
 // Approach (Section 4): (1) classify the static alias body alone - a confidently-resolved deny from
 // the text alone always wins outright, regardless of what the appended arguments turn out to be;
@@ -2037,7 +2093,7 @@ function posixQuoteLiteral(s) {
 // classifyGit re-derives its own selector/fsmonitor/lazy-fetch floors exactly as rigorously as a
 // top-level command would; a non-git payload keeps the prior conservative floor (never surfaces a
 // bare defer/ask-UNKNOWN, only a confidently resolved ask/deny).
-function classifyGitShellAliasInvocation(shellCommand, appendedTokens, appendedMetadata, ctx, recursionState) {
+function classifyGitShellAliasInvocation(shellCommand, appendedTokens, appendedMetadata, ctx, recursionState, inheritedContext) {
   const shellCmd = String(shellCommand).slice(1).trim();
   if (shellCmd.length === 0) return askResult(RULE.COMPLEX);
 
@@ -2049,7 +2105,11 @@ function classifyGitShellAliasInvocation(shellCommand, appendedTokens, appendedM
   const nextAliasDepth = aliasDepth + 1;
   const budget = recursionState.budget || { segments: 0 };
 
-  const staticInner = classifyCommandString(shellCmd, 'posix', ctx, nextDepth, budget, undefined, nextAliasDepth);
+  const carrier = inheritedContext ? buildInheritedAliasContextAssignment(inheritedContext.aliasMap, inheritedContext.nonAliasConfigOverrides) : null;
+  const baseAssignments = (inheritedContext && inheritedContext.assignments) || [];
+  const nestedInheritedAssignments = carrier ? mergeAssignments(baseAssignments, [carrier]) : baseAssignments;
+
+  const staticInner = classifyCommandString(shellCmd, 'posix', ctx, nextDepth, budget, nestedInheritedAssignments, nextAliasDepth);
   if (staticInner.decision === 'deny') return staticInner;
 
   const shellBinary = extractBinaryAndRest(shellCmd, 'posix');
@@ -2068,7 +2128,7 @@ function classifyGitShellAliasInvocation(shellCommand, appendedTokens, appendedM
 
   const quotedArgs = appendedTokens.map(posixQuoteLiteral).join(' ');
   const effectiveInvocation = shellCmd + ' ' + quotedArgs;
-  const effectiveInner = classifyCommandString(effectiveInvocation, 'posix', ctx, nextDepth, budget, undefined, nextAliasDepth);
+  const effectiveInner = classifyCommandString(effectiveInvocation, 'posix', ctx, nextDepth, budget, nestedInheritedAssignments, nextAliasDepth);
   const combined = worseOf(staticInner, effectiveInner);
 
   if (isGitPassthrough) return combined;
@@ -2219,11 +2279,18 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth)
 
       if (resolved.shellAlias) {
         // A `!`-prefixed alias value runs its payload as a shell command in its own right, with the
-        // appended invocation arguments as real argv - see classifyGitShellAliasInvocation.
+        // appended invocation arguments as real argv - see classifyGitShellAliasInvocation. R15
+        // Blocker A: it also needs the CURRENT accumulated alias/config state and the outer's own
+        // leading env assignments so the nested `git` invocation does not start from a blank
+        // context - see buildInheritedAliasContextAssignment.
         return classifyGitShellAliasInvocation(resolved.shellAlias, appendedTokens, appendedMeta, ctx, {
           depth: depth || 0,
           budget: budget || { segments: 0 },
           aliasDepth: aliasDepth || 0,
+        }, {
+          assignments: assignments || [],
+          aliasMap,
+          nonAliasConfigOverrides: (parsed.nonAliasConfigOverrides || []).concat(resolved.nonAliasConfigOverrides || []),
         });
       }
       subcommand = resolved.subcommand;
@@ -3598,6 +3665,25 @@ function classifyRsyncDestinationDirToken(tokenMeta, ctx) {
   return null;
 }
 
+// R15 Blocker B: when a source-removal flag (--remove-source-files/--remove-sent-files) is present,
+// every source is no longer merely READ - rsync deletes it after a successful transfer - so it
+// additionally needs the same protected-path/ancestor-containment/dynamic-glob/Windows-path-identity
+// policy a write-destination gets (see checkTamperDirectoryTarget), combined via worseOf with the
+// ordinary read-source policy classifyRsyncSourceToken already applies. Dynamic/glob/ambiguous
+// sources ask TAMPER specifically (never defer) - the shell glob/expansion (or a recursive source
+// directory) could cover a protected file this scanner cannot rule out.
+function classifyRsyncSourceRemovalToken(tokenMeta, ctx) {
+  if (!tokenMeta || tokenMeta.ambiguous) {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: source-removal mode is active and this source path could not be resolved with confidence.' });
+  }
+  if (tokenMeta.hasUnquotedGlob || tokenMeta.hasDynamicExpansion) {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: source-removal mode is active and this source path contains an unresolved shell glob or expansion character that could cover a protected file.' });
+  }
+  const netHit = classifyRsyncNetworkToken(tokenMeta.cooked, ctx);
+  if (netHit) return netHit;
+  return checkTamperDirectoryTarget(tokenMeta.cooked, ctx);
+}
+
 // `-e`/`--rsh`/`--rsync-path` name an external command rsync invokes for the remote-shell transport
 // or the remote rsync binary path - never a silent defer, deny on a confidently-resolved protected
 // payload, ask otherwise.
@@ -3613,13 +3699,32 @@ function classifyRsyncCommandOptionValue(tokenMeta, ctx, label) {
 // mutation/behavior flags; anything else dash-prefixed and unrecognized floors to ask rather than
 // guessing whether it consumes a following value (same invariant as CP_MV_BOOLEAN_LETTERS).
 const RSYNC_BOOLEAN_LETTERS = 'avznrltpogDHASXhq8';
-const RSYNC_BOOLEAN_LONG_RE = /^--(archive|verbose|dry-run|recursive|links|times|perms|owner|group|devices|specials|hard-links|acls|xattrs|sparse|human-readable|quiet|progress|delete|delete-before|delete-during|delete-after|delete-excluded|force|checksum|update|inplace|partial|compress|stats|itemize-changes|prune-empty-dirs|one-file-system|numeric-ids|whole-file|no-whole-file|del|8-bit-output)$/;
+// R15 Blocker B: the `--delete*` family and `--remove-source-files`/`--remove-sent-files` used to be
+// recognized here as plain no-op boolean flags (silently consumed with no further consequence) - they
+// are deliberately REMOVED from this set now that they carry real destructive-mode significance (see
+// RSYNC_DELETE_MODE_FLAGS/RSYNC_SOURCE_REMOVAL_FLAGS below, checked earlier in parseRsyncOperands),
+// so this regex must never re-absorb them as inert again.
+const RSYNC_BOOLEAN_LONG_RE = /^--(archive|verbose|dry-run|recursive|links|times|perms|owner|group|devices|specials|hard-links|acls|xattrs|sparse|human-readable|quiet|progress|force|checksum|update|inplace|partial|compress|stats|itemize-changes|prune-empty-dirs|one-file-system|numeric-ids|whole-file|no-whole-file|8-bit-output)$/;
 
 function isRsyncBooleanFlag(raw) {
   if (RSYNC_BOOLEAN_LONG_RE.test(raw)) return true;
   if (/^-[a-zA-Z0-9]+$/.test(raw) && Array.from(raw.slice(1)).every((c) => RSYNC_BOOLEAN_LETTERS.indexOf(c) !== -1)) return true;
   return false;
 }
+
+// R15 Blocker B: presence of any of these turns EVERY source operand into a removal target (rsync
+// deletes the source file/tree after a successful transfer) - a source no longer merely READ, so it
+// additionally needs the full write/tamper policy (exact protected path, ancestor/containment,
+// dynamic/glob, Windows path identity), not just the ordinary read-source policy. `--remove-sent-files`
+// is rsync's older/deprecated name for the same mechanism and is classified identically and just as
+// conservatively, regardless of which name a given rsync version documents it under.
+const RSYNC_SOURCE_REMOVAL_FLAGS = new Set(['--remove-source-files', '--remove-sent-files']);
+// Presence of any of these turns the destination into a DESTRUCTIVE scope: rsync will delete
+// destination-side files that don't exist on the source side, anywhere the destination tree
+// reaches - the destination must be checked in BOTH directions (destination IS a protected entry,
+// or a protected entry lives somewhere INSIDE the destination tree), not just the ordinary exact-path
+// destination policy.
+const RSYNC_DELETE_MODE_FLAGS = new Set(['--delete', '--del', '--delete-before', '--delete-during', '--delete-delay', '--delete-after', '--delete-excluded', '--delete-missing-args']);
 
 // Value-bearing rsync options whose value this scanner does not need to inspect for security purposes
 // (a pattern, a numeric limit, a chmod spec, ...) - consumed as flag+value (or flag=value) so the
@@ -3657,6 +3762,8 @@ function parseRsyncOperands(rest, dialect) {
   const commandOptions = {};
   const destinationOptions = {};
   let filterPresent = false;
+  let sourceRemovalMode = false;
+  let destructiveDeleteMode = false;
   let endOfOptions = false;
   const positional = [];
   let i = 0;
@@ -3664,6 +3771,11 @@ function parseRsyncOperands(rest, dialect) {
     const t = tokens[i];
     if (endOfOptions) { positional.push(t); i += 1; continue; }
     if (t.raw === '--') { endOfOptions = true; i += 1; continue; }
+
+    // R15 Blocker B: destructive-mode flags checked up front, before any other option-shape
+    // handling - never silently consumed as inert booleans.
+    if (RSYNC_SOURCE_REMOVAL_FLAGS.has(t.raw)) { sourceRemovalMode = true; i += 1; continue; }
+    if (RSYNC_DELETE_MODE_FLAGS.has(t.raw)) { destructiveDeleteMode = true; i += 1; continue; }
 
     if (t.raw === '--files-from') { const v = tokens[i + 1]; if (!v) return { ambiguous: true }; sourceFileOptions.filesFrom = v; i += 2; continue; }
     if (typeof t.cooked === 'string' && t.cooked.indexOf('--files-from=') === 0) {
@@ -3767,11 +3879,11 @@ function parseRsyncOperands(rest, dialect) {
   }
 
   if (positional.length < 2) {
-    return { ok: true, sources: [], destination: null, sourceFileOptions, commandOptions, destinationOptions, filterPresent, insufficientOperands: true };
+    return { ok: true, sources: [], destination: null, sourceFileOptions, commandOptions, destinationOptions, filterPresent, sourceRemovalMode, destructiveDeleteMode, insufficientOperands: true };
   }
   const destination = positional[positional.length - 1];
   const sources = positional.slice(0, -1);
-  return { ok: true, sources, destination, sourceFileOptions, commandOptions, destinationOptions, filterPresent };
+  return { ok: true, sources, destination, sourceFileOptions, commandOptions, destinationOptions, filterPresent, sourceRemovalMode, destructiveDeleteMode };
 }
 
 function classifyRsync(rest, ctx, dialect) {
@@ -3819,10 +3931,26 @@ function classifyRsync(rest, ctx, dialect) {
   for (const src of parsed.sources) {
     const hit = classifyRsyncSourceToken(src, ctx);
     if (hit) result = worseOf(result, hit);
+    // R15 Blocker B: a source-removal flag makes every source a removal target too, not merely a
+    // read source - apply the additional tamper/containment policy on top.
+    if (parsed.sourceRemovalMode) {
+      const removalHit = classifyRsyncSourceRemovalToken(src, ctx);
+      if (removalHit) result = worseOf(result, removalHit);
+    }
   }
 
   const destHit = classifyRsyncDestinationToken(parsed.destination, ctx);
   if (destHit) result = worseOf(result, destHit);
+  // R15 Blocker B: a destructive delete-mode flag (--delete*) makes the destination a destructive
+  // scope - checked in both directions (destination IS protected, or protected entry lives INSIDE
+  // it), which classifyRsyncDestinationDirToken/checkTamperDirectoryTarget already implements.
+  // --exclude/--include/--filter/--protect-args must never be treated as proof the destructive scope
+  // excludes a protected path (this scanner has no audited filter-grammar parser), so this check
+  // deliberately ignores parsed.filterPresent/any exclude-from state entirely.
+  if (parsed.destructiveDeleteMode) {
+    const deleteHit = classifyRsyncDestinationDirToken(parsed.destination, ctx);
+    if (deleteHit) result = worseOf(result, deleteHit);
+  }
 
   return result;
 }

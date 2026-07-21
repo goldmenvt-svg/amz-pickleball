@@ -4014,3 +4014,174 @@ test('IO 43: required negative controls never hard-deny through the real process
     assert.notEqual(decision, 'deny', `must not hard-deny: ${cmd}`);
   }
 });
+
+// ===================== 44: R15 - nested Git execution context inheritance and destructive rsync modes =====================
+
+// --- 44A: Blocker A Section 5 - --config-env inside/after a shell alias must resolve via the OUTER's leading env assignment ---
+test("44A. V=push git -c alias.x='!git --config-env=alias.p=V p' x -> deny GIT_PUSH (leading env assignment inherited into the alias body's own --config-env)", () => {
+  assertDecision(classifyBash("V=push git -c alias.x='!git --config-env=alias.p=V p' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("44A. V=push git -c alias.x='!git' x --config-env=alias.p=V p -> deny GIT_PUSH (leading env assignment inherited into an appended --config-env argument)", () => {
+  assertDecision(classifyBash("V=push git -c alias.x='!git' x --config-env=alias.p=V p"), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 44B: Blocker A Section 6 - outer `-c alias.*` state is inherited by a nested shell-alias git invocation ---
+test("44B. git -c alias.p=push -c alias.x='!git p' x -> deny GIT_PUSH (outer alias.p inherited by nested 'git p')", () => {
+  assertDecision(classifyBash("git -c alias.p=push -c alias.x='!git p' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("44B. git -c alias.p=push -c alias.a='!git b' -c alias.b='!git p' a -> deny GIT_PUSH (inheritance survives a two-hop shell-alias chain)", () => {
+  assertDecision(classifyBash("git -c alias.p=push -c alias.a='!git b' -c alias.b='!git p' a"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("44B. git -c alias.p='--no-lazy-fetch log -1 --oneline' -c alias.x='!git p' x -> defer (safe inherited alias, fully proven)", () => {
+  assertDecision(classifyBash("git -c alias.p='--no-lazy-fetch log -1 --oneline' -c alias.x='!git p' x"), 'defer');
+});
+
+// --- 44C: Blocker A Section 7 - GIT_CONFIG_COUNT-defined outer aliases are inherited too ---
+test('44C. GIT_CONFIG_COUNT=1 defines alias.p=push, nested !git p -> deny GIT_PUSH', () => {
+  assertDecision(classifyBash('GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git -c alias.x=\'!git p\' x'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('44C. GIT_CONFIG_COUNT=2 redefines alias.p (index 1 wins, push), nested !git p -> deny GIT_PUSH', () => {
+  assertDecision(classifyBash("GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0='--no-lazy-fetch log -1 --oneline' GIT_CONFIG_KEY_1=alias.p GIT_CONFIG_VALUE_1=push git -c alias.x='!git p' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 44D: Blocker A Section 8 - nested override precedence across the shell-alias boundary ---
+test('44D. outer alias.p=push, nested -c alias.p=<safe> overrides it -> not deny (must not use the stale outer alias)', () => {
+  const r = classifyBash('git -c alias.p=push -c alias.x=\'!git -c alias.p="--no-lazy-fetch log -1 --oneline" p\' x');
+  assert.notEqual(r.decision, 'deny');
+});
+test('44D. outer alias.p=<safe>, nested -c alias.p=push overrides it -> deny GIT_PUSH', () => {
+  assertDecision(classifyBash('git -c alias.p=\'--no-lazy-fetch log -1 --oneline\' -c alias.x=\'!git -c alias.p=push p\' x'), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 44E: Blocker B - rsync destructive source-removal modes ---
+test('44E. rsync --remove-source-files <protected settings.json> backup/ -> deny TAMPER', () => {
+  assertDecision(classifyBash('rsync --remove-source-files C:/repo/.claude/settings.json backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('44E. rsync --remove-source-files <protected hook file> backup/ -> deny TAMPER', () => {
+  assertDecision(classifyBash('rsync --remove-source-files C:/repo/.claude/hooks/amz-safety-pretooluse.cjs backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('44E. rsync -a --remove-source-files C:/repo/ backup/ -> deny TAMPER (recursive source tree contains safety-control files)', () => {
+  assertDecision(classifyBash('rsync -a --remove-source-files C:/repo/ backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('44E. rsync --remove-source-files "$SRC" backup/ -> ask TAMPER (dynamic source could cover a safety file, never defer)', () => {
+  assertDecision(classifyBash('rsync --remove-source-files "$SRC" backup/'), 'ask', hook.RULE.TAMPER);
+});
+test('44E. rsync --remove-sent-files (deprecated/alias form) <protected settings.json> backup/ -> deny TAMPER (classified as conservatively as --remove-source-files)', () => {
+  assertDecision(classifyBash('rsync --remove-sent-files C:/repo/.claude/settings.json backup/'), 'deny', hook.RULE.TAMPER);
+});
+test('44E. negative control: rsync --remove-source-files README.md backup/ -> not a hard-deny (no protected file involved)', () => {
+  assertDecision(classifyBash('rsync --remove-source-files README.md backup/'), 'ask', hook.RULE.UNKNOWN);
+});
+
+// --- 44F: Blocker B - rsync destructive destination (--delete family) modes ---
+test('44F. rsync --delete src/ C:/repo/ -> deny TAMPER (destination tree contains protected entries)', () => {
+  assertDecision(classifyBash('rsync --delete src/ C:/repo/'), 'deny', hook.RULE.TAMPER);
+});
+test('44F. rsync --delete-excluded src/ C:/repo/ -> deny TAMPER', () => {
+  assertDecision(classifyBash('rsync --delete-excluded src/ C:/repo/'), 'deny', hook.RULE.TAMPER);
+});
+test('44F. rsync --delete-missing-args src/ C:/repo/ -> deny TAMPER (recognized, not silently consumed as boolean)', () => {
+  assertDecision(classifyBash('rsync --delete-missing-args src/ C:/repo/'), 'deny', hook.RULE.TAMPER);
+});
+test('44F. rsync --delete-delay src/ C:/repo/ -> deny TAMPER', () => {
+  assertDecision(classifyBash('rsync --delete-delay src/ C:/repo/'), 'deny', hook.RULE.TAMPER);
+});
+test('44F. rsync --del src/ C:/repo/ -> deny TAMPER (short alias)', () => {
+  assertDecision(classifyBash('rsync --del src/ C:/repo/'), 'deny', hook.RULE.TAMPER);
+});
+test('44F. rsync --delete src/ C:/repo/.claude/ -> deny TAMPER (destination is inside the protected control directory)', () => {
+  assertDecision(classifyBash('rsync --delete src/ C:/repo/.claude/'), 'deny', hook.RULE.TAMPER);
+});
+test('44F. rsync --delete src/ C:/repo/app-nextjs/ -> not a hard-deny (no protected entry inside this destination scope)', () => {
+  const r = classifyBash('rsync --delete src/ C:/repo/app-nextjs/');
+  assert.notEqual(r.decision, 'deny');
+});
+test('44F. rsync --delete src/ "$DEST" -> ask TAMPER (dynamic destination, never defer)', () => {
+  assertDecision(classifyBash('rsync --delete src/ "$DEST"'), 'ask', hook.RULE.TAMPER);
+});
+
+// --- 44G: Section 12 - filters/protect-args must never be treated as proof the destructive scope excludes a protected path ---
+test("44G. rsync --delete --exclude='.claude/**' src/ C:/repo/ -> deny TAMPER (an unaudited exclude filter cannot lower the deny)", () => {
+  assertDecision(classifyBash("rsync --delete --exclude='.claude/**' src/ C:/repo/"), 'deny', hook.RULE.TAMPER);
+});
+
+// --- 44H: Section 13 - dry-run must not weaken a destructive protected-path result ---
+test('44H. rsync --delete -n src/ C:/repo/ -> deny TAMPER (conservative: dry-run is not modeled as a safety proof in R15)', () => {
+  assertDecision(classifyBash('rsync --delete -n src/ C:/repo/'), 'deny', hook.RULE.TAMPER);
+});
+
+// --- 44I: Section 15 - negative controls (rsync destructive modes without protected scope) ---
+test('44I. rsync -a src/ backup/ -> ask (no destructive mode, unchanged baseline)', () => {
+  assertDecision(classifyBash('rsync -a src/ backup/'), 'ask');
+});
+test('44I. rsync --delete src/ C:/unrelated-backup/ -> not a hard-deny', () => {
+  const r = classifyBash('rsync --delete src/ C:/unrelated-backup/');
+  assert.notEqual(r.decision, 'deny');
+});
+test('44I. rsync --remove-source-files README.md backup/ -> not a hard-deny', () => {
+  const r = classifyBash('rsync --remove-source-files README.md backup/');
+  assert.notEqual(r.decision, 'deny');
+});
+
+// ===================== Direct hook I/O tests (R15 Section 14 gate) =====================
+
+test('IO 44: required Git nested-context fixtures always deny GIT_PUSH through the real process (deny count = 4, defer count = 0)', () => {
+  const required = [
+    "git -c alias.p=push -c alias.x='!git p' x",
+    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git -c alias.x='!git p' x",
+    "V=push git -c alias.x='!git --config-env=alias.p=V p' x",
+    "V=push git -c alias.x='!git' x --config-env=alias.p=V p",
+  ];
+  let denyCount = 0;
+  let deferCount = 0;
+  for (const cmd of required) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    if (r.stdout.trim() === '') { deferCount += 1; continue; }
+    const parsed = JSON.parse(r.stdout);
+    if (parsed.hookSpecificOutput.permissionDecision === 'deny') denyCount += 1;
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), `must not leak raw command for: ${cmd}`);
+  }
+  assert.equal(denyCount, 4);
+  assert.equal(deferCount, 0);
+});
+
+test('IO 44: required rsync destructive-mode fixtures always deny through the real process (deny count = 3)', () => {
+  const required = [
+    'rsync --remove-source-files C:/repo/.claude/settings.json backup/',
+    'rsync --delete src/ C:/repo/',
+    'rsync --delete-excluded src/ C:/repo/',
+  ];
+  let denyCount = 0;
+  for (const cmd of required) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    const parsed = JSON.parse(r.stdout);
+    if (parsed.hookSpecificOutput.permissionDecision === 'deny') denyCount += 1;
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), `must not leak raw command for: ${cmd}`);
+  }
+  assert.equal(denyCount, 3);
+});
+
+test('IO 44: required negative controls never hard-deny through the real process', () => {
+  const negatives = [
+    "git -c alias.p='--no-lazy-fetch log -1 --oneline' -c alias.x='!git p' x",
+    'git -c alias.p=push -c alias.x=\'!git -c alias.p="--no-lazy-fetch log -1 --oneline" p\' x',
+    'rsync -a src/ backup/',
+    'rsync --delete src/ C:/unrelated-backup/',
+    'rsync --remove-source-files README.md backup/',
+  ];
+  for (const cmd of negatives) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    let decision = 'defer';
+    if (r.stdout.trim() !== '') decision = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision;
+    assert.notEqual(decision, 'deny', `must not hard-deny: ${cmd}`);
+  }
+});
