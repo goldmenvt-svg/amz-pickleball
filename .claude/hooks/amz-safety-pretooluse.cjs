@@ -1227,6 +1227,26 @@ const GIT_CONFIG_ENV_RE = /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS)$/i;
 // internal scanner state - see AMZ_RESERVED_ASSIGNMENT_NAMES / classifyGit's reservedNameFloor.
 const AMZ_RESERVED_ASSIGNMENT_NAMES = new Set(['__AMZ_INHERITED_GIT_ALIAS_CONTEXT__']);
 
+// R17 Blocker A: environment-variable NAME identity is case-insensitive in every real shell/process
+// this scanner needs to model on Windows (cmd.exe, PowerShell, and Git-for-Windows' own MSYS2 bash
+// all resolve `RIPGREP_CONFIG_PATH` and `ripgrep_config_path` to the SAME variable) - but R16 compared
+// raw, as-authored spelling directly against fixed-case Sets/literal property names
+// (`SECURITY_RELEVANT_ENV_NAMES.has(name)`, `byName.GIT_CONFIG_COUNT`, `a.name === envName`), so a
+// command that simply spelled a security-relevant name in a different case
+// (`ripgrep_config_path=.env rg needle input.txt`) was invisible to every one of those checks and
+// silently deferred. `canonicalSecurityEnvName` is the ONE identity every such comparison must go
+// through from now on: security-policy identity is always the uppercase canonical form; the original
+// spelling an assignment/env entry arrived with is preserved untouched as metadata (never discarded),
+// it is simply never again the basis for a security decision. Applied at the single choke point every
+// name-bearing check already funnels through - buildEffectiveEnvironment (which is itself the sole
+// place ctx.env/leading-assignment names are ever looked up against a security-relevant Set) - plus
+// wherever a check unavoidably reads the raw `assignments` list directly instead of the effective
+// environment (the reserved-carrier scan and the `--config-env` env-var-name lookup, neither of which
+// goes through buildEffectiveEnvironment).
+function canonicalSecurityEnvName(name) {
+  return typeof name === 'string' ? name.toUpperCase() : name;
+}
+
 // GIT_CONFIG_PARAMETERS is a space-separated list of git's own single-quote-shell-encoded
 // `key=value` pairs (e.g. `'alias.p=push' 'alias.q=pull'`) - the same quoting convention as a
 // POSIX shell word, so the existing cooked-word tokenizer parses it correctly for the common case.
@@ -1286,7 +1306,7 @@ function collectGitConfigEnvAliases(assignments) {
 // command parsing and re-parsing an alias-expanded token stream, since an alias value can itself
 // start with global options (`alias.p = -c alias.q=push q`) that must not be mistaken for the
 // subcommand - see resolveGitAlias.
-function parseGitGlobalOptions(tokens, assignments) {
+function parseGitGlobalOptions(tokens, assignments, meta) {
   let i = 0;
   const aliasMap = {};
   const unresolvedAliasNames = [];
@@ -1298,6 +1318,12 @@ function parseGitGlobalOptions(tokens, assignments) {
   // change which refs/config git operates against in ways this scanner does not model either.
   const selectorHits = [];
   let hasNoLazyFetch = false; // R12 Blocker F
+  // R17 Section 5: `--exec-path=<path>` value, if given on THIS token span - resolved by the caller
+  // (classifyGit) via classifyGitExecPathValue, same policy as a GIT_EXEC_PATH environment variable.
+  // `meta` (per-token ambiguity metadata, absent when re-parsing an already-resolved alias-body token
+  // stream - see resolveGitAlias/tailMeta's "already resolved" convention) marks whether the token
+  // this value came from could not be trusted as literal text.
+  let execPathValue;
   // R16 Section 7: undefined = pagination not mentioned in THIS token span at all (distinct from an
   // explicit --no-pager, which must be able to override a true from an earlier hop/hop-accumulation -
   // see resolveGitAlias, which only overwrites its running value when a hop actually mentions one of
@@ -1341,7 +1367,13 @@ function parseGitGlobalOptions(tokens, assignments) {
           const envName = spec.slice(eq + 1);
           const am = /^alias\.(.+)$/i.exec(key);
           if (am) {
-            const envAssign = (assignments || []).find((a) => a.name === envName);
+            // R17 Blocker A: the env-var NAME `--config-env` names (`envName`, taken verbatim from
+            // the git command's own `--config-env=key=ENVVAR` text) must be matched against the
+            // collected leading assignments by canonical (case-insensitive) identity, exactly like
+            // every other environment-variable lookup - `v=push git --config-env=alias.p=V p` is a
+            // real, exact push alias to real Git on any case-insensitive-environment platform, not an
+            // unresolved reference.
+            const envAssign = (assignments || []).find((a) => canonicalSecurityEnvName(a.name) === canonicalSecurityEnvName(envName));
             if (envAssign && !envAssign.ambiguous) aliasMap[am[1]] = envAssign.value;
             else unresolvedAliasNames.push(am[1]);
           }
@@ -1361,8 +1393,34 @@ function parseGitGlobalOptions(tokens, assignments) {
     }
     if (t === '--namespace') { selectorHits.push({ flag: t }); i += 2; continue; }
     if (/^--namespace=/.test(t)) { selectorHits.push({ flag: '--namespace' }); i += 1; continue; }
-    if (t === '--exec-path') { i += 2; continue; }
-    if (/^--exec-path=/.test(t)) { i += 1; continue; }
+    // R17 Section 5: real Git's `--exec-path[=<path>]` has two entirely different arities the R16
+    // parser conflated into one - the BARE form (no `=`) takes NO argument at all: it prints Git's
+    // current exec-path setting and exits immediately, never reaching any subcommand. R16 wrongly
+    // treated it as consuming the NEXT token as a path value (`i += 2`), which for
+    // `git --exec-path C:/tmp/evil submodule status` silently discarded `C:/tmp/evil` as a bogus
+    // "value" and then classified `submodule status` as an ordinary (deferrable) read - both a
+    // misread of the actual argument shape AND a complete miss of a real GIT_EXEC_PATH-equivalent
+    // override. Since real Git exits before this point, nothing after a bare `--exec-path` on the
+    // command line ever actually runs; `execPathInfoTerminal` tells the caller to stop trying to
+    // resolve a subcommand from the remaining tokens entirely rather than guess. Trailing tokens
+    // still present after it are themselves a shape this scanner has no reason to bless as safe (a
+    // real invocation would never carry dead arguments deliberately), so the caller floors to ask
+    // instead of silently deferring whenever any remain.
+    if (t === '--exec-path') {
+      return { index: i + 1, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch, paginationRequested, execPathValue, execPathInfoTerminal: true, execPathHasTrailingArgs: tokens.length > i + 1 };
+    }
+    // The `=<path>` form DOES take a value, consumed inline (no extra token) - this is the one real
+    // "custom execution path" shape (Blocker B): Git will look up external `git-<command>` helper
+    // programs (including `git-submodule` itself, `git-remote-https`, etc.) in this directory INSTEAD
+    // of its own installation, so an attacker-controlled path here can substitute an arbitrary program
+    // for what looks like an ordinary read-only subcommand invocation.
+    if (/^--exec-path=/.test(t)) {
+      const val = t.slice('--exec-path='.length);
+      const tokenMeta = meta ? meta[i] : null;
+      execPathValue = { value: val, ambiguous: tokenMeta ? tokenNeedsFloor(tokenMeta) : false };
+      i += 1;
+      continue;
+    }
     if (t === '--no-lazy-fetch') { hasNoLazyFetch = true; i += 1; continue; }
     // R16 Section 7: --paginate/-p and --no-pager are tracked (last-one-wins, in the order they
     // appear) rather than silently treated as no-ops - explicit pagination risks running an
@@ -1378,10 +1436,10 @@ function parseGitGlobalOptions(tokens, assignments) {
     // next token as its value (in which case that token is NOT the subcommand), and this scanner has
     // no way to tell with confidence. Stop here and let the caller ask, rather than risk misreading
     // an option's value as the subcommand (which could silently defer on the wrong identity).
-    if (t.startsWith('-')) return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch, paginationRequested, unknownGlobalOption: true };
+    if (t.startsWith('-')) return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch, paginationRequested, execPathValue, unknownGlobalOption: true };
     break;
   }
-  return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch, paginationRequested };
+  return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch, paginationRequested, execPathValue };
 }
 
 // Recursively resolve `startToken` through `aliasMap` (mutated in place as nested alias values are
@@ -1421,13 +1479,17 @@ function resolveGitAlias(startToken, aliasMap, assignments) {
   // it does, that hop's value wins and later hops still take precedence over earlier ones (matching
   // parseGitGlobalOptions' own last-mention-wins order within a single body).
   let paginationRequested;
+  // R17 Section 5: same last-hop-wins accumulation for an alias BODY's own `--exec-path=<path>` -
+  // an alias whose expansion sets a custom Git exec-path must not silently drop it just because it
+  // came from inside the alias chain rather than the literal top-level command line.
+  let execPathValue;
   while (token !== undefined && Object.prototype.hasOwnProperty.call(aliasMap, token)) {
     if (visited.has(token)) return { ambiguous: true };
     visited.add(token);
     hops += 1;
     if (hops > MAX_GIT_ALIAS_DEPTH) return { ambiguous: true };
     const val = String(aliasMap[token]).trim();
-    if (val.startsWith('!')) return { shellAlias: val, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch, paginationRequested };
+    if (val.startsWith('!')) return { shellAlias: val, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch, paginationRequested, execPathValue };
     // Real git splits an alias command-line value using its own internal quoting/escaping parser
     // (always POSIX-like backslash-escape rules, regardless of whatever outer dialect the top-level
     // command came from) - `p\ush` (a literal backslash, e.g. from a single-quoted top-level value
@@ -1445,13 +1507,14 @@ function resolveGitAlias(startToken, aliasMap, assignments) {
     for (const ov of g.nonAliasConfigOverrides || []) nonAliasConfigOverrides.push(ov);
     if (g.hasNoLazyFetch) hasNoLazyFetch = true;
     if (g.paginationRequested !== undefined) paginationRequested = g.paginationRequested;
+    if (g.execPathValue !== undefined) execPathValue = g.execPathValue;
     const nextToken = bodyTokens[g.index];
     const rest = bodyTokens.slice(g.index + 1);
     tail = rest.concat(tail);
     token = nextToken;
   }
   if (token === undefined) return { ambiguous: true };
-  return { subcommand: token, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch, paginationRequested };
+  return { subcommand: token, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch, paginationRequested, execPathValue };
 }
 
 // `git submodule foreach [-q|--recursive]* <command>` runs `<command>` (a single shell-command-
@@ -1949,17 +2012,106 @@ function classifyGitPathBearingEnvValue(value, ambiguous, ctx) {
   return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation overrides where Git reads its config, index, or repository data from.' });
 }
 
+// R17 Blocker B / Section 5: classifies a GIT_EXEC_PATH environment-variable value OR a
+// `--exec-path=<path>` global-option value (same policy either way - both name the directory Git
+// looks up its own external `git-<command>` helper programs in instead of its real installation).
+// Distinct from classifyGitPathBearingEnvValue above: an ordinary custom path here is not proven safe
+// OR proven dangerous - this scanner has no way to inspect what programs actually live in an
+// arbitrary directory - so it asks COMPLEX (not TAMPER) on the common case, reserving TAMPER for an
+// unresolved/ambiguous value and SECRET/EGRESS for the specifically-recognized dangerous shapes.
+function classifyGitExecPathValue(value, ambiguous, ctx) {
+  if (ambiguous || typeof value !== 'string') {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation overrides the Git exec-path (external git-<command> program directory) with a value that could not be resolved with confidence.' });
+  }
+  if (value.trim().length === 0) {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation sets an empty Git exec-path override.' });
+  }
+  if (detectUnquotedGlob(value, 'posix') || detectDynamicExpansion(value, 'posix')) {
+    return askResult(RULE.SECRET, { safeMessage: 'Needs approval: this git invocation overrides the Git exec-path with an unresolved glob or expansion character.' });
+  }
+  const netHit = classifyNetworkPathToken(value);
+  if (netHit) return netHit;
+  if (isSecretPath(value, ctx)) return denyResult(RULE.SECRET);
+  return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git invocation overrides the Git exec-path (external git-<command> program directory), which this scanner cannot audit.' });
+}
+
+// R17 Blocker C: destination-value policy shared by every GIT_TRACE*/GIT_TRACE2* variable in
+// GIT_TRACE_DESTINATION_ENV_NAMES. Real Git treats each of these identically for the purpose of
+// "where does the trace go": empty/`0`/`false` disables tracing entirely (no floor at all - this is
+// the ordinary, safe default state); `1`/`2`/`true` sends trace output to Git's own stderr (no file is
+// touched, but still surfaces information this scanner doesn't otherwise expect, so a conservative ask
+// is warranted); a small integer names an ALREADY-OPEN inherited file descriptor (this scanner cannot
+// know what that fd is connected to); `af_unix:<path>` connects to a Unix domain socket (a network-like
+// destination, same EGRESS concern as a UNC share or /dev/tcp); anything else is a file path, subject
+// to the exact same protected-path/protected-directory/network-UNC/glob-or-dynamic checks every other
+// Git path-bearing value already goes through. Returns null (no floor) only for the genuinely-disabled
+// case; every other branch returns a result, so a caller iterating multiple trace variables can
+// `worseOf`-combine them (or return a deny immediately) exactly like the other env-var floors above.
+const GIT_TRACE_DISABLED_RE = /^(0|false)?$/i;
+const GIT_TRACE_STDERR_RE = /^(1|2|true)$/i;
+const GIT_TRACE_FD_RE = /^[3-9]$/;
+
+function classifyGitTraceDestination(name, value, ambiguous, ctx) {
+  if (ambiguous || typeof value !== 'string') {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation sets a trace-output variable (' + name + ') whose value could not be resolved with confidence.' });
+  }
+  const trimmed = value.trim();
+  if (GIT_TRACE_DISABLED_RE.test(trimmed)) return null;
+  if (GIT_TRACE_STDERR_RE.test(trimmed)) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git invocation enables trace output (' + name + ') to standard error.' });
+  }
+  if (GIT_TRACE_FD_RE.test(trimmed)) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git invocation directs trace output (' + name + ') to an inherited file descriptor.' });
+  }
+  if (/^af_unix:/i.test(trimmed)) {
+    return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: this git invocation directs trace output (' + name + ') to a Unix domain socket.' });
+  }
+  if (detectUnquotedGlob(trimmed, 'posix') || detectDynamicExpansion(trimmed, 'posix')) {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation directs trace output (' + name + ') to a path with an unresolved glob or expansion character.' });
+  }
+  const netHit = classifyNetworkPathToken(trimmed);
+  if (netHit) return netHit;
+  const tamperHit = checkTamperDirectoryTarget(trimmed, ctx);
+  if (tamperHit) return tamperHit;
+  return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation directs trace output (' + name + ') to a file this scanner cannot confirm is safe.' });
+}
+
+// R17 Blocker B: GIT_EXEC_PATH tells Git where to look up its OWN external `git-<command>` helper
+// programs (git-submodule, git-remote-https, ...) instead of its real installation directory - an
+// attacker-controlled value here can substitute an arbitrary program for what looks like an ordinary
+// read-only subcommand (e.g. `git submodule status`). R16 did not model this variable at all.
+const GIT_EXEC_PATH_ENV_NAME = 'GIT_EXEC_PATH';
+
+// R17 Blocker C: GIT_TRACE*/GIT_TRACE2* variables that name an OUTPUT DESTINATION (a file path, an
+// inherited file descriptor number, or an af_unix: socket) - as opposed to trace variables that only
+// tune verbosity/format without accepting a destination. A destination this scanner cannot confirm is
+// safe (an arbitrary file it would create/append/overwrite, or a socket) is exactly the same class of
+// concern as any other command-bearing/path-bearing Git environment variable already modeled above.
+const GIT_TRACE_DESTINATION_ENV_NAMES = new Set([
+  'GIT_TRACE', 'GIT_TRACE_PERFORMANCE', 'GIT_TRACE_SETUP', 'GIT_TRACE_SHALLOW',
+  'GIT_TRACE_FSMONITOR', 'GIT_TRACE_PACK_ACCESS', 'GIT_TRACE_PACKET', 'GIT_TRACE_PACKFILE',
+  'GIT_TRACE_REFS', 'GIT_TRACE_CURL', 'GIT_TRACE2', 'GIT_TRACE2_EVENT', 'GIT_TRACE2_PERF',
+]);
+
+// Any OTHER GIT_TRACE*-shaped name this scanner does not specifically recognize as a destination -
+// matched by pattern (unbounded family, like GIT_CONFIG_ENV_RE) so an undocumented/future tracing
+// knob is never silently invisible to buildEffectiveEnvironment just because it isn't in the fixed
+// destination Set above; classifyGit's trace floor asks (never denies) on one of these, since this
+// scanner does not know whether it accepts an output target.
+const GIT_TRACE_ANY_RE = /^GIT_TRACE/i;
+
 // R16 Blocker B: names of environment variables this scanner treats as security-relevant for Git
 // (plus RIPGREP_CONFIG_PATH, used by classifyRipgrepConfigEnv below) - the ONLY names ever read from
 // ctx.env (the real process environment) via buildEffectiveEnvironment; nothing else is inspected, so
 // no secret/unrelated environment value ever reaches a log/reason/stdout. GIT_CONFIG_COUNT/KEY_n/
 // VALUE_n/PARAMETERS have an unbounded numeric suffix and are matched by pattern (GIT_CONFIG_ENV_RE)
-// separately, not listed here by exact name.
+// separately, not listed here by exact name; likewise GIT_TRACE* (GIT_TRACE_ANY_RE), added in R17.
 const SECURITY_RELEVANT_ENV_NAMES = new Set([
   ...GIT_COMMAND_BEARING_ENV_VARS,
   ...GIT_PATH_BEARING_ENV_VARS,
   'GIT_NO_LAZY_FETCH',
   'RIPGREP_CONFIG_PATH',
+  GIT_EXEC_PATH_ENV_NAME,
 ]);
 
 // R16 Blocker B: narrower subset of SECURITY_RELEVANT_ENV_NAMES that is safe to inherit from the
@@ -1971,12 +2123,15 @@ const SECURITY_RELEVANT_ENV_NAMES = new Set([
 // carve-out - inheriting them from ctx.env would floor EVERY single git invocation to at least ask,
 // not just ones that deliberately override them via a leading assignment. A leading assignment for
 // HOME/USERPROFILE/XDG_CONFIG_HOME is still checked exactly as before R16 (see the second loop below,
-// which uses the full SECURITY_RELEVANT_ENV_NAMES set, not this narrower one).
+// which uses the full SECURITY_RELEVANT_ENV_NAMES set, not this narrower one). GIT_EXEC_PATH and
+// GIT_TRACE* (R17) carry no such "always ambiently present" hazard - they are never set unless
+// something deliberately exported them - so both are safe to inherit from ctx.env directly.
 const ENV_INHERITABLE_NAMES = new Set([
   ...GIT_COMMAND_BEARING_ENV_VARS,
   'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_INDEX_FILE', 'GIT_DIR', 'GIT_COMMON_DIR',
   'GIT_WORK_TREE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
   'GIT_NO_LAZY_FETCH', 'RIPGREP_CONFIG_PATH',
+  GIT_EXEC_PATH_ENV_NAME,
 ]);
 
 // R16 Blocker B: root cause - ctx.env (the real process environment a Bash/PowerShell tool call
@@ -1990,18 +2145,33 @@ const ENV_INHERITABLE_NAMES = new Set([
 // including an ambiguous/dynamic leading assignment, which must still floor to ask rather than
 // silently falling back to a (possibly stale) inherited value. Never serializes or otherwise
 // inspects the rest of the environment (no secret value from an unrelated variable is ever touched).
+//
+// R17 Blocker A: environment-variable NAME identity is case-insensitive on every real platform this
+// scanner targets, so every name is looked up and stored by its CANONICAL (uppercase) form -
+// `canonicalSecurityEnvName` - both when reading the real process environment and when reading a
+// leading command assignment. This is the single choke point that fixes `ripgrep_config_path=.env`,
+// `git_pager=...`, `GIT_CONFIG_count=...`, `git_trace=...`, etc.: every returned entry's `.name` is
+// already canonical, so every downstream `.has(a.name)`/`a.name === 'X'` comparison (envVarFloor,
+// pathEnvFloor, the GIT_NO_LAZY_FETCH check, collectGitConfigEnvAliases, classifyRipgrepConfigEnv, the
+// new execPathFloor/traceFloor below) is correct for free, without needing its own separate fix.
+// Iteration order for both the real process environment (Object.keys, insertion order) and the
+// leading-assignment array (source left-to-right encounter order) is always well-defined in this
+// scanner's data model, so "last effective occurrence wins" for a duplicate/mixed-case name is simply
+// "the last Map.set for that canonical key wins" - no separate ambiguous-order case can arise here.
 function buildEffectiveEnvironment(processEnv, leadingAssignments) {
   const byName = new Map();
   const env = processEnv || {};
   for (const name of Object.keys(env)) {
     if (typeof env[name] !== 'string') continue;
-    if (ENV_INHERITABLE_NAMES.has(name) || GIT_CONFIG_ENV_RE.test(name)) {
-      byName.set(name, { name, value: env[name], ambiguous: false });
+    const canonical = canonicalSecurityEnvName(name);
+    if (ENV_INHERITABLE_NAMES.has(canonical) || GIT_CONFIG_ENV_RE.test(canonical) || GIT_TRACE_ANY_RE.test(canonical)) {
+      byName.set(canonical, { name: canonical, value: env[name], ambiguous: false });
     }
   }
   for (const a of leadingAssignments || []) {
-    if (SECURITY_RELEVANT_ENV_NAMES.has(a.name) || GIT_CONFIG_ENV_RE.test(a.name)) {
-      byName.set(a.name, a);
+    const canonical = canonicalSecurityEnvName(a.name);
+    if (SECURITY_RELEVANT_ENV_NAMES.has(canonical) || GIT_CONFIG_ENV_RE.test(canonical) || GIT_TRACE_ANY_RE.test(canonical)) {
+      byName.set(canonical, Object.assign({}, a, { name: canonical }));
     }
   }
   return Array.from(byName.values());
@@ -2223,7 +2393,7 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth,
   }
   const tokens = td.tokens;
   const meta = td.meta;
-  const parsed = parseGitGlobalOptions(tokens, assignments);
+  const parsed = parseGitGlobalOptions(tokens, assignments, meta);
   if (parsed.unknownGlobalOption) {
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git global option is not recognized.' });
   }
@@ -2251,7 +2421,10 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth,
   // weakened by this floor, but an otherwise-unresolved invocation asks instead of silently deferring.
   let reservedNameFloor = null;
   for (const a of assignments || []) {
-    if (AMZ_RESERVED_ASSIGNMENT_NAMES.has(a.name)) {
+    // R17 Blocker A: matched by canonical (case-insensitive) identity - every case variant of the
+    // reserved name (`__amz_inherited_git_alias_context__`, mixed case, ...) must floor identically,
+    // not just the one exact spelling R16 compared against.
+    if (AMZ_RESERVED_ASSIGNMENT_NAMES.has(canonicalSecurityEnvName(a.name))) {
       reservedNameFloor = worseOf(reservedNameFloor, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this command declares a reserved internal scanner variable name, which is never trusted as real Git configuration state.' }));
     }
   }
@@ -2283,6 +2456,43 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth,
     const r = classifyGitPathBearingEnvValue(a.value, a.ambiguous, ctx);
     if (r.decision === 'deny') return r;
     pathEnvFloor = worseOf(pathEnvFloor, r);
+  }
+
+  // R17 Blocker B / Section 5: GIT_EXEC_PATH (via the effective environment - leading assignment or
+  // inherited process environment) and/or a literal `--exec-path=<path>` global option on THIS
+  // invocation - both name a custom directory Git looks up its own external `git-<command>` helper
+  // programs in, and both go through the identical classifyGitExecPathValue policy.
+  let execPathFloor = null;
+  for (const a of effectiveEnv) {
+    if (a.name !== GIT_EXEC_PATH_ENV_NAME) continue;
+    const r = classifyGitExecPathValue(a.value, a.ambiguous, ctx);
+    if (r.decision === 'deny') return r;
+    execPathFloor = worseOf(execPathFloor, r);
+  }
+  if (parsed.execPathValue) {
+    const r = classifyGitExecPathValue(parsed.execPathValue.value, parsed.execPathValue.ambiguous, ctx);
+    if (r.decision === 'deny') return r;
+    execPathFloor = worseOf(execPathFloor, r);
+  }
+
+  // R17 Blocker C: GIT_TRACE*/GIT_TRACE2* destination variables (via the effective environment) -
+  // see classifyGitTraceDestination's doc comment for the full destination policy. Any OTHER
+  // GIT_TRACE*-shaped name not in the recognized destination Set (GIT_TRACE_ANY_RE matched it into
+  // effectiveEnv, but GIT_TRACE_DESTINATION_ENV_NAMES doesn't recognize it) is not modeled as a
+  // destination, but a non-empty, non-disabled value is still not silently ignored - ask rather than
+  // assume an unrecognized tracing knob is harmless.
+  let traceFloor = null;
+  for (const a of effectiveEnv) {
+    if (GIT_TRACE_DESTINATION_ENV_NAMES.has(a.name)) {
+      const r = classifyGitTraceDestination(a.name, a.value, a.ambiguous, ctx);
+      if (!r) continue;
+      if (r.decision === 'deny') return r;
+      traceFloor = worseOf(traceFloor, r);
+    } else if (GIT_TRACE_ANY_RE.test(a.name)) {
+      if (a.ambiguous || (typeof a.value === 'string' && a.value.trim().length > 0 && !/^(0|false)$/i.test(a.value.trim()))) {
+        traceFloor = worseOf(traceFloor, askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git invocation sets an unrecognized GIT_TRACE* tuning variable (' + a.name + ').' }));
+      }
+    }
   }
 
   // Every non-alias `-c key=value`/`-c key` override must factor into the decision (R9 Section 8) -
@@ -2347,6 +2557,20 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth,
   }
 
   function resolveSubcommandDecision() {
+    // R17 Section 5: a bare `--exec-path` (no `=`) is a terminal information-mode flag - real Git
+    // prints its current exec-path setting and exits immediately, NEVER reaching any subcommand.
+    // Nothing that follows it on the command line ever actually runs, so it must not be misread as a
+    // subcommand/argument pair (the R16 arity bug this fixes). If further tokens are present anyway,
+    // that dead-argument shape is itself not something this scanner will silently bless as safe -
+    // ask conservatively rather than pretend it understands why they're there; with nothing else
+    // following, this is exactly as inert as `--version`/`--help` and may defer (subject to whatever
+    // other floor - GIT_EXEC_PATH, a command-bearing env var, etc. - this invocation still carries).
+    if (parsed.execPathInfoTerminal) {
+      return parsed.execPathHasTrailingArgs
+        ? askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: bare --exec-path prints the current exec-path and exits; the remaining command-line text would never actually run, and this scanner will not assume that silently.' })
+        : (envCfg.hasGitConfigEnv ? askResult(RULE.TAMPER) : deferResult());
+    }
+
     let subcommand = tokens[i];
     let subRestTokens = tokens.slice(i + 1);
     let subRestMeta = meta.slice(i + 1);
@@ -2389,6 +2613,14 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth,
       selectorFloor = mergeSelectorHitsIntoFloor(selectorFloor, resolved.selectorHits);
       if (resolved.hasNoLazyFetch) lazyFetchProven = true;
       if (resolved.paginationRequested !== undefined) paginationState = resolved.paginationRequested;
+      // R17 Section 5: an alias BODY's own `--exec-path=<path>` must merge into the same outer
+      // execPathFloor a top-level `--exec-path=<path>` already feeds - see resolveGitAlias's
+      // last-hop-wins accumulation.
+      if (resolved.execPathValue) {
+        const r = classifyGitExecPathValue(resolved.execPathValue.value, resolved.execPathValue.ambiguous, ctx);
+        if (r.decision === 'deny') return r;
+        execPathFloor = worseOf(execPathFloor, r);
+      }
 
       // R14 Blocker A: whatever followed the alias name on the command line (subRestTokens) plus
       // any tail already accumulated from earlier hops (resolved.tail) are real invocation
@@ -2489,6 +2721,8 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth,
   let floor = worseOf(worseOf(worseOf(configOverrideFloor, envVarFloor), pathEnvFloor), selectorFloor);
   floor = worseOf(floor, paginationFloor);
   floor = worseOf(floor, reservedNameFloor);
+  floor = worseOf(floor, execPathFloor);
+  floor = worseOf(floor, traceFloor);
   return floor ? worseOf(floor, result) : result;
 }
 
