@@ -1455,8 +1455,26 @@ test('36F. negative control: exact cooked protected token still denies: vercel d
 
 const HOOK_PATH = path.join(__dirname, 'amz-safety-pretooluse.cjs');
 
+// R16 Blocker B made the hook read certain security-relevant environment variables directly from
+// the real process environment (ctx.env), not just leading command-text assignments - see
+// buildEffectiveEnvironment. Left uncontrolled, a spawned test process inherits whatever the ACTUAL
+// dev/CI machine happens to have set (e.g. this repo's own dev environment has a real `GIT_EDITOR=
+// true`), which would make IO tests flaky/machine-dependent. Cleared to `undefined` by default (which
+// Node's child_process correctly omits from the child's environment entirely, not merely sets to an
+// empty string) so every IO test gets a hermetic baseline; a test that specifically wants to exercise
+// one of these variables passes it via `envOverrides`, which is applied after the clear.
+const SECURITY_RELEVANT_ENV_NAMES_FOR_TEST_ISOLATION = [
+  'GIT_EXTERNAL_DIFF', 'GIT_PAGER', 'PAGER', 'GIT_EDITOR', 'GIT_SEQUENCE_EDITOR',
+  'GIT_SSH_COMMAND', 'GIT_ASKPASS', 'SSH_ASKPASS', 'VISUAL', 'EDITOR',
+  'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_INDEX_FILE', 'GIT_DIR', 'GIT_COMMON_DIR',
+  'GIT_WORK_TREE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'XDG_CONFIG_HOME',
+  'GIT_NO_LAZY_FETCH', 'RIPGREP_CONFIG_PATH', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS',
+];
+
 function runHookProcess(stdinText, envOverrides) {
-  const env = Object.assign({}, process.env, envOverrides || {});
+  const isolation = {};
+  for (const name of SECURITY_RELEVANT_ENV_NAMES_FOR_TEST_ISOLATION) isolation[name] = undefined;
+  const env = Object.assign({}, process.env, isolation, envOverrides || {});
   const r = spawnSync(process.execPath, [HOOK_PATH], {
     input: stdinText,
     encoding: 'utf8',
@@ -4174,6 +4192,133 @@ test('IO 44: required negative controls never hard-deny through the real process
     'rsync -a src/ backup/',
     'rsync --delete src/ C:/unrelated-backup/',
     'rsync --remove-source-files README.md backup/',
+  ];
+  for (const cmd of negatives) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    let decision = 'defer';
+    if (r.stdout.trim() !== '') decision = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision;
+    assert.notEqual(decision, 'deny', `must not hard-deny: ${cmd}`);
+  }
+});
+
+// ===================== 45: R16 - remove spoofable internal state, model config-driven command execution =====================
+
+// --- 45A: Blocker A - the reserved internal-context carrier name is never trusted as real context ---
+test('45A. __AMZ_INHERITED_GIT_ALIAS_CONTEXT__=... git p (no real alias defined anywhere) -> ask TAMPER, never defer', () => {
+  assertDecision(classifyBash("__AMZ_INHERITED_GIT_ALIAS_CONTEXT__=\"'alias.p=--no-lazy-fetch log -1 --oneline'\" git p"), 'ask', hook.RULE.TAMPER);
+});
+test('45A. reserved carrier alongside a REAL GIT_CONFIG_COUNT-defined alias.p=push -> deny GIT_PUSH (ask floor never weakens an exact deny)', () => {
+  assertDecision(classifyBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push __AMZ_INHERITED_GIT_ALIAS_CONTEXT__=\"'alias.p=--no-lazy-fetch log -1 --oneline'\" git p"), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// --- 45B: Blocker B - Git command-bearing/config env vars inherited from the process environment, not just leading assignments ---
+test('45B. GIT_PAGER=git push in ctx.env (not a leading assignment) -> deny GIT_PUSH', () => {
+  assertDecision(classifyBash('git --paginate --no-lazy-fetch log -1 --oneline', { env: { GIT_PAGER: 'git push' } }), 'deny', hook.RULE.GIT_PUSH);
+});
+test('45B. GIT_CONFIG_COUNT/KEY_0/VALUE_0 in ctx.env (not leading assignments) defines alias.p=push -> deny GIT_PUSH', () => {
+  assertDecision(classifyBash("git -c alias.x='!git p' x", { env: { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'alias.p', GIT_CONFIG_VALUE_0: 'push' } }), 'deny', hook.RULE.GIT_PUSH);
+});
+test('45B. ambient HOME/USERPROFILE alone (always present in any real environment) never floors an ordinary git command to ask (regression guard for the ENV_INHERITABLE_NAMES carve-out)', () => {
+  assertDecision(classifyBash('git --no-lazy-fetch log -1 --oneline', { env: { HOME: 'C:/Users/someone', USERPROFILE: 'C:/Users/someone' } }), 'defer');
+});
+
+// --- 45C: Section 7 - explicit Git pagination ---
+test('45C. git --paginate --no-lazy-fetch log -1 --oneline -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git --paginate --no-lazy-fetch log -1 --oneline'), 'ask', hook.RULE.COMPLEX);
+});
+test('45C. git -p --no-lazy-fetch log -1 --oneline -> ask COMPLEX (short form)', () => {
+  assertDecision(classifyBash('git -p --no-lazy-fetch log -1 --oneline'), 'ask', hook.RULE.COMPLEX);
+});
+test('45C. negative control: git --no-pager --no-lazy-fetch log -1 --oneline -> defer', () => {
+  assertDecision(classifyBash('git --no-pager --no-lazy-fetch log -1 --oneline'), 'defer');
+});
+test("45C. git -c core.pager='git push' --paginate --no-lazy-fetch log -1 --oneline -> deny GIT_PUSH (core.pager is always a shell command, no ! needed)", () => {
+  assertDecision(classifyBash("git -c core.pager='git push' --paginate --no-lazy-fetch log -1 --oneline"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("45C. git -c pager.log='npm publish' --paginate --no-lazy-fetch log -1 --oneline -> deny PUBLISH", () => {
+  assertDecision(classifyBash("git -c pager.log='npm publish' --paginate --no-lazy-fetch log -1 --oneline"), 'deny', hook.RULE.PUBLISH);
+});
+test("45C. git -c core.pager=less --paginate --no-lazy-fetch log -1 --oneline -> ask (unresolved pager command, never defer)", () => {
+  const r = classifyBash("git -c core.pager=less --paginate --no-lazy-fetch log -1 --oneline");
+  assert.equal(r.decision, 'ask');
+});
+
+// --- 45D: Blocker C - RIPGREP_CONFIG_PATH ---
+test('45D. RIPGREP_CONFIG_PATH=C:/tmp/rg.conf rg needle input.txt -> ask COMPLEX', () => {
+  assertDecision(classifyBash('RIPGREP_CONFIG_PATH=C:/tmp/rg.conf rg needle input.txt'), 'ask', hook.RULE.COMPLEX);
+});
+test('45D. RIPGREP_CONFIG_PATH=.env rg needle input.txt -> deny SECRET', () => {
+  assertDecision(classifyBash('RIPGREP_CONFIG_PATH=.env rg needle input.txt'), 'deny', hook.RULE.SECRET);
+});
+test('45D. RIPGREP_CONFIG_PATH in ctx.env (not a leading assignment) -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('rg needle input.txt', { env: { RIPGREP_CONFIG_PATH: 'C:/tmp/rg.conf' } }), 'ask', hook.RULE.COMPLEX);
+});
+test('45D. negative control: rg needle input.txt with no RIPGREP_CONFIG_PATH anywhere -> defer', () => {
+  assertDecision(classifyBash('rg needle input.txt'), 'defer');
+});
+test('45D. ripgrep (alternate binary name) with RIPGREP_CONFIG_PATH=.env -> deny SECRET', () => {
+  assertDecision(classifyBash('RIPGREP_CONFIG_PATH=.env ripgrep needle input.txt'), 'deny', hook.RULE.SECRET);
+});
+
+// --- 45E: infinite-recursion regression guard (command-bearing env value that is itself a git command) ---
+test('45E. GIT_EDITOR=git push in ctx.env does not crash and resolves to deny GIT_PUSH (no infinite recursion)', () => {
+  assertDecision(classifyBash('git --no-lazy-fetch log -1 --oneline', { env: { GIT_EDITOR: 'git push' } }), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// ===================== Direct hook I/O tests (R16 Section 11/12 gate) =====================
+
+test('IO 45: required process-env fixtures always resolve through the real process (defer count = 0, no raw env value leak)', () => {
+  const fixtures = [
+    { env: { GIT_PAGER: 'git push' }, cmd: 'git --paginate --no-lazy-fetch log -1 --oneline', expect: 'deny' },
+    { env: { RIPGREP_CONFIG_PATH: 'C:/tmp/rg.conf' }, cmd: 'rg needle input.txt', expect: 'ask' },
+    { env: { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'alias.p', GIT_CONFIG_VALUE_0: 'push' }, cmd: "git -c alias.x='!git p' x", expect: 'deny' },
+  ];
+  let deferCount = 0;
+  for (const f of fixtures) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: f.cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture, f.env);
+    assert.equal(r.status, 0, `exit code for: ${f.cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${f.cmd}`);
+    if (r.stdout.trim() === '') { deferCount += 1; continue; }
+    const parsed = JSON.parse(r.stdout);
+    assert.equal(parsed.hookSpecificOutput.permissionDecision, f.expect, `decision for: ${f.cmd}`);
+    // "No raw value leak" means the safe message never echoes the raw fixture command/env-name
+    // text back verbatim - it does NOT mean the message can share no words at all with an env
+    // value (e.g. GIT_PAGER='git push' legitimately produces the same static "git push requires
+    // explicit Owner authorization" wording any other git-push denial does).
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(f.cmd), `must not leak raw command for: ${f.cmd}`);
+  }
+  assert.equal(deferCount, 0);
+});
+
+test('IO 45: required command fixtures never defer through the real process', () => {
+  const required = [
+    "__AMZ_INHERITED_GIT_ALIAS_CONTEXT__=\"'alias.p=--no-lazy-fetch log -1 --oneline'\" git p",
+    'RIPGREP_CONFIG_PATH=C:/tmp/rg.conf rg needle input.txt',
+    'RIPGREP_CONFIG_PATH=.env rg needle input.txt',
+    'git --paginate --no-lazy-fetch log -1 --oneline',
+    "git -c core.pager='git push' --paginate --no-lazy-fetch log -1 --oneline",
+    "git -c pager.log='npm publish' --paginate --no-lazy-fetch log -1 --oneline",
+  ];
+  for (const cmd of required) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    assert.notEqual(r.stdout.trim(), '', `must not defer: ${cmd}`);
+    const parsed = JSON.parse(r.stdout);
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), `must not leak raw command for: ${cmd}`);
+  }
+});
+
+test('IO 45: required negative controls never hard-deny through the real process', () => {
+  const negatives = [
+    'git --no-pager --no-lazy-fetch log -1 --oneline',
+    "git -c alias.p='--no-lazy-fetch log -1 --oneline' -c alias.x='!git p' x",
+    'rg needle input.txt',
   ];
   for (const cmd of negatives) {
     const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });

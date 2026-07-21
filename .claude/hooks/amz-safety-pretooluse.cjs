@@ -1213,17 +1213,19 @@ function classifyNestedClaude(rest) {
 // don't resolve to a specific known-dangerous alias).
 const GIT_CONFIG_ENV_RE = /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS)$/i;
 
-// R15 Blocker A: internal-only carrier assignment name used SOLELY to propagate a Git shell alias's
-// inherited execution context (the outer invocation's own already-accumulated alias/config state)
-// across the shell-alias boundary - see classifyGitShellAliasInvocation. Real git itself re-exports
-// every `-c` it was given as a GIT_CONFIG_PARAMETERS-shaped environment variable before running a
-// `!`-prefixed shell alias (confirmed empirically against git 2.55.0), which is exactly what this
-// models - but deliberately under a name that can never collide with a real Git/user environment
-// variable, and deliberately excluded from GIT_CONFIG_ENV_RE/hasGitConfigEnv's "arbitrary,
-// not-otherwise-understood config injection present" ask-floor below: this carries state the
-// scanner itself already derived and fully understands (the SAME aliasMap it already resolved
-// against), not unaudited external config injection.
-const AMZ_INHERITED_ALIAS_CONTEXT_VAR = '__AMZ_INHERITED_GIT_ALIAS_CONTEXT__';
+// R16 Blocker A: R15 propagated a Git shell alias's inherited execution context across the
+// shell-alias boundary via a synthetic assignment name (`__AMZ_INHERITED_GIT_ALIAS_CONTEXT__`)
+// placed into the SAME `assignments` channel real leading command-text assignments flow through.
+// That channel has no provenance - nothing distinguished "the scanner synthesized this" from "the
+// user's own command text declared a variable with this exact name" - so a command that itself
+// declared `__AMZ_INHERITED_GIT_ALIAS_CONTEXT__=...` could inject arbitrary fake alias state with
+// full trust. R16 removes the carrier entirely (see classifyGitShellAliasInvocation, which now
+// threads a real structured JS parameter - never serialized to text, never re-tokenized - instead).
+// The reserved name is kept here ONLY as a detection list: if a real command's leading assignments
+// happen to declare this exact name, that is never parsed as trusted context (there is no longer any
+// code path that would do so) and is additionally flagged as a suspicious attempt to reference
+// internal scanner state - see AMZ_RESERVED_ASSIGNMENT_NAMES / classifyGit's reservedNameFloor.
+const AMZ_RESERVED_ASSIGNMENT_NAMES = new Set(['__AMZ_INHERITED_GIT_ALIAS_CONTEXT__']);
 
 // GIT_CONFIG_PARAMETERS is a space-separated list of git's own single-quote-shell-encoded
 // `key=value` pairs (e.g. `'alias.p=push' 'alias.q=pull'`) - the same quoting convention as a
@@ -1272,18 +1274,10 @@ function collectGitConfigEnvAliases(assignments) {
       parametersAmbiguous = true;
     }
   }
-  // R15 Blocker A: the internal inherited-alias-context carrier (see AMZ_INHERITED_ALIAS_CONTEXT_VAR)
-  // uses the identical GIT_CONFIG_PARAMETERS wire format, so the same parser applies - but it is
-  // never treated as "arbitrary config injection" (does not affect hasGitConfigEnv/parametersAmbiguous)
-  // since it carries already-scanner-derived state, not unaudited external input. A malformed carrier
-  // is a scanner-internal bug, not user input, but still fails closed (silently contributes nothing)
-  // rather than throwing.
-  if (typeof byName[AMZ_INHERITED_ALIAS_CONTEXT_VAR] === 'string') {
-    const inherited = parseGitConfigParameters(byName[AMZ_INHERITED_ALIAS_CONTEXT_VAR]);
-    if (inherited.ok) {
-      for (const k of Object.keys(inherited.aliasMap)) aliasMap[k] = inherited.aliasMap[k];
-    }
-  }
+  // R16 Blocker A: the reserved carrier name is deliberately NOT special-cased here any more - see
+  // AMZ_RESERVED_ASSIGNMENT_NAMES's doc comment. A command that declares it is just an ordinary,
+  // unrecognized assignment as far as alias resolution is concerned (contributes nothing to
+  // aliasMap); classifyGit separately floors to ask TAMPER on its mere presence.
   return { aliasMap, hasGitConfigEnv, parametersAmbiguous };
 }
 
@@ -1304,6 +1298,11 @@ function parseGitGlobalOptions(tokens, assignments) {
   // change which refs/config git operates against in ways this scanner does not model either.
   const selectorHits = [];
   let hasNoLazyFetch = false; // R12 Blocker F
+  // R16 Section 7: undefined = pagination not mentioned in THIS token span at all (distinct from an
+  // explicit --no-pager, which must be able to override a true from an earlier hop/hop-accumulation -
+  // see resolveGitAlias, which only overwrites its running value when a hop actually mentions one of
+  // these flags).
+  let paginationRequested;
   while (i < tokens.length) {
     const t = tokens[i];
     if (t === '-c') {
@@ -1365,7 +1364,13 @@ function parseGitGlobalOptions(tokens, assignments) {
     if (t === '--exec-path') { i += 2; continue; }
     if (/^--exec-path=/.test(t)) { i += 1; continue; }
     if (t === '--no-lazy-fetch') { hasNoLazyFetch = true; i += 1; continue; }
-    if (t === '--no-pager' || t === '-p' || t === '--paginate' || t === '--no-replace-objects') { i += 1; continue; }
+    // R16 Section 7: --paginate/-p and --no-pager are tracked (last-one-wins, in the order they
+    // appear) rather than silently treated as no-ops - explicit pagination risks running an
+    // arbitrary pager program (core.pager/pager.<subcommand>/GIT_PAGER/PAGER), so the caller
+    // (classifyGit) floors to ask unless a LATER --no-pager proved it disabled.
+    if (t === '--paginate' || t === '-p') { paginationRequested = true; i += 1; continue; }
+    if (t === '--no-pager') { paginationRequested = false; i += 1; continue; }
+    if (t === '--no-replace-objects') { i += 1; continue; }
     if (t === '--bare') { selectorHits.push({ flag: t }); i += 1; continue; }
     if (/^(--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--html-path|--man-path|--info-path|--version|-v|--help|-h)$/.test(t)) { i += 1; continue; }
     // R10 Section 5: a leading global option this scanner does not specifically recognize must not
@@ -1373,10 +1378,10 @@ function parseGitGlobalOptions(tokens, assignments) {
     // next token as its value (in which case that token is NOT the subcommand), and this scanner has
     // no way to tell with confidence. Stop here and let the caller ask, rather than risk misreading
     // an option's value as the subcommand (which could silently defer on the wrong identity).
-    if (t.startsWith('-')) return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch, unknownGlobalOption: true };
+    if (t.startsWith('-')) return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch, paginationRequested, unknownGlobalOption: true };
     break;
   }
-  return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch };
+  return { index: i, aliasMap, unresolvedAliasNames, nonAliasConfigOverrides, selectorHits, hasNoLazyFetch, paginationRequested };
 }
 
 // Recursively resolve `startToken` through `aliasMap` (mutated in place as nested alias values are
@@ -1412,13 +1417,17 @@ function resolveGitAlias(startToken, aliasMap, assignments) {
   const selectorHits = [];
   const nonAliasConfigOverrides = [];
   let hasNoLazyFetch = false;
+  // R16 Section 7: undefined until some hop's body actually mentions --paginate/-p/--no-pager; once
+  // it does, that hop's value wins and later hops still take precedence over earlier ones (matching
+  // parseGitGlobalOptions' own last-mention-wins order within a single body).
+  let paginationRequested;
   while (token !== undefined && Object.prototype.hasOwnProperty.call(aliasMap, token)) {
     if (visited.has(token)) return { ambiguous: true };
     visited.add(token);
     hops += 1;
     if (hops > MAX_GIT_ALIAS_DEPTH) return { ambiguous: true };
     const val = String(aliasMap[token]).trim();
-    if (val.startsWith('!')) return { shellAlias: val, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch };
+    if (val.startsWith('!')) return { shellAlias: val, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch, paginationRequested };
     // Real git splits an alias command-line value using its own internal quoting/escaping parser
     // (always POSIX-like backslash-escape rules, regardless of whatever outer dialect the top-level
     // command came from) - `p\ush` (a literal backslash, e.g. from a single-quoted top-level value
@@ -1435,13 +1444,14 @@ function resolveGitAlias(startToken, aliasMap, assignments) {
     for (const hit of g.selectorHits || []) selectorHits.push(hit);
     for (const ov of g.nonAliasConfigOverrides || []) nonAliasConfigOverrides.push(ov);
     if (g.hasNoLazyFetch) hasNoLazyFetch = true;
+    if (g.paginationRequested !== undefined) paginationRequested = g.paginationRequested;
     const nextToken = bodyTokens[g.index];
     const rest = bodyTokens.slice(g.index + 1);
     tail = rest.concat(tail);
     token = nextToken;
   }
   if (token === undefined) return { ambiguous: true };
-  return { subcommand: token, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch };
+  return { subcommand: token, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch, paginationRequested };
 }
 
 // `git submodule foreach [-q|--recursive]* <command>` runs `<command>` (a single shell-command-
@@ -1560,15 +1570,15 @@ function classifyGitCommandRunner(subcommand, subTokens, ctx) {
 // `git -c key=value` config keys git itself later invokes as an external program - a `!`-prefixed
 // value here is exactly as dangerous as a `!`-prefixed alias value (resolveGitAlias's shellAlias
 // case), just reached through a different config key than `alias.*`. Matched case-insensitively,
-// with `pager.*`/`difftool.*.cmd`/`mergetool.*.cmd`/`filter.*.{clean,smudge,process}` as wildcard
-// families (the `*` names a pager/tool/filter, not a fixed key).
+// with `difftool.*.cmd`/`mergetool.*.cmd`/`filter.*.{clean,smudge,process}` as wildcard families (the
+// `*` names a tool/filter, not a fixed key). `core.pager`/`pager.*` are deliberately NOT in this list
+// - see GIT_PAGER_CONFIG_KEY_RE/classifyGitPagerConfigValue below, which apply a different (more
+// permissive to real git, not to this scanner) convention for those two keys specifically.
 const GIT_COMMAND_BEARING_CONFIG_KEY_RES = [
   /^credential\.helper$/i,
   /^core\.sshcommand$/i,
   /^core\.editor$/i,
   /^sequence\.editor$/i,
-  /^core\.pager$/i,
-  /^pager\..+$/i,
   /^diff\.external$/i,
   /^difftool\..+\.cmd$/i,
   /^mergetool\..+\.cmd$/i,
@@ -1589,6 +1599,21 @@ function isGitCommandBearingConfigKey(key) {
   return typeof key === 'string' && GIT_COMMAND_BEARING_CONFIG_KEY_RES.some((re) => re.test(key));
 }
 
+// R16 Blocker B follow-up fix: recursively classifying a command-bearing value (a pager/editor/ssh/
+// credential-helper program string, or a GIT_PAGER/etc. environment variable's value) with the SAME
+// ctx used for the outer invocation creates a genuine infinite-recursion hazard once ctx.env feeds
+// into classifyGit's own envVarFloor computation (buildEffectiveEnvironment) - e.g. GIT_PAGER='git
+// push' in the process environment means classifying ANY git command computes envVarFloor, which
+// recursively classifies GIT_PAGER's OWN value ('git push'), which is ITSELF a git command, which
+// again computes envVarFloor from the SAME still-present GIT_PAGER, forever. Evaluating "what does
+// this standalone command string do" must not re-litigate the very environment variable that raised
+// the question in the first place - a plain env-stripped ctx copy breaks the cycle unconditionally
+// and is also the more correct model (a real subprocess spawned to run e.g. a pager does not have
+// some special self-referential relationship with the variable that named it).
+function withEmptyEnv(ctx) {
+  return Object.assign({}, ctx, { env: {} });
+}
+
 // Resolve a command-bearing config value: a `!`-prefixed value is a literal shell command (same
 // convention as a `!`-prefixed git alias) and is recursively classified; anything else (a bare
 // helper/program name, e.g. `credential.helper=store`) is not a shell command string this scanner
@@ -1600,10 +1625,27 @@ function classifyGitConfigBearingValue(value, ctx) {
   }
   const cmdText = v.slice(1).trim();
   if (cmdText.length === 0) return askResult(RULE.TAMPER);
-  const inner = classifyCommandString(cmdText, 'posix', ctx, 0, { segments: 0 });
+  const inner = classifyCommandString(cmdText, 'posix', withEmptyEnv(ctx), 0, { segments: 0 });
   if (inner.decision === 'deny') return inner;
   return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git command sets a config value that runs a command this scanner could not fully resolve.' });
 }
+
+// R16 Section 7: `core.pager`/`pager.<subcommand>` are ALWAYS invoked as a full shell command line
+// by real Git (`sh -c "$value"`) - unlike credential.helper/diff.external/*.cmd above, which require
+// a leading `!` to opt into shell semantics (a bare value there is looked up as a named helper/tool
+// binary instead), a bare pager value genuinely IS the command Git hands to the shell, with no `!`
+// convention involved at all. Classified directly as a command string; deny on a confidently-resolved
+// protected payload, ask otherwise (never defer - an unresolved external pager command is never safe
+// to silently allow through).
+function classifyGitPagerConfigValue(value, ctx) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git command sets a pager that runs an external program.' });
+  }
+  const inner = classifyCommandString(value, 'posix', withEmptyEnv(ctx), 0, { segments: 0 });
+  if (inner.decision === 'deny') return inner;
+  return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git command sets a pager whose command could not be fully resolved.' });
+}
+const GIT_PAGER_CONFIG_KEY_RE = /^(core\.pager|pager\..+)$/i;
 
 // R12 Blocker E / R13 Blocker B: core.fsmonitor also accepts a literal boolean (disabling git's
 // built-in filesystem-monitor integration entirely, not naming an external hook program) - a literal
@@ -1614,13 +1656,17 @@ const FSMONITOR_SAFE_VALUE_RE = /^(false|0|no|off)$/i;
 
 // Classifies a single non-alias config override for the purposes of the running floor: a literal
 // safe core.fsmonitor value contributes no floor at all (`fsmonitorSafe: true`, the caller sets its
-// own fsmonitorDisabledProven flag); a command-bearing key's value is resolved via
+// own fsmonitorDisabledProven flag); a pager key's value is resolved via classifyGitPagerConfigValue
+// (always-shell semantics); any other command-bearing key's value is resolved via
 // classifyGitConfigBearingValue (may itself be a `deny`, which the caller must return immediately);
 // anything else floors to ask TAMPER, exactly as it always has for an override this scanner cannot
 // otherwise interpret.
 function classifyGitConfigOverrideForFloor(ov, ctx) {
   if (/^core\.fsmonitor$/i.test(ov.key) && typeof ov.value === 'string' && FSMONITOR_SAFE_VALUE_RE.test(ov.value.trim())) {
     return { fsmonitorSafe: true };
+  }
+  if (GIT_PAGER_CONFIG_KEY_RE.test(ov.key)) {
+    return { floor: classifyGitPagerConfigValue(ov.value, ctx) };
   }
   if (isGitCommandBearingConfigKey(ov.key)) {
     return { floor: classifyGitConfigBearingValue(ov.value, ctx) };
@@ -1873,7 +1919,10 @@ function classifyGitCommandBearingEnvValue(value, ctx) {
   if (typeof value !== 'string' || value.trim().length === 0) {
     return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation sets a command-bearing environment variable (pager/editor/diff/ssh/askpass).' });
   }
-  const inner = classifyCommandString(value, 'posix', ctx, 0, { segments: 0 });
+  // R16 Blocker B follow-up: classified with an env-stripped ctx - see withEmptyEnv's doc comment
+  // (classifyGitConfigBearingValue) for why this is required to avoid infinite recursion once
+  // ctx.env feeds into classifyGit's own envVarFloor computation.
+  const inner = classifyCommandString(value, 'posix', withEmptyEnv(ctx), 0, { segments: 0 });
   if (inner.decision === 'deny') return inner;
   return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation sets a command-bearing environment variable whose program could not be fully resolved.' });
 }
@@ -1898,6 +1947,64 @@ function classifyGitPathBearingEnvValue(value, ambiguous, ctx) {
   }
   if (isSecretPath(value, ctx)) return denyResult(RULE.SECRET);
   return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation overrides where Git reads its config, index, or repository data from.' });
+}
+
+// R16 Blocker B: names of environment variables this scanner treats as security-relevant for Git
+// (plus RIPGREP_CONFIG_PATH, used by classifyRipgrepConfigEnv below) - the ONLY names ever read from
+// ctx.env (the real process environment) via buildEffectiveEnvironment; nothing else is inspected, so
+// no secret/unrelated environment value ever reaches a log/reason/stdout. GIT_CONFIG_COUNT/KEY_n/
+// VALUE_n/PARAMETERS have an unbounded numeric suffix and are matched by pattern (GIT_CONFIG_ENV_RE)
+// separately, not listed here by exact name.
+const SECURITY_RELEVANT_ENV_NAMES = new Set([
+  ...GIT_COMMAND_BEARING_ENV_VARS,
+  ...GIT_PATH_BEARING_ENV_VARS,
+  'GIT_NO_LAZY_FETCH',
+  'RIPGREP_CONFIG_PATH',
+]);
+
+// R16 Blocker B: narrower subset of SECURITY_RELEVANT_ENV_NAMES that is safe to inherit from the
+// AMBIENT process environment (ctx.env), not just a leading command assignment. HOME/USERPROFILE/
+// XDG_CONFIG_HOME are deliberately EXCLUDED here even though they are members of
+// GIT_PATH_BEARING_ENV_VARS: they are unconditionally present in every real environment (unlike
+// GIT_DIR/GIT_INDEX_FILE/GIT_CONFIG_GLOBAL/... , which are never ambiently set unless something
+// deliberately exported them), and classifyGitPathBearingEnvValue has no "ordinary ambient value"
+// carve-out - inheriting them from ctx.env would floor EVERY single git invocation to at least ask,
+// not just ones that deliberately override them via a leading assignment. A leading assignment for
+// HOME/USERPROFILE/XDG_CONFIG_HOME is still checked exactly as before R16 (see the second loop below,
+// which uses the full SECURITY_RELEVANT_ENV_NAMES set, not this narrower one).
+const ENV_INHERITABLE_NAMES = new Set([
+  ...GIT_COMMAND_BEARING_ENV_VARS,
+  'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_INDEX_FILE', 'GIT_DIR', 'GIT_COMMON_DIR',
+  'GIT_WORK_TREE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  'GIT_NO_LAZY_FETCH', 'RIPGREP_CONFIG_PATH',
+]);
+
+// R16 Blocker B: root cause - ctx.env (the real process environment a Bash/PowerShell tool call
+// actually inherits) was available throughout, but almost every classifier only ever inspected
+// leading command-text assignments (`FOO=bar git ...`), silently ignoring the SAME variable if it
+// were instead already set in the ambient process environment (e.g. `GIT_PAGER=git push` exported by
+// an earlier step, then a later bare `git log`). Builds the effective value for every
+// security-relevant name: the inherited process environment (restricted to ENV_INHERITABLE_NAMES -
+// see its doc comment) is the base, and a leading command assignment (more recent, closer to the
+// actual invocation, checked against the full SECURITY_RELEVANT_ENV_NAMES set) overrides it -
+// including an ambiguous/dynamic leading assignment, which must still floor to ask rather than
+// silently falling back to a (possibly stale) inherited value. Never serializes or otherwise
+// inspects the rest of the environment (no secret value from an unrelated variable is ever touched).
+function buildEffectiveEnvironment(processEnv, leadingAssignments) {
+  const byName = new Map();
+  const env = processEnv || {};
+  for (const name of Object.keys(env)) {
+    if (typeof env[name] !== 'string') continue;
+    if (ENV_INHERITABLE_NAMES.has(name) || GIT_CONFIG_ENV_RE.test(name)) {
+      byName.set(name, { name, value: env[name], ambiguous: false });
+    }
+  }
+  for (const a of leadingAssignments || []) {
+    if (SECURITY_RELEVANT_ENV_NAMES.has(a.name) || GIT_CONFIG_ENV_RE.test(a.name)) {
+      byName.set(a.name, a);
+    }
+  }
+  return Array.from(byName.values());
 }
 
 // git subcommands that mutate the working tree/index at an explicit, parseable pathspec - deny on
@@ -2040,32 +2147,6 @@ function posixQuoteLiteral(s) {
   return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
 
-// R15 Blocker A: serializes the CURRENT accumulated alias/config state (at the moment classifyGit
-// crosses a shell-alias boundary) into a GIT_CONFIG_PARAMETERS-shaped string, wrapped in the
-// internal AMZ_INHERITED_ALIAS_CONTEXT_VAR carrier assignment (see collectGitConfigEnvAliases) -
-// this models real git's OWN confirmed behavior (empirically verified against git 2.55.0: `git -c
-// alias.p=... -c alias.x='!...' x` re-exports EVERY `-c` it was given, alias.p AND alias.x alike, as
-// GIT_CONFIG_PARAMETERS in the child shell's environment) so a nested `git p` invoked from inside the
-// shell alias body can still resolve `p`. Every current alias definition is included (even the one
-// currently being invoked, matching real git's own unconditional re-export), plus the accumulated
-// non-alias `-c` overrides for completeness (parseGitConfigParameters currently only recovers
-// `alias.*` keys from this wire format, same as it does for a real GIT_CONFIG_PARAMETERS value - see
-// its doc comment - so a non-alias entry here is inert today but keeps the serialization faithful to
-// what real git actually re-exports, should that recovery ever be extended). Returns null when there
-// is nothing to carry (empty aliasMap and no overrides), so callers never add a no-op assignment.
-function buildInheritedAliasContextAssignment(aliasMap, nonAliasConfigOverrides) {
-  const pairs = [];
-  for (const name of Object.keys(aliasMap || {})) {
-    pairs.push('alias.' + name + '=' + aliasMap[name]);
-  }
-  for (const ov of nonAliasConfigOverrides || []) {
-    pairs.push(ov.value !== undefined ? ov.key + '=' + ov.value : ov.key);
-  }
-  if (pairs.length === 0) return null;
-  const serialized = pairs.map(posixQuoteLiteral).join(' ');
-  return { name: AMZ_INHERITED_ALIAS_CONTEXT_VAR, value: serialized, ambiguous: false };
-}
-
 // R14 Blocker A: a `!`-prefixed Git shell alias receives, as real appended argv, both any tokens
 // accumulated from EARLIER alias hops (`resolveGitAlias`'s `tail`) and whatever followed the alias
 // name on the actual invocation (`subRestTokens`) - R13 classified only the static alias-body text in
@@ -2074,13 +2155,16 @@ function buildInheritedAliasContextAssignment(aliasMap, nonAliasConfigOverrides)
 // string, token metadata) covering exactly those appended arguments. `recursionState` carries
 // `{depth, budget, aliasDepth}` inherited from the ENTIRE outer classification (see Section 10) so
 // that crossing this shell-alias boundary can never reset the wrapper-depth/total-segment-budget
-// counters, and is itself bounded by MAX_GIT_SHELL_ALIAS_DEPTH independent of those. R15 Blocker A:
-// `inheritedContext` (`{assignments, aliasMap, nonAliasConfigOverrides}`) carries the outer
-// invocation's own leading env assignments (real subprocess environment inheritance - e.g. a `V=push`
-// prefix) AND its currently-accumulated alias/config state (via the synthetic carrier above), neither
-// of which R14 propagated (it recursed with `inheritedAssignments = undefined`), so a nested `git`
-// invocation previously started from a blank context even though real git's own child process
-// inherits both.
+// counters, and is itself bounded by MAX_GIT_SHELL_ALIAS_DEPTH independent of those. R16 Blocker A:
+// the outer invocation's own leading assignments AND its currently-accumulated alias/config state are
+// now carried via `internalGitContext` (`{assignments, aliasMap, nonAliasConfigOverrides}`) - a real
+// structured JS parameter threaded alongside `recursionState`, never serialized into command text and
+// never re-tokenized. R15 modeled this via a synthetic assignment placed into the SAME channel real
+// leading command-text assignments flow through, which had no provenance - a command that itself
+// declared an assignment with that exact reserved name would have been indistinguishable from
+// trusted scanner-derived state. This parameter can only ever be populated from the ACTUAL call site
+// below (classifyGit, reading its own in-scope `aliasMap`/`assignments`/`nonAliasConfigOverrides`),
+// so no command text can ever reach it.
 //
 // Approach (Section 4): (1) classify the static alias body alone - a confidently-resolved deny from
 // the text alone always wins outright, regardless of what the appended arguments turn out to be;
@@ -2093,7 +2177,7 @@ function buildInheritedAliasContextAssignment(aliasMap, nonAliasConfigOverrides)
 // classifyGit re-derives its own selector/fsmonitor/lazy-fetch floors exactly as rigorously as a
 // top-level command would; a non-git payload keeps the prior conservative floor (never surfaces a
 // bare defer/ask-UNKNOWN, only a confidently resolved ask/deny).
-function classifyGitShellAliasInvocation(shellCommand, appendedTokens, appendedMetadata, ctx, recursionState, inheritedContext) {
+function classifyGitShellAliasInvocation(shellCommand, appendedTokens, appendedMetadata, ctx, recursionState, internalGitContext) {
   const shellCmd = String(shellCommand).slice(1).trim();
   if (shellCmd.length === 0) return askResult(RULE.COMPLEX);
 
@@ -2104,12 +2188,9 @@ function classifyGitShellAliasInvocation(shellCommand, appendedTokens, appendedM
   const nextDepth = (recursionState.depth || 0) + 1;
   const nextAliasDepth = aliasDepth + 1;
   const budget = recursionState.budget || { segments: 0 };
+  const nestedInheritedAssignments = (internalGitContext && internalGitContext.assignments) || [];
 
-  const carrier = inheritedContext ? buildInheritedAliasContextAssignment(inheritedContext.aliasMap, inheritedContext.nonAliasConfigOverrides) : null;
-  const baseAssignments = (inheritedContext && inheritedContext.assignments) || [];
-  const nestedInheritedAssignments = carrier ? mergeAssignments(baseAssignments, [carrier]) : baseAssignments;
-
-  const staticInner = classifyCommandString(shellCmd, 'posix', ctx, nextDepth, budget, nestedInheritedAssignments, nextAliasDepth);
+  const staticInner = classifyCommandString(shellCmd, 'posix', ctx, nextDepth, budget, nestedInheritedAssignments, nextAliasDepth, internalGitContext);
   if (staticInner.decision === 'deny') return staticInner;
 
   const shellBinary = extractBinaryAndRest(shellCmd, 'posix');
@@ -2128,14 +2209,14 @@ function classifyGitShellAliasInvocation(shellCommand, appendedTokens, appendedM
 
   const quotedArgs = appendedTokens.map(posixQuoteLiteral).join(' ');
   const effectiveInvocation = shellCmd + ' ' + quotedArgs;
-  const effectiveInner = classifyCommandString(effectiveInvocation, 'posix', ctx, nextDepth, budget, nestedInheritedAssignments, nextAliasDepth);
+  const effectiveInner = classifyCommandString(effectiveInvocation, 'posix', ctx, nextDepth, budget, nestedInheritedAssignments, nextAliasDepth, internalGitContext);
   const combined = worseOf(staticInner, effectiveInner);
 
   if (isGitPassthrough) return combined;
   return resolvedOrFloor(combined, unresolvedFloor);
 }
 
-function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth) {
+function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth, internalGitContext) {
   const td = dialectTokenStrings(rest, dialect);
   if (!td.ok) {
     return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git command arguments could not be resolved with confidence.' });
@@ -2150,12 +2231,40 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth)
   const aliasMap = parsed.aliasMap;
   const unresolvedAliasNames = parsed.unresolvedAliasNames;
 
+  // R16 Blocker A: the ONLY channel through which inherited alias/config state may ever reach this
+  // function is the `internalGitContext` JS parameter - populated exclusively by this file's own
+  // classifyGitShellAliasInvocation call site below, reading ITS OWN in-scope aliasMap/assignments/
+  // nonAliasConfigOverrides. It is never constructed from, or written back into, command text, so no
+  // command a user or a repository can author has any path to populate it. Merged the same guarded
+  // way envCfg is merged below (a name already defined by THIS text's own literal `-c` always wins).
+  if (internalGitContext && internalGitContext.aliasMap) {
+    for (const k of Object.keys(internalGitContext.aliasMap)) {
+      if (!Object.prototype.hasOwnProperty.call(aliasMap, k)) aliasMap[k] = internalGitContext.aliasMap[k];
+    }
+  }
+
+  // R16 Blocker A: a command whose OWN leading assignments declare the reserved internal-context
+  // variable name is never trusted as real context (there is no code path left that would parse it
+  // as one - see AMZ_RESERVED_ASSIGNMENT_NAMES) and is additionally flagged: authoring this exact
+  // name is a plausible attempt to reference/spoof internal scanner state. Combined via worseOf like
+  // every other floor here, so an exact protected result (push, a confidently-resolved deny) is never
+  // weakened by this floor, but an otherwise-unresolved invocation asks instead of silently deferring.
+  let reservedNameFloor = null;
+  for (const a of assignments || []) {
+    if (AMZ_RESERVED_ASSIGNMENT_NAMES.has(a.name)) {
+      reservedNameFloor = worseOf(reservedNameFloor, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this command declares a reserved internal scanner variable name, which is never trusted as real Git configuration state.' }));
+    }
+  }
+
   // Command-bearing environment variables (R10 Section 5) - a pager/editor/external-diff/ssh/
   // askpass program name set via a leading assignment is at least ask, deny on a confidently-
   // resolved protected payload, regardless of which subcommand follows (this scanner does not model
-  // exactly which subcommand triggers which of these).
+  // exactly which subcommand triggers which of these). R16 Blocker B: `buildEffectiveEnvironment`
+  // additionally folds in the inherited process environment (ctx.env) for these same variable names -
+  // a leading command assignment still overrides it, matching real shell/subprocess semantics.
+  const effectiveEnv = buildEffectiveEnvironment(ctx.env, assignments);
   let envVarFloor = null;
-  for (const a of assignments || []) {
+  for (const a of effectiveEnv) {
     if (!GIT_COMMAND_BEARING_ENV_VARS.has(a.name)) continue;
     if (a.ambiguous) {
       envVarFloor = worseOf(envVarFloor, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation sets a command-bearing environment variable that could not be resolved with confidence.' }));
@@ -2169,7 +2278,7 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth)
   // Path-bearing environment variables (R11 Blocker B) - independent of the command-bearing set
   // above, these redirect where git reads config/index/repository data from.
   let pathEnvFloor = null;
-  for (const a of assignments || []) {
+  for (const a of effectiveEnv) {
     if (!GIT_PATH_BEARING_ENV_VARS.has(a.name)) continue;
     const r = classifyGitPathBearingEnvValue(a.value, a.ambiguous, ctx);
     if (r.decision === 'deny') return r;
@@ -2195,15 +2304,24 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth)
     configOverrideFloor = applied.floor;
     fsmonitorDisabledProven = applied.fsmonitorDisabledProven;
   }
+  // R16 Blocker A: inherited non-alias config overrides (from the outer invocation, across a
+  // shell-alias boundary) get the identical treatment - see internalGitContext doc comment above.
+  if (internalGitContext && internalGitContext.nonAliasConfigOverrides) {
+    const applied = applyConfigOverridesToFloor(configOverrideFloor, internalGitContext.nonAliasConfigOverrides, ctx, fsmonitorDisabledProven);
+    if (applied.denyResult) return applied.denyResult;
+    configOverrideFloor = applied.floor;
+    fsmonitorDisabledProven = applied.fsmonitorDisabledProven;
+  }
 
   // R12 Blocker F: --no-lazy-fetch (global option, tracked by parseGitGlobalOptions) or
-  // GIT_NO_LAZY_FETCH=1/true (leading env assignment) proves this invocation cannot trigger an
-  // implicit promisor-remote fetch for a missing object in a partial clone. An env value that's
-  // dynamic/ambiguous or anything other than 1/true simply leaves this unproven (same as it being
-  // absent entirely) - classifyGitReadonlySubcommand's own floor below already asks EGRESS by
-  // default whenever this stays false, so no separate ask/deny branch is needed here.
+  // GIT_NO_LAZY_FETCH=1/true (leading env assignment or inherited process environment) proves this
+  // invocation cannot trigger an implicit promisor-remote fetch for a missing object in a partial
+  // clone. An env value that's dynamic/ambiguous or anything other than 1/true simply leaves this
+  // unproven (same as it being absent entirely) - classifyGitReadonlySubcommand's own floor below
+  // already asks EGRESS by default whenever this stays false, so no separate ask/deny branch is
+  // needed here.
   let lazyFetchProven = !!parsed.hasNoLazyFetch;
-  for (const a of assignments || []) {
+  for (const a of effectiveEnv) {
     if (a.name !== 'GIT_NO_LAZY_FETCH') continue;
     if (!a.ambiguous && typeof a.value === 'string' && /^(1|true)$/i.test(a.value.trim())) {
       lazyFetchProven = true;
@@ -2217,7 +2335,13 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth)
   // mergeSelectorHitsIntoFloor is shared with the R13 Blocker B alias-body context merge below.
   let selectorFloor = mergeSelectorHitsIntoFloor(null, parsed.selectorHits);
 
-  const envCfg = collectGitConfigEnvAliases(assignments);
+  // R16 Section 7: explicit pagination (--paginate/-p) risks running an arbitrary pager (core.pager/
+  // pager.<subcommand>/GIT_PAGER/PAGER, all of which real Git hands straight to the shell) - ask
+  // unless a LATER --no-pager proved it disabled (parseGitGlobalOptions/resolveGitAlias track
+  // last-mention-wins order, including across an alias body - see the alias-resolution merge below).
+  let paginationState = parsed.paginationRequested;
+
+  const envCfg = collectGitConfigEnvAliases(effectiveEnv);
   for (const k of Object.keys(envCfg.aliasMap)) {
     if (!Object.prototype.hasOwnProperty.call(aliasMap, k)) aliasMap[k] = envCfg.aliasMap[k];
   }
@@ -2264,6 +2388,7 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth)
       }
       selectorFloor = mergeSelectorHitsIntoFloor(selectorFloor, resolved.selectorHits);
       if (resolved.hasNoLazyFetch) lazyFetchProven = true;
+      if (resolved.paginationRequested !== undefined) paginationState = resolved.paginationRequested;
 
       // R14 Blocker A: whatever followed the alias name on the command line (subRestTokens) plus
       // any tail already accumulated from earlier hops (resolved.tail) are real invocation
@@ -2279,10 +2404,12 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth)
 
       if (resolved.shellAlias) {
         // A `!`-prefixed alias value runs its payload as a shell command in its own right, with the
-        // appended invocation arguments as real argv - see classifyGitShellAliasInvocation. R15
-        // Blocker A: it also needs the CURRENT accumulated alias/config state and the outer's own
-        // leading env assignments so the nested `git` invocation does not start from a blank
-        // context - see buildInheritedAliasContextAssignment.
+        // appended invocation arguments as real argv - see classifyGitShellAliasInvocation. R16
+        // Blocker A: the CURRENT accumulated alias/config state and the outer's own leading
+        // assignments are threaded as a real structured `internalGitContext` parameter (never
+        // serialized into command text) so the nested `git` invocation does not start from a blank
+        // context. `aliasMap` here already reflects anything THIS call itself inherited (merged
+        // above), so a multi-hop shell-alias chain naturally carries state across every hop.
         return classifyGitShellAliasInvocation(resolved.shellAlias, appendedTokens, appendedMeta, ctx, {
           depth: depth || 0,
           budget: budget || { segments: 0 },
@@ -2290,7 +2417,9 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth)
         }, {
           assignments: assignments || [],
           aliasMap,
-          nonAliasConfigOverrides: (parsed.nonAliasConfigOverrides || []).concat(resolved.nonAliasConfigOverrides || []),
+          nonAliasConfigOverrides: (parsed.nonAliasConfigOverrides || [])
+            .concat(resolved.nonAliasConfigOverrides || [])
+            .concat((internalGitContext && internalGitContext.nonAliasConfigOverrides) || []),
         });
       }
       subcommand = resolved.subcommand;
@@ -2354,7 +2483,12 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth)
   }
 
   const result = resolveSubcommandDecision();
-  const floor = worseOf(worseOf(worseOf(configOverrideFloor, envVarFloor), pathEnvFloor), selectorFloor);
+  const paginationFloor = paginationState
+    ? askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git command may page its output through an external pager program.' })
+    : null;
+  let floor = worseOf(worseOf(worseOf(configOverrideFloor, envVarFloor), pathEnvFloor), selectorFloor);
+  floor = worseOf(floor, paginationFloor);
+  floor = worseOf(floor, reservedNameFloor);
   return floor ? worseOf(floor, result) : result;
 }
 
@@ -3301,7 +3435,31 @@ const GREP_BOOLEAN_LONG_RE = /^--(ignore-case|invert-match|count|files-with-matc
 const GREP_VALUE_FLAGS = new Set(['-A', '-B', '-C', '-e', '-m', '--include', '--exclude', '--exclude-dir', '--color', '--binary-files']);
 const GREP_VALUE_LONG_EQ_RE = /^--(after-context|before-context|context|regexp|max-count|include|exclude|exclude-dir|color|binary-files)=/;
 
-function classifyGrepOptions(bin, rest, dialect, ctx) {
+// R16 Blocker C: RIPGREP_CONFIG_PATH names a config file ripgrep reads BEFORE parsing its own
+// command-line arguments, and that file can itself contain `--pre=<command>` - an external
+// preprocessor command run for every searched file - so a command that looks purely read-only
+// (`rg needle input.txt`) can still run an arbitrary program if this variable is set, via a file this
+// scanner never reads. Checked against the EFFECTIVE environment (leading assignment overriding the
+// inherited process environment - see buildEffectiveEnvironment), never defers: absent/empty leaves
+// ripgrep's own config-file mechanism untriggered (continue normal parsing below); an exact secret
+// path denies; a dynamic/glob/unresolvable value asks (could resolve to anything); any other
+// non-empty path still asks, since this scanner does not read the file to confirm it is harmless.
+function classifyRipgrepConfigEnv(effectiveEnv, ctx) {
+  const entry = (effectiveEnv || []).find((a) => a.name === 'RIPGREP_CONFIG_PATH');
+  if (!entry) return null;
+  if (entry.ambiguous) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: RIPGREP_CONFIG_PATH could not be resolved with confidence.' });
+  }
+  const value = entry.value;
+  if (typeof value !== 'string' || value.trim().length === 0) return null;
+  if (detectUnquotedGlob(value, 'posix') || detectDynamicExpansion(value, 'posix')) {
+    return askResult(RULE.SECRET, { safeMessage: 'Needs approval: RIPGREP_CONFIG_PATH contains an unresolved shell glob or expansion character.' });
+  }
+  if (isSecretPath(value, ctx)) return denyResult(RULE.SECRET);
+  return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: RIPGREP_CONFIG_PATH points to a ripgrep config file that may set --pre (an external preprocessor command), which this scanner does not read.' });
+}
+
+function classifyGrepOptions(bin, rest, dialect, ctx, assignments) {
   const td = tokenizeDialectWords(rest, dialect);
   if (!td.ok) return askResult(RULE.COMPLEX);
   const tokens = td.tokens;
@@ -3309,6 +3467,11 @@ function classifyGrepOptions(bin, rest, dialect, ctx) {
   let preTok = null;
   let endOfOptions = false;
   const positional = [];
+  let ripgrepConfigHit = null;
+  if (bin === 'rg' || bin === 'ripgrep') {
+    const effectiveEnv = buildEffectiveEnvironment(ctx.env, assignments);
+    ripgrepConfigHit = classifyRipgrepConfigEnv(effectiveEnv, ctx);
+  }
   let i = 0;
   while (i < tokens.length) {
     const t = tokens[i];
@@ -3323,7 +3486,7 @@ function classifyGrepOptions(bin, rest, dialect, ctx) {
       fileTok = { cooked: t.cooked.slice('--file='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
       i += 1; continue;
     }
-    if (bin === 'rg') {
+    if (bin === 'rg' || bin === 'ripgrep') {
       if (t.raw === '--pre') {
         const val = tokens[i + 1];
         if (!val) return askResult(RULE.COMPLEX);
@@ -3346,7 +3509,7 @@ function classifyGrepOptions(bin, rest, dialect, ctx) {
     positional.push(t);
     i += 1;
   }
-  let result = null;
+  let result = ripgrepConfigHit;
   if (fileTok) {
     const hit = classifyReadSourceToken(fileTok, ctx);
     if (hit) result = worseOf(result, hit);
@@ -3409,7 +3572,7 @@ function classifySimpleListingCommand(bin, rest, dialect) {
   return deferResult();
 }
 
-function classifySimpleReadonlyCommand(bin, rest, dialect, ctx) {
+function classifySimpleReadonlyCommand(bin, rest, dialect, ctx, assignments) {
   if (SIMPLE_READONLY_NOOP_BINS.has(bin)) return deferResult();
   // `type` (Windows CMD file-reader semantics) was already fully vetted for secret-path content by
   // classifySecretPrimitive earlier in the pipeline (a member of SECRET_READ_PRIMITIVES) - reaching
@@ -3421,7 +3584,7 @@ function classifySimpleReadonlyCommand(bin, rest, dialect, ctx) {
   if (bin === 'uniq') return classifyUniqCommand(rest, dialect, ctx);
   if (bin === 'wc') return classifyWcCommand(rest, dialect, ctx);
   if (bin === 'cat' || bin === 'head' || bin === 'tail' || bin === 'cut') return classifyCatHeadTailCut(bin, rest, dialect, ctx);
-  if (bin === 'grep' || bin === 'rg') return classifyGrepOptions(bin, rest, dialect, ctx);
+  if (bin === 'grep' || bin === 'rg' || bin === 'ripgrep') return classifyGrepOptions(bin, rest, dialect, ctx, assignments);
   if (bin === 'ls' || bin === 'dir' || bin === 'which' || bin === 'where') return classifySimpleListingCommand(bin, rest, dialect);
   return null;
 }
@@ -4602,7 +4765,7 @@ const CMD_UNSUPPORTED_GRAMMAR_BINS = new Set(['if', 'for', 'setlocal', 'endlocal
 
 // ===================== Segment / command classification =====================
 
-function classifyEffectiveBinary(segment, dialect, ctx, assignments, depth, budget, aliasDepth) {
+function classifyEffectiveBinary(segment, dialect, ctx, assignments, depth, budget, aliasDepth, internalGitContext) {
   // Must run before any binary-specific dispatch below - see classifyGlobalRedirection.
   const globalRedir = classifyGlobalRedirection(segment, ctx, dialect);
   if (globalRedir) return globalRedir;
@@ -4656,7 +4819,7 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments, depth, budg
   const rest = be.rest;
 
   if (bin === 'claude') return classifyNestedClaude(rest);
-  if (bin === 'git') return classifyGit(rest, ctx, assignments || [], dialect, depth, budget, aliasDepth);
+  if (bin === 'git') return classifyGit(rest, ctx, assignments || [], dialect, depth, budget, aliasDepth, internalGitContext);
   // `git-push`/`git-send-pack` are the real standalone binaries git's own subcommands dispatch
   // to internally (present on PATH alongside `git` itself on most POSIX installs) - invoking them
   // directly bypasses the `bin === 'git'` dispatch entirely unless handled here too.
@@ -4710,7 +4873,7 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments, depth, budg
     const inner = extractBinaryAndRest(rest, dialect);
     if (!inner || inner.ambiguous) return askResult(RULE.COMPLEX);
     if (/^\$/.test(inner.first) || inner.first.startsWith('(')) return askResult(RULE.COMPLEX);
-    return classifyEffectiveBinary(rest, dialect, ctx, assignments, depth, budget, aliasDepth);
+    return classifyEffectiveBinary(rest, dialect, ctx, assignments, depth, budget, aliasDepth, internalGitContext);
   }
 
   // R9 fail-closed policy: only a binary PROVEN read-only (and, by reaching this point, already
@@ -4721,7 +4884,7 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments, depth, budg
   // classifySimpleReadonlyCommand additionally validates the option/operand shape (date/sort/uniq/
   // wc/cat/head/tail/cut/grep/rg) before allowing a defer. Everything else asks: "unrecognized" must
   // never again silently mean "assumed safe".
-  const simpleHit = classifySimpleReadonlyCommand(bin, rest, dialect, ctx);
+  const simpleHit = classifySimpleReadonlyCommand(bin, rest, dialect, ctx, assignments);
   if (simpleHit) return simpleHit;
 
   return askResult(RULE.UNKNOWN, { safeMessage: 'Needs approval: this executable is not recognized by the safety classifier.' });
@@ -4733,7 +4896,7 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments, depth, budg
 // `depth` bounds recursion (MAX_WRAPPER_DEPTH); `budget` is a mutable {segments} counter shared
 // across the whole recursive classification of one top-level command, bounding total segments
 // processed across all wrapper layers combined (MAX_TOTAL_SEGMENTS), not just per-layer.
-function classifySegment(rawSegment, dialect, ctx, depth, budget, inheritedAssignments, aliasDepth) {
+function classifySegment(rawSegment, dialect, ctx, depth, budget, inheritedAssignments, aliasDepth, internalGitContext) {
   if (depth > MAX_WRAPPER_DEPTH) return askResult(RULE.COMPLEX);
   if (hasComplexMarkers(rawSegment, dialect)) return askResult(RULE.COMPLEX);
   if (hasUnbalancedQuotes(rawSegment, dialect)) return askResult(RULE.COMPLEX);
@@ -4744,7 +4907,7 @@ function classifySegment(rawSegment, dialect, ctx, depth, budget, inheritedAssig
     // environment-inheritance semantics); a same-named assignment declared at the payload's own
     // level (resolved one hop further down) must still win over this one - see mergeAssignments.
     const effectiveAssignments = mergeAssignments(inheritedAssignments, resolved.assignments);
-    const inner = classifyCommandString(resolved.payload, resolved.dialect, ctx, depth + 1, budget, effectiveAssignments, aliasDepth);
+    const inner = classifyCommandString(resolved.payload, resolved.dialect, ctx, depth + 1, budget, effectiveAssignments, aliasDepth, internalGitContext);
     // Package-runner invariant (npx / pnpm dlx / yarn dlx): always at least ask, regardless of
     // payload. A protected-action payload already denies/asks on its own merits and passes
     // through unchanged; only an otherwise-unrecognized payload (defer, or - under the R9 fail-
@@ -4756,7 +4919,7 @@ function classifySegment(rawSegment, dialect, ctx, depth, budget, inheritedAssig
     return inner;
   }
   const effectiveAssignments = mergeAssignments(inheritedAssignments, resolved.assignments);
-  return classifyEffectiveBinary(resolved.segment, resolved.dialect, ctx, effectiveAssignments, depth, budget, aliasDepth);
+  return classifyEffectiveBinary(resolved.segment, resolved.dialect, ctx, effectiveAssignments, depth, budget, aliasDepth, internalGitContext);
 }
 
 // R14 Section 10: `aliasDepth` threads the git-shell-alias recursion counter (see
@@ -4766,7 +4929,7 @@ function classifySegment(rawSegment, dialect, ctx, depth, budget, inheritedAssig
 // value must survive any ordinary wrapper hops (env/bash/sh/...) encountered afterward, exactly like
 // `depth`/`budget` already do, so alternating wrapper-hops and shell-alias-hops can never bypass the
 // combined recursion bound.
-function classifyCommandString(raw, initialDialect, ctx, depth, budget, inheritedAssignments, aliasDepth) {
+function classifyCommandString(raw, initialDialect, ctx, depth, budget, inheritedAssignments, aliasDepth, internalGitContext) {
   const effectiveDepth = depth || 0;
   const effectiveBudget = budget || { segments: 0 };
   const effectiveAliasDepth = aliasDepth || 0;
@@ -4781,7 +4944,7 @@ function classifyCommandString(raw, initialDialect, ctx, depth, budget, inherite
   if (seg.segments.length === 0) return deferResult();
   let worst = null;
   for (const s of seg.segments) {
-    const r = classifySegment(s, initialDialect, ctx, effectiveDepth, effectiveBudget, inheritedAssignments, effectiveAliasDepth);
+    const r = classifySegment(s, initialDialect, ctx, effectiveDepth, effectiveBudget, inheritedAssignments, effectiveAliasDepth, internalGitContext);
     worst = worseOf(worst, r);
   }
   return worst || deferResult();
