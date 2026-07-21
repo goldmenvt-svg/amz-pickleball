@@ -1354,22 +1354,31 @@ function parseGitGlobalOptions(tokens, assignments) {
 // discovered), following real git alias-chaining semantics: each hop's expansion may itself start
 // with global options (skipped via parseGitGlobalOptions) and its own trailing tokens, which are
 // prepended - in resolution order, innermost first - to the tokens the caller already had. Returns
-// `{subcommand, tail}` on success, `{shellAlias}` if a hop resolves to a `!`-prefixed shell alias
-// (which is not a plain subcommand rewrite and must be evaluated as its own shell command by the
-// caller), or `{ambiguous:true}` on a cycle, exceeding MAX_GIT_ALIAS_DEPTH, or an unresolved
-// `--config-env` reference inside an alias body - never silently falls through to defer.
+// `{subcommand, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch}` on success,
+// `{shellAlias, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch}` if a hop resolves to a `!`-
+// prefixed shell alias (which is not a plain subcommand rewrite and must be evaluated as its own
+// shell command by the caller), or `{ambiguous:true}` on a cycle, exceeding MAX_GIT_ALIAS_DEPTH, or
+// an unresolved `--config-env` reference inside an alias body - never silently falls through to
+// defer. R13 Blocker B: `selectorHits`/`nonAliasConfigOverrides`/`hasNoLazyFetch` accumulate across
+// EVERY hop of the chain (never reset per-hop) so a repository selector, a safe/unsafe
+// core.fsmonitor override, or a --no-lazy-fetch proof buried inside an alias BODY is never silently
+// dropped just because it didn't appear on the top-level command line - the caller (classifyGit)
+// merges these into the same floors it already computes for its own top-level `-c`/global options.
 function resolveGitAlias(startToken, aliasMap, assignments) {
   let token = startToken;
   const visited = new Set();
   let tail = [];
   let hops = 0;
+  const selectorHits = [];
+  const nonAliasConfigOverrides = [];
+  let hasNoLazyFetch = false;
   while (token !== undefined && Object.prototype.hasOwnProperty.call(aliasMap, token)) {
     if (visited.has(token)) return { ambiguous: true };
     visited.add(token);
     hops += 1;
     if (hops > MAX_GIT_ALIAS_DEPTH) return { ambiguous: true };
     const val = String(aliasMap[token]).trim();
-    if (val.startsWith('!')) return { shellAlias: val };
+    if (val.startsWith('!')) return { shellAlias: val, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch };
     // Real git splits an alias command-line value using its own internal quoting/escaping parser
     // (always POSIX-like backslash-escape rules, regardless of whatever outer dialect the top-level
     // command came from) - `p\ush` (a literal backslash, e.g. from a single-quoted top-level value
@@ -1383,13 +1392,16 @@ function resolveGitAlias(startToken, aliasMap, assignments) {
     for (const k of Object.keys(g.aliasMap)) {
       if (!Object.prototype.hasOwnProperty.call(aliasMap, k)) aliasMap[k] = g.aliasMap[k];
     }
+    for (const hit of g.selectorHits || []) selectorHits.push(hit);
+    for (const ov of g.nonAliasConfigOverrides || []) nonAliasConfigOverrides.push(ov);
+    if (g.hasNoLazyFetch) hasNoLazyFetch = true;
     const nextToken = bodyTokens[g.index];
     const rest = bodyTokens.slice(g.index + 1);
     tail = rest.concat(tail);
     token = nextToken;
   }
   if (token === undefined) return { ambiguous: true };
-  return { subcommand: token, tail };
+  return { subcommand: token, tail, selectorHits, nonAliasConfigOverrides, hasNoLazyFetch };
 }
 
 // `git submodule foreach [-q|--recursive]* <command>` runs `<command>` (a single shell-command-
@@ -1551,6 +1563,64 @@ function classifyGitConfigBearingValue(value, ctx) {
   const inner = classifyCommandString(cmdText, 'posix', ctx, 0, { segments: 0 });
   if (inner.decision === 'deny') return inner;
   return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git command sets a config value that runs a command this scanner could not fully resolve.' });
+}
+
+// R12 Blocker E / R13 Blocker B: core.fsmonitor also accepts a literal boolean (disabling git's
+// built-in filesystem-monitor integration entirely, not naming an external hook program) - a literal
+// safe value is not a command at all and must NOT go through the generic command-bearing-value ask
+// below. Shared between the top-level `-c`/config-override loop and the alias-body context merge so
+// both apply the exact same policy to a safe value found in either place.
+const FSMONITOR_SAFE_VALUE_RE = /^(false|0|no|off)$/i;
+
+// Classifies a single non-alias config override for the purposes of the running floor: a literal
+// safe core.fsmonitor value contributes no floor at all (`fsmonitorSafe: true`, the caller sets its
+// own fsmonitorDisabledProven flag); a command-bearing key's value is resolved via
+// classifyGitConfigBearingValue (may itself be a `deny`, which the caller must return immediately);
+// anything else floors to ask TAMPER, exactly as it always has for an override this scanner cannot
+// otherwise interpret.
+function classifyGitConfigOverrideForFloor(ov, ctx) {
+  if (/^core\.fsmonitor$/i.test(ov.key) && typeof ov.value === 'string' && FSMONITOR_SAFE_VALUE_RE.test(ov.value.trim())) {
+    return { fsmonitorSafe: true };
+  }
+  if (isGitCommandBearingConfigKey(ov.key)) {
+    return { floor: classifyGitConfigBearingValue(ov.value, ctx) };
+  }
+  return { floor: askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git command sets a config value that could not be resolved with confidence.' }) };
+}
+
+// Applies a list of non-alias config overrides (from the top-level command OR an alias body) to a
+// running floor, honoring the core.fsmonitor safe-value carve-out. A command-bearing override that
+// resolves to `deny` is surfaced via `denyResult` for the caller to return immediately - mirrors the
+// pre-existing top-level behavior (a `!`-prefixed value that confidently resolves to a protected
+// payload denies outright, regardless of which subcommand follows).
+function applyConfigOverridesToFloor(floor, overrides, ctx, fsmonitorProven) {
+  let resultFloor = floor;
+  let fsmonitorDisabledProven = fsmonitorProven;
+  for (const ov of overrides || []) {
+    const r = classifyGitConfigOverrideForFloor(ov, ctx);
+    if (r.fsmonitorSafe) { fsmonitorDisabledProven = true; continue; }
+    if (r.floor.decision === 'deny') return { floor: resultFloor, fsmonitorDisabledProven, denyResult: r.floor };
+    resultFloor = worseOf(resultFloor, r.floor);
+  }
+  return { floor: resultFloor, fsmonitorDisabledProven, denyResult: null };
+}
+
+// R12 Blocker D / R13 Blocker B: repository/config selector global options (-C/--git-dir/--work-tree/
+// --namespace/--bare) floor the decision, whether they appeared on the top-level command line or
+// inside a git alias body - -C/--git-dir/--work-tree select an entirely different (potentially
+// attacker-controlled) repository and config; --namespace/--bare change which refs/config are in
+// play. Shared between the top-level parse and the alias-context merge so both apply the identical
+// policy.
+function mergeSelectorHitsIntoFloor(floor, selectorHits) {
+  let result = floor;
+  for (const hit of selectorHits || []) {
+    if (hit.flag === '-C' || hit.flag === '--git-dir' || hit.flag === '--work-tree') {
+      result = worseOf(result, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation selects a different repository/config or work-tree location, which this scanner cannot audit.' }));
+    } else {
+      result = worseOf(result, askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git invocation changes the ref namespace or bare-repository mode, which this scanner does not model.' }));
+    }
+  }
+  return result;
 }
 
 // R9 fail-closed policy: only a subcommand PROVEN read-only may defer at the bottom of classifyGit -
@@ -1966,28 +2036,21 @@ function classifyGit(rest, ctx, assignments, dialect) {
   // Every non-alias `-c key=value`/`-c key` override must factor into the decision (R9 Section 8) -
   // a command-bearing key with a `!`-prefixed value can deny outright, regardless of which
   // subcommand follows (credential/editor/pager/filter hooks can fire for many git operations, not
-  // just an obviously-matching one); anything else floors to at least ask.
-  // R12 Blocker E: core.fsmonitor also accepts a literal boolean (disabling git's built-in
-  // filesystem-monitor integration entirely, not naming an external hook program) - a literal safe
-  // value here is not a command at all and must NOT go through the generic command-bearing-value ask
-  // below; it instead proves (for classifyGitReadonlySubcommand's benefit) that the refresh-time
-  // execution risk is closed for THIS invocation. Any other core.fsmonitor value (a hook path, `!cmd`,
-  // a dynamic token) still goes through the normal command-bearing-key handling unchanged.
-  const FSMONITOR_SAFE_VALUE_RE = /^(false|0|no|off)$/i;
+  // just an obviously-matching one); anything else floors to at least ask. R12 Blocker E:
+  // core.fsmonitor also accepts a literal boolean (disabling git's built-in filesystem-monitor
+  // integration entirely, not naming an external hook program) - a literal safe value here is not a
+  // command at all and must NOT go through the generic command-bearing-value ask below; it instead
+  // proves (for classifyGitReadonlySubcommand's benefit) that the refresh-time execution risk is
+  // closed for THIS invocation. `applyConfigOverridesToFloor`/`classifyGitConfigOverrideForFloor`
+  // are shared with the R13 Blocker B alias-body context merge below, so both apply the identical
+  // policy regardless of whether the override came from the top-level command line or an alias body.
   let configOverrideFloor = null;
   let fsmonitorDisabledProven = false;
-  for (const ov of parsed.nonAliasConfigOverrides || []) {
-    if (/^core\.fsmonitor$/i.test(ov.key) && typeof ov.value === 'string' && FSMONITOR_SAFE_VALUE_RE.test(ov.value.trim())) {
-      fsmonitorDisabledProven = true;
-      continue;
-    }
-    if (isGitCommandBearingConfigKey(ov.key)) {
-      const r = classifyGitConfigBearingValue(ov.value, ctx);
-      if (r.decision === 'deny') return r;
-      configOverrideFloor = worseOf(configOverrideFloor, r);
-    } else {
-      configOverrideFloor = worseOf(configOverrideFloor, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git command sets a config value that could not be resolved with confidence.' }));
-    }
+  {
+    const applied = applyConfigOverridesToFloor(configOverrideFloor, parsed.nonAliasConfigOverrides, ctx, fsmonitorDisabledProven);
+    if (applied.denyResult) return applied.denyResult;
+    configOverrideFloor = applied.floor;
+    fsmonitorDisabledProven = applied.fsmonitorDisabledProven;
   }
 
   // R12 Blocker F: --no-lazy-fetch (global option, tracked by parseGitGlobalOptions) or
@@ -2005,19 +2068,11 @@ function classifyGit(rest, ctx, assignments, dialect) {
   }
 
   // R12 Blocker D: repository/config selector global options (-C/--git-dir/--work-tree/--namespace/
-  // --bare) floor the decision - see parseGitGlobalOptions' selectorHits doc comment for why. -C/
-  // --git-dir/--work-tree select an entirely different (potentially attacker-controlled) repository
-  // and config; --namespace/--bare change which refs/config are in play. Combined via worseOf like
-  // every other floor here, so it can never PREEMPT a stronger result (e.g. `git -C x push` still
-  // denies GIT_PUSH) - it only ever raises a would-be weaker outcome.
-  let selectorFloor = null;
-  for (const hit of parsed.selectorHits || []) {
-    if (hit.flag === '-C' || hit.flag === '--git-dir' || hit.flag === '--work-tree') {
-      selectorFloor = worseOf(selectorFloor, askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this git invocation selects a different repository/config or work-tree location, which this scanner cannot audit.' }));
-    } else {
-      selectorFloor = worseOf(selectorFloor, askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git invocation changes the ref namespace or bare-repository mode, which this scanner does not model.' }));
-    }
-  }
+  // --bare) floor the decision - see parseGitGlobalOptions' selectorHits doc comment for why.
+  // Combined via worseOf like every other floor here, so it can never PREEMPT a stronger result (e.g.
+  // `git -C x push` still denies GIT_PUSH) - it only ever raises a would-be weaker outcome.
+  // mergeSelectorHitsIntoFloor is shared with the R13 Blocker B alias-body context merge below.
+  let selectorFloor = mergeSelectorHitsIntoFloor(null, parsed.selectorHits);
 
   const envCfg = collectGitConfigEnvAliases(assignments);
   for (const k of Object.keys(envCfg.aliasMap)) {
@@ -2052,14 +2107,39 @@ function classifyGit(rest, ctx, assignments, dialect) {
       if (resolved.ambiguous) {
         return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: git alias chain could not be resolved with confidence.' });
       }
+      // R13 Blocker B: whatever selector/config-override/lazy-fetch signal the alias BODY carried
+      // (across every hop of the chain, accumulated by resolveGitAlias) must merge into the SAME
+      // outer floors the top-level command's own `-c`/global options already feed - never reset,
+      // never silently dropped just because it came from inside an alias rather than the literal
+      // command line. Applied here BEFORE the shellAlias/subcommand branches below so it covers
+      // both.
+      {
+        const applied = applyConfigOverridesToFloor(configOverrideFloor, resolved.nonAliasConfigOverrides, ctx, fsmonitorDisabledProven);
+        if (applied.denyResult) return applied.denyResult;
+        configOverrideFloor = applied.floor;
+        fsmonitorDisabledProven = applied.fsmonitorDisabledProven;
+      }
+      selectorFloor = mergeSelectorHitsIntoFloor(selectorFloor, resolved.selectorHits);
+      if (resolved.hasNoLazyFetch) lazyFetchProven = true;
+
       if (resolved.shellAlias) {
-        // A `!`-prefixed alias value runs its payload as a shell command in its own right - resolve
-        // it the same way any other nested shell command is resolved, and prefer deny over a bare
-        // ask when the payload confidently resolves to a protected action (e.g. `!git push`).
+        // A `!`-prefixed alias value runs its payload as a shell command in its own right. Unlike a
+        // genuinely dynamic-runner payload (npm exec, git submodule foreach, ...), this text is
+        // fully known static config data at parse time, not a runtime-unknown value - when the
+        // payload is itself a `git ...` invocation, re-entering classifyCommandString re-derives its
+        // OWN selector/fsmonitor/lazy-fetch floors exactly as rigorously as a top-level command
+        // would, so that result (including a proven-safe defer) is trusted as-is rather than force-
+        // floored to a generic ask. A non-git shell payload keeps the prior conservative floor - an
+        // arbitrary shell command's bare "nothing matched" defer is not backed by the same proof
+        // chain, and R13 must not flip any existing "!<harmless-non-git-cmd>" -> ask test to defer.
         const shellCmd = resolved.shellAlias.slice(1).trim();
         if (shellCmd.length === 0) return askResult(RULE.COMPLEX);
         const inner = classifyCommandString(shellCmd, 'posix', ctx, 0, { segments: 0 });
         if (inner.decision === 'deny') return inner;
+        const shellBinary = extractBinaryAndRest(shellCmd, 'posix');
+        if (shellBinary && !shellBinary.ambiguous && basenameOf(shellBinary.first) === 'git') {
+          return inner;
+        }
         return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: this git alias runs a shell command that could not be fully resolved.' });
       }
       subcommand = resolved.subcommand;
@@ -2112,7 +2192,18 @@ function classifyGit(rest, ctx, assignments, dialect) {
     if (GIT_READONLY_SUBCOMMANDS.has(subcommand)) {
       return classifyGitReadonlySubcommand(subcommand, subRestTokens, subRestMeta, ctx, fsmonitorDisabledProven, lazyFetchProven);
     }
-    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized git subcommand.' });
+    // R13 Section 8: an alias can expand to a token sequence whose first word isn't a real git
+    // subcommand at all (e.g. `alias.y = "npm publish"`) - real git would try an external `git-npm`
+    // dispatch and fail, but this scanner's conservative worldview instead gives the token sequence
+    // one more chance: a final recursive classification as its own standalone command, exactly like
+    // a `!`-prefixed shell alias gets. resolvedOrFloor still floors an unresolved/defer/ask-UNKNOWN
+    // inner result up to the exact same generic ask this fallback always returned before - only a
+    // CONFIDENTLY resolved ask/deny from the inner classification is ever surfaced instead, so this
+    // can only ever raise (never lower) what would otherwise have been returned here.
+    const unrecognizedFloor = askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized git subcommand.' });
+    const payload = [subcommand].concat(subRestTokens).join(' ');
+    const inner = classifyCommandString(payload, 'posix', ctx, 0, { segments: 0 });
+    return resolvedOrFloor(inner, unrecognizedFloor);
   }
 
   const result = resolveSubcommandDecision();
@@ -3189,10 +3280,16 @@ function classifySimpleReadonlyCommand(bin, rest, dialect, ctx) {
 }
 
 const TAMPER_SRC_DEST_BINARIES = new Set(['cp', 'copy', 'copy-item', 'install']);
-const TAMPER_DEST_ONLY_BINARIES = new Set(['mv', 'move', 'ren', 'rename', 'move-item', 'ln', 'rsync']);
+const TAMPER_DEST_ONLY_BINARIES = new Set(['mv', 'move', 'ren', 'rename', 'move-item', 'ln']);
 const TAMPER_UNIFORM_BINARIES = new Set(['rm', 'rmdir', 'del', 'erase', 'remove-item', 'ri', 'set-content', 'add-content', 'out-file']);
+// R13 Blocker A: rsync gets its own dedicated source+destination classifier (classifyRsync) - its
+// option grammar (-a/-v/-z/..., --files-from, -e/--rsh, --rsync-path, ...) is entirely different from
+// cp/mv's (parseWriterOperands would misread rsync's own flags as unrecognized), and unlike cp/mv it
+// can name a REMOTE source or destination (rsync://, host:path, user@host:path) that must be
+// recognized as network egress, not just a local path this scanner never inspected before R13.
+const RSYNC_BINARIES = new Set(['rsync']);
 const TAMPER_MUTATION_BINARIES = new Set([
-  ...TAMPER_SRC_DEST_BINARIES, ...TAMPER_DEST_ONLY_BINARIES, ...TAMPER_UNIFORM_BINARIES,
+  ...TAMPER_SRC_DEST_BINARIES, ...TAMPER_DEST_ONLY_BINARIES, ...TAMPER_UNIFORM_BINARIES, ...RSYNC_BINARIES,
 ]);
 
 // A destination/tamper-target token whose escape/quote structure is unresolvable, or that contains
@@ -3319,8 +3416,222 @@ function classifyWriterDestination(bin, rest, dialect, ctx) {
   return null;
 }
 
+// ===================== R13 Blocker A: rsync source/destination classification =====================
+
+// A `[user@]host:path` remote-shell spec or a `host::module/path` rsync-daemon spec - real rsync's
+// own syntax, distinct from a UNC path or /dev/tcp special file. A bare single ASCII letter
+// immediately followed by `:` is a Windows drive letter (`C:/repo`), never a remote host, and is
+// deliberately excluded here (with no `user@` prefix) so a plain local absolute path is never
+// misread as a network target.
+function isRsyncRemoteSpec(cooked) {
+  if (typeof cooked !== 'string') return false;
+  if (/^rsync:\/\//i.test(cooked)) return true;
+  const m = /^([A-Za-z0-9._-]+@)?([A-Za-z0-9][A-Za-z0-9._-]*):(.*)$/.exec(cooked);
+  if (!m) return false;
+  const userPart = m[1];
+  const host = m[2];
+  if (!userPart && host.length === 1) return false;
+  return true;
+}
+
+// Combines the shared network-path detector (dev/tcp, dev/udp, plain UNC) with rsync's own remote-
+// spec forms (rsync://, host:path, user@host:path) and the `\\?\UNC\...` device-namespace UNC alias
+// (which classifyNetworkPathToken deliberately excludes, since that form is normally local-path-alias
+// territory handled by normalizeProtectedPath instead - here it is unambiguously a network share).
+function isRsyncNetworkTarget(cooked, ctx) {
+  if (typeof cooked !== 'string') return false;
+  if (classifyNetworkPathToken(cooked)) return true;
+  if (isRsyncRemoteSpec(cooked)) return true;
+  const norm = normalizeProtectedPath(cooked, ctx);
+  return !!(norm && norm.networkUnc);
+}
+
+function classifyRsyncNetworkToken(cooked, ctx) {
+  if (!isRsyncNetworkTarget(cooked, ctx)) return null;
+  return askResult(RULE.EGRESS, { safeMessage: 'Needs approval: this rsync operand references a network destination (UNC share, rsync:// URL, or remote host:path spec), not a local file.' });
+}
+
+// A source operand (positional source, --files-from/--exclude-from/--include-from/--password-file
+// value) goes through network-path, secret-read, dynamic/glob, and Windows-path-ambiguity policy -
+// the same four policies classifyReadSourceToken already applies elsewhere, plus rsync's own wider
+// network-spec recognition.
+function classifyRsyncSourceToken(tokenMeta, ctx) {
+  if (!tokenMeta || tokenMeta.ambiguous) return askResult(RULE.COMPLEX);
+  const netHit = classifyRsyncNetworkToken(tokenMeta.cooked, ctx);
+  if (netHit) return netHit;
+  if (tokenMeta.hasUnquotedGlob || tokenMeta.hasDynamicExpansion) {
+    return askResult(RULE.SECRET, { safeMessage: 'Needs approval: this command reads a file whose path contains an unresolved shell glob or expansion character.' });
+  }
+  if (isSecretPath(tokenMeta.cooked, ctx)) return denyResult(RULE.SECRET);
+  if (hasSecretAmbiguous83(tokenMeta.cooked, ctx)) {
+    return askResult(RULE.SECRET, { safeMessage: 'Needs approval: this path contains an 8.3 short-name-shaped component near a protected location and could not be confirmed safe.' });
+  }
+  return null;
+}
+
+// The destination operand goes through network-egress, protected-path tamper, dynamic/glob, and
+// Windows-path-ambiguity policy - checkTamperPath already covers protected-path/plain-UNC/device-UNC,
+// but rsync's own rsync://host:path remote-spec forms need the wider network check ahead of it (those
+// never resolve to anything checkTamperPath's local-path normalization would recognize).
+function classifyRsyncDestinationToken(tokenMeta, ctx) {
+  if (!tokenMeta || tokenMeta.ambiguous) return askResult(RULE.COMPLEX);
+  if (tokenMeta.hasUnquotedGlob || tokenMeta.hasDynamicExpansion) {
+    return askResult(RULE.TAMPER, { safeMessage: 'Needs approval: this command writes to a path containing an unresolved shell glob or expansion character.' });
+  }
+  const netHit = classifyRsyncNetworkToken(tokenMeta.cooked, ctx);
+  if (netHit) return netHit;
+  const tamperHit = checkTamperPath(tokenMeta.cooked, ctx);
+  if (tamperHit) return tamperHit;
+  if (/claude\.md$/i.test(tokenMeta.cooked.replace(/\\/g, '/'))) return askResult(RULE.TAMPER);
+  return null;
+}
+
+// `-e`/`--rsh`/`--rsync-path` name an external command rsync invokes for the remote-shell transport
+// or the remote rsync binary path - never a silent defer, deny on a confidently-resolved protected
+// payload, ask otherwise.
+function classifyRsyncCommandOptionValue(tokenMeta, ctx, label) {
+  const askFloor = askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: ' + label + ' runs an external command whose payload could not be fully resolved.' });
+  if (!tokenMeta || tokenMeta.ambiguous) return askFloor;
+  if (tokenMeta.hasUnquotedGlob || tokenMeta.hasDynamicExpansion) return askFloor;
+  const inner = classifyCommandString(tokenMeta.cooked, 'posix', ctx, 0, { segments: 0 });
+  return resolvedOrFloor(inner, askFloor);
+}
+
+// Known rsync boolean (no-argument) short/long flags - a conservative subset covering the common
+// mutation/behavior flags; anything else dash-prefixed and unrecognized floors to ask rather than
+// guessing whether it consumes a following value (same invariant as CP_MV_BOOLEAN_LETTERS).
+const RSYNC_BOOLEAN_LETTERS = 'avznrltpogDHASXhq8';
+const RSYNC_BOOLEAN_LONG_RE = /^--(archive|verbose|dry-run|recursive|links|times|perms|owner|group|devices|specials|hard-links|acls|xattrs|sparse|human-readable|quiet|progress|delete|delete-before|delete-during|delete-after|delete-excluded|force|checksum|update|inplace|partial|compress|stats|itemize-changes|prune-empty-dirs|one-file-system|numeric-ids|whole-file|no-whole-file|del|8-bit-output)$/;
+
+function isRsyncBooleanFlag(raw) {
+  if (RSYNC_BOOLEAN_LONG_RE.test(raw)) return true;
+  if (/^-[a-zA-Z0-9]+$/.test(raw) && Array.from(raw.slice(1)).every((c) => RSYNC_BOOLEAN_LETTERS.indexOf(c) !== -1)) return true;
+  return false;
+}
+
+// Value-bearing rsync options whose value this scanner does not need to inspect for security purposes
+// (a pattern, a numeric limit, a chmod spec, ...) - consumed as flag+value (or flag=value) so the
+// value token is never mistaken for a positional source/destination operand or an unrecognized flag.
+const RSYNC_OPAQUE_VALUE_FLAGS = new Set(['--exclude', '--include', '--filter', '-f', '--bwlimit', '--timeout', '--port', '--max-size', '--min-size', '--suffix', '--backup-dir', '--compare-dest', '--link-dest', '--copy-dest', '--partial-dir', '--log-file', '--out-format', '--chmod', '--chown']);
+const RSYNC_OPAQUE_VALUE_EQ_RE = /^--(exclude|include|filter|bwlimit|timeout|port|max-size|min-size|suffix|backup-dir|compare-dest|link-dest|copy-dest|partial-dir|log-file|out-format|chmod|chown)=/;
+
+// `rsync [OPTION...] SOURCE... DEST` - every positional operand except the last is a source, the
+// last is the destination; fewer than 2 positional operands (after option parsing) leaves the
+// source/destination split undetermined. Unlike cp/mv, rsync has no -t/--target-directory equivalent
+// and no directory-form-destination ambiguity to resolve.
+function parseRsyncOperands(rest, dialect) {
+  const td = tokenizeDialectWords(rest, dialect);
+  if (!td.ok) return { ambiguous: true };
+  const tokens = td.tokens;
+  const sourceFileOptions = {};
+  const commandOptions = {};
+  let endOfOptions = false;
+  const positional = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (endOfOptions) { positional.push(t); i += 1; continue; }
+    if (t.raw === '--') { endOfOptions = true; i += 1; continue; }
+
+    if (t.raw === '--files-from') { const v = tokens[i + 1]; if (!v) return { ambiguous: true }; sourceFileOptions.filesFrom = v; i += 2; continue; }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--files-from=') === 0) {
+      sourceFileOptions.filesFrom = { cooked: t.cooked.slice('--files-from='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+    if (t.raw === '--exclude-from') { const v = tokens[i + 1]; if (!v) return { ambiguous: true }; sourceFileOptions.excludeFrom = v; i += 2; continue; }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--exclude-from=') === 0) {
+      sourceFileOptions.excludeFrom = { cooked: t.cooked.slice('--exclude-from='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+    if (t.raw === '--include-from') { const v = tokens[i + 1]; if (!v) return { ambiguous: true }; sourceFileOptions.includeFrom = v; i += 2; continue; }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--include-from=') === 0) {
+      sourceFileOptions.includeFrom = { cooked: t.cooked.slice('--include-from='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+    if (t.raw === '--password-file') { const v = tokens[i + 1]; if (!v) return { ambiguous: true }; sourceFileOptions.passwordFile = v; i += 2; continue; }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--password-file=') === 0) {
+      sourceFileOptions.passwordFile = { cooked: t.cooked.slice('--password-file='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+
+    if (t.raw === '-e') { const v = tokens[i + 1]; if (!v) return { ambiguous: true }; commandOptions.rsh = v; i += 2; continue; }
+    if (t.raw === '--rsh') { const v = tokens[i + 1]; if (!v) return { ambiguous: true }; commandOptions.rsh = v; i += 2; continue; }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--rsh=') === 0) {
+      commandOptions.rsh = { cooked: t.cooked.slice('--rsh='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+    if (t.raw === '--rsync-path') { const v = tokens[i + 1]; if (!v) return { ambiguous: true }; commandOptions.rsyncPath = v; i += 2; continue; }
+    if (typeof t.cooked === 'string' && t.cooked.indexOf('--rsync-path=') === 0) {
+      commandOptions.rsyncPath = { cooked: t.cooked.slice('--rsync-path='.length), ambiguous: t.ambiguous, hasUnquotedGlob: t.hasUnquotedGlob, hasDynamicExpansion: t.hasDynamicExpansion };
+      i += 1; continue;
+    }
+
+    if (RSYNC_OPAQUE_VALUE_FLAGS.has(t.raw)) {
+      if (!tokens[i + 1]) return { ambiguous: true };
+      i += 2; continue;
+    }
+    if (RSYNC_OPAQUE_VALUE_EQ_RE.test(t.raw)) { i += 1; continue; }
+
+    if (isRsyncBooleanFlag(t.raw)) { i += 1; continue; }
+    if (t.raw[0] === '-' && t.raw !== '-') return { unknownOption: true };
+    positional.push(t);
+    i += 1;
+  }
+
+  if (positional.length < 2) {
+    return { ok: true, sources: [], destination: null, sourceFileOptions, commandOptions, insufficientOperands: true };
+  }
+  const destination = positional[positional.length - 1];
+  const sources = positional.slice(0, -1);
+  return { ok: true, sources, destination, sourceFileOptions, commandOptions };
+}
+
+function classifyRsync(rest, ctx, dialect) {
+  const parsed = parseRsyncOperands(rest, dialect);
+  if (parsed.ambiguous) return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: rsync command arguments could not be resolved with confidence.' });
+  if (parsed.unknownOption) {
+    return askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: unrecognized option shape for rsync.' });
+  }
+
+  let result = null;
+
+  if (parsed.commandOptions.rsh !== undefined) {
+    const hit = classifyRsyncCommandOptionValue(parsed.commandOptions.rsh, ctx, 'this rsync -e/--rsh option');
+    if (hit.decision === 'deny') return hit;
+    result = worseOf(result, hit);
+  }
+  if (parsed.commandOptions.rsyncPath !== undefined) {
+    const hit = classifyRsyncCommandOptionValue(parsed.commandOptions.rsyncPath, ctx, 'this rsync --rsync-path option');
+    if (hit.decision === 'deny') return hit;
+    result = worseOf(result, hit);
+  }
+
+  for (const key of ['filesFrom', 'excludeFrom', 'includeFrom', 'passwordFile']) {
+    const tok = parsed.sourceFileOptions[key];
+    if (tok === undefined) continue;
+    const hit = classifyRsyncSourceToken(tok, ctx);
+    if (hit) result = worseOf(result, hit);
+  }
+
+  if (parsed.insufficientOperands) {
+    return worseOf(result, askResult(RULE.COMPLEX, { safeMessage: 'Needs approval: rsync source/destination could not be determined from this command.' }));
+  }
+
+  for (const src of parsed.sources) {
+    const hit = classifyRsyncSourceToken(src, ctx);
+    if (hit) result = worseOf(result, hit);
+  }
+
+  const destHit = classifyRsyncDestinationToken(parsed.destination, ctx);
+  if (destHit) result = worseOf(result, destHit);
+
+  return result;
+}
+
 function classifyShellMutationTamper(bin, rest, segment, dialect, ctx) {
   if (!TAMPER_MUTATION_BINARIES.has(bin)) return null;
+
+  if (RSYNC_BINARIES.has(bin)) return classifyRsync(rest, ctx, dialect);
 
   if (TAMPER_SRC_DEST_BINARIES.has(bin) || TAMPER_DEST_ONLY_BINARIES.has(bin)) {
     return classifyWriterDestination(bin, rest, dialect, ctx);

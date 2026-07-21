@@ -1186,8 +1186,8 @@ test('35B. alias chain exceeding MAX_GIT_ALIAS_DEPTH -> ask, not defer', () => {
 test('35B. alias value starting with a git global option is not truncated to its first token -> deny', () => {
   assertDecision(classifyBash('git -c alias.p="-c alias.q=push q" p'), 'deny', hook.RULE.GIT_PUSH);
 });
-test('35B. alias value starting with -C global option resolves to harmless subcommand -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
-  assertDecision(classifyBash('git -c alias.p="-C /tmp status" p'), 'ask', hook.RULE.COMPLEX);
+test('35B. alias value starting with -C global option resolves to harmless subcommand -> ask TAMPER (R13 Blocker B: alias-body selector now propagates into the outer selectorFloor, was ask COMPLEX from the fsmonitor floor alone)', () => {
+  assertDecision(classifyBash('git -c alias.p="-C /tmp status" p'), 'ask', hook.RULE.TAMPER);
 });
 test('35B. negative control: alias to harmless subcommand -> ask COMPLEX (R12 Blocker E: fsmonitor not proven disabled, was defer)', () => {
   assertDecision(classifyBash('git -c alias.p=status p'), 'ask', hook.RULE.COMPLEX);
@@ -3512,5 +3512,300 @@ test('IO 41: required negative controls all defer through the real process (no h
     if (r.stdout.trim() !== '') decision = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision;
     assert.notEqual(decision, 'deny', `must not hard-deny: ${cmd}`);
     assert.equal(r.stdout.trim(), '', `must defer (no stdout) for: ${cmd}`);
+  }
+});
+
+// ===================== 42: R13 - rsync source classification and Git alias security context =====================
+
+// --- 42A: Blocker A - network source/destination forms ---
+test('42A. rsync //server/share/file local.txt -> ask EGRESS (plain UNC source)', () => {
+  assertDecision(classifyBash('rsync //server/share/file local.txt'), 'ask', hook.RULE.EGRESS);
+});
+test("42A. rsync '\\\\server\\share\\file' local.txt -> ask EGRESS (backslash UNC source)", () => {
+  assertDecision(classifyBash(String.raw`rsync '\\server\share\file' local.txt`), 'ask', hook.RULE.EGRESS);
+});
+test('42A. rsync rsync://example.com/module/file local.txt -> ask EGRESS (rsync daemon URL source)', () => {
+  assertDecision(classifyBash('rsync rsync://example.com/module/file local.txt'), 'ask', hook.RULE.EGRESS);
+});
+test('42A. rsync example.com:/file local.txt -> ask EGRESS (remote-shell host:path source)', () => {
+  assertDecision(classifyBash('rsync example.com:/file local.txt'), 'ask', hook.RULE.EGRESS);
+});
+test('42A. rsync user@example.com:/file local.txt -> ask EGRESS (user@host:path source)', () => {
+  assertDecision(classifyBash('rsync user@example.com:/file local.txt'), 'ask', hook.RULE.EGRESS);
+});
+test('42A. rsync local.txt example.com:/destination -> ask EGRESS (remote destination)', () => {
+  assertDecision(classifyBash('rsync local.txt example.com:/destination'), 'ask', hook.RULE.EGRESS);
+});
+test("42A. rsync '\\\\?\\UNC\\server\\share\\file' local.txt -> ask EGRESS (device-namespace UNC source)", () => {
+  assertDecision(classifyBash(String.raw`rsync '\\?\UNC\server\share\file' local.txt`), 'ask', hook.RULE.EGRESS);
+});
+test('42A. negative control: rsync C:/repo/local.txt backup.txt -> not EGRESS (drive letter is not a remote host)', () => {
+  const r = classifyBash('rsync C:/repo/local.txt backup.txt');
+  assert.notEqual(r.ruleId, hook.RULE.EGRESS);
+});
+
+// --- 42B: Blocker A - secret-read / dynamic-glob / Windows-ambiguity source policy ---
+test('42B. rsync .env local.txt -> deny SECRET (exact secret source)', () => {
+  assertDecision(classifyBash('rsync .env local.txt'), 'deny', hook.RULE.SECRET);
+});
+test('42B. rsync C:/repo/ENV~1 local.txt -> ask SECRET (8.3-ambiguous source near repo root)', () => {
+  assertDecision(classifyBash('rsync C:/repo/ENV~1 local.txt'), 'ask', hook.RULE.SECRET);
+});
+test('42B. rsync "$SRC" local.txt -> ask (dynamic source, not defer)', () => {
+  const r = classifyBash('rsync "$SRC" local.txt');
+  assert.notEqual(r.decision, 'defer');
+});
+test('42B. rsync src?.txt local.txt -> ask (unquoted glob source, not defer)', () => {
+  const r = classifyBash('rsync src?.txt local.txt');
+  assert.notEqual(r.decision, 'defer');
+});
+
+// --- 42C: Blocker A - source-file options ---
+test('42C. rsync --files-from=.env source/ destination/ -> deny SECRET', () => {
+  assertDecision(classifyBash('rsync --files-from=.env source/ destination/'), 'deny', hook.RULE.SECRET);
+});
+test('42C. rsync --exclude-from=.env source/ destination/ -> deny SECRET', () => {
+  assertDecision(classifyBash('rsync --exclude-from=.env source/ destination/'), 'deny', hook.RULE.SECRET);
+});
+test('42C. rsync --include-from=.env source/ destination/ -> deny SECRET', () => {
+  assertDecision(classifyBash('rsync --include-from=.env source/ destination/'), 'deny', hook.RULE.SECRET);
+});
+test('42C. rsync --password-file=.env source/ destination/ -> deny SECRET (exact secret)', () => {
+  assertDecision(classifyBash('rsync --password-file=.env source/ destination/'), 'deny', hook.RULE.SECRET);
+});
+test('42C. rsync --password-file="$PW" source/ destination/ -> ask (dynamic, not defer)', () => {
+  const r = classifyBash('rsync --password-file="$PW" source/ destination/');
+  assert.notEqual(r.decision, 'defer');
+});
+test('42C. rsync --files-from harmless.txt source/ destination/ -> not hard-deny (non-secret file option)', () => {
+  const r = classifyBash('rsync --files-from harmless.txt source/ destination/');
+  assert.notEqual(r.decision, 'deny');
+});
+
+// --- 42D: Blocker A - command-bearing options ---
+test("42D. rsync -e 'git push' source/ destination/ -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("rsync -e 'git push' source/ destination/"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("42D. rsync --rsh='git push' source/ destination/ -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("rsync --rsh='git push' source/ destination/"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("42D. rsync --rsync-path='npm publish' source/ destination/ -> deny PUBLISH", () => {
+  assertDecision(classifyBash("rsync --rsync-path='npm publish' source/ destination/"), 'deny', hook.RULE.PUBLISH);
+});
+test("42D. rsync -e 'echo hi' source/ destination/ -> ask, not deny (harmless payload, still a command-bearing option)", () => {
+  const r = classifyBash("rsync -e 'echo hi' source/ destination/");
+  assert.notEqual(r.decision, 'deny');
+  assert.notEqual(r.decision, 'defer');
+});
+
+// --- 42E: Blocker A - source/destination distinction and unsupported options ---
+test('42E. rsync a b c dest -> every positional except the last is a source', () => {
+  assertDecision(classifyBash('rsync .env b c dest'), 'deny', hook.RULE.SECRET);
+});
+test('42E. rsync --unknown-future-flag src/ dest/ -> ask COMPLEX (unsupported option, not defer)', () => {
+  assertDecision(classifyBash('rsync --unknown-future-flag src/ dest/'), 'ask', hook.RULE.COMPLEX);
+});
+test('42E. rsync onlyonearg -> ask COMPLEX (source/destination undetermined)', () => {
+  assertDecision(classifyBash('rsync onlyonearg'), 'ask', hook.RULE.COMPLEX);
+});
+test('42E. negative control: rsync README.md backup.txt -> not hard-deny', () => {
+  const r = classifyBash('rsync README.md backup.txt');
+  assert.notEqual(r.decision, 'deny');
+});
+test('42E. negative control: rsync -a src/ backup/ -> not hard-deny (recognized boolean flags)', () => {
+  const r = classifyBash('rsync -a src/ backup/');
+  assert.notEqual(r.decision, 'deny');
+});
+test('42E. rsync destination protected path -> deny TAMPER (protected-path policy still applies)', () => {
+  assertDecision(classifyBash('rsync harmless.txt .claude/settings.json'), 'deny', hook.RULE.TAMPER);
+});
+
+// --- 42F: Blocker B - selector floor propagation through a single-hop alias ---
+test('42F. git -c alias.x=\'-C C:/other status\' x -> ask TAMPER (selector proven from alias body)', () => {
+  assertDecision(classifyBash("git -c alias.x='-C C:/other status' x"), 'ask', hook.RULE.TAMPER);
+});
+test('42F. git -c alias.x=\'--git-dir=C:/other/.git --work-tree=C:/other status\' x -> ask TAMPER', () => {
+  assertDecision(classifyBash("git -c alias.x='--git-dir=C:/other/.git --work-tree=C:/other status' x"), 'ask', hook.RULE.TAMPER);
+});
+test('42F. git -c alias.x=\'-C C:/other -c core.fsmonitor=false status\' x -> ask TAMPER (selector still floors even with a safe fsmonitor override present)', () => {
+  assertDecision(classifyBash("git -c alias.x='-C C:/other -c core.fsmonitor=false status' x"), 'ask', hook.RULE.TAMPER);
+});
+test('42F. git -c alias.x=\'--namespace=test status\' x -> ask COMPLEX', () => {
+  assertDecision(classifyBash("git -c alias.x='--namespace=test status' x"), 'ask', hook.RULE.COMPLEX);
+});
+test('42F. git -c alias.x=\'--bare status\' x -> ask COMPLEX', () => {
+  assertDecision(classifyBash("git -c alias.x='--bare status' x"), 'ask', hook.RULE.COMPLEX);
+});
+
+// --- 42G: Section 6 - safe core.fsmonitor override through an alias can defer ---
+test("42G. git -c alias.x='-c core.fsmonitor=false status' x -> defer (safe literal value proven)", () => {
+  assertDecision(classifyBash("git -c alias.x='-c core.fsmonitor=false status' x"), 'defer');
+});
+test("42G. git -c alias.x='-c core.fsmonitor=0 status' x -> defer", () => {
+  assertDecision(classifyBash("git -c alias.x='-c core.fsmonitor=0 status' x"), 'defer');
+});
+test("42G. git -c alias.x='-c core.fsmonitor=no status' x -> defer", () => {
+  assertDecision(classifyBash("git -c alias.x='-c core.fsmonitor=no status' x"), 'defer');
+});
+test("42G. git -c alias.x='-c core.fsmonitor=off status' x -> defer", () => {
+  assertDecision(classifyBash("git -c alias.x='-c core.fsmonitor=off status' x"), 'defer');
+});
+test("42G. git -c alias.x='-c core.fsmonitor=true status' x -> ask, not defer (unsafe literal)", () => {
+  const r = classifyBash("git -c alias.x='-c core.fsmonitor=true status' x");
+  assert.notEqual(r.decision, 'defer');
+});
+test('42G. git -c alias.x=\'-c core.fsmonitor=$VALUE status\' x -> ask, not defer (dynamic value)', () => {
+  const r = classifyBash('git -c alias.x=\'-c core.fsmonitor=$VALUE status\' x');
+  assert.notEqual(r.decision, 'defer');
+});
+test("42G. git -c alias.x='-c core.fsmonitor=helper-script status' x -> ask, not defer (unresolvable program name)", () => {
+  const r = classifyBash("git -c alias.x='-c core.fsmonitor=helper-script status' x");
+  assert.notEqual(r.decision, 'defer');
+});
+
+// --- 42H: Section 7 - lazy-fetch proof through an alias can defer ---
+test("42H. git -c alias.x='--no-lazy-fetch log -1 --oneline' x -> defer", () => {
+  assertDecision(classifyBash("git -c alias.x='--no-lazy-fetch log -1 --oneline' x"), 'defer');
+});
+test("42H. git -c alias.x='--no-lazy-fetch show --stat HEAD' x -> defer", () => {
+  assertDecision(classifyBash("git -c alias.x='--no-lazy-fetch show --stat HEAD' x"), 'defer');
+});
+test("42H. git -c alias.x='--no-lazy-fetch ls-tree HEAD' x -> defer", () => {
+  assertDecision(classifyBash("git -c alias.x='--no-lazy-fetch ls-tree HEAD' x"), 'defer');
+});
+test("42H. git -c alias.x='--no-lazy-fetch cat-file -t HEAD' x -> defer", () => {
+  assertDecision(classifyBash("git -c alias.x='--no-lazy-fetch cat-file -t HEAD' x"), 'defer');
+});
+test("42H. negative control: git -c alias.x='log -1 --oneline' x -> ask EGRESS (no proof)", () => {
+  assertDecision(classifyBash("git -c alias.x='log -1 --oneline' x"), 'ask', hook.RULE.EGRESS);
+});
+test("42H. negative control: git -c alias.x='show --stat HEAD' x -> ask EGRESS (no proof)", () => {
+  assertDecision(classifyBash("git -c alias.x='show --stat HEAD' x"), 'ask', hook.RULE.EGRESS);
+});
+test("42H. negative control: git -c alias.x='ls-tree HEAD' x -> ask EGRESS (no proof)", () => {
+  assertDecision(classifyBash("git -c alias.x='ls-tree HEAD' x"), 'ask', hook.RULE.EGRESS);
+});
+test("42H. negative control: git -c alias.x='cat-file -t HEAD' x -> ask EGRESS (no proof)", () => {
+  assertDecision(classifyBash("git -c alias.x='cat-file -t HEAD' x"), 'ask', hook.RULE.EGRESS);
+});
+
+// --- 42I: Section 8 - protected payload precedence (deny never weakened by a floor) ---
+test("42I. git -c alias.x='-C C:/other push' x -> deny GIT_PUSH (selector never preempts deny)", () => {
+  assertDecision(classifyBash("git -c alias.x='-C C:/other push' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("42I. git -c alias.x='--git-dir=C:/other/.git push' x -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git -c alias.x='--git-dir=C:/other/.git push' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("42I. git -c alias.x='-c core.fsmonitor=false push' x -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git -c alias.x='-c core.fsmonitor=false push' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test("42I. git -c alias.x='--no-lazy-fetch push' x -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git -c alias.x='--no-lazy-fetch push' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('42I. git -c alias.x=\'-C C:/other -c alias.y="npm publish" y\' x -> deny PUBLISH (nested inline alias resolves confidently)', () => {
+  assertDecision(classifyBash('git -c alias.x=\'-C C:/other -c alias.y="npm publish" y\' x'), 'deny', hook.RULE.PUBLISH);
+});
+
+// --- 42J: Section 9 - nested Git aliases (context accumulates across every hop) ---
+test("42J. git -c alias.a=b -c alias.b='-C C:/other status' a -> ask TAMPER (selector from hop 2)", () => {
+  assertDecision(classifyBash("git -c alias.a=b -c alias.b='-C C:/other status' a"), 'ask', hook.RULE.TAMPER);
+});
+test("42J. git -c alias.a=b -c alias.b='-c core.fsmonitor=false status' a -> defer (safe fsmonitor from hop 2)", () => {
+  assertDecision(classifyBash("git -c alias.a=b -c alias.b='-c core.fsmonitor=false status' a"), 'defer');
+});
+test("42J. git -c alias.a=b -c alias.b='--no-lazy-fetch log -1 --oneline' a -> defer (lazy-fetch proof from hop 2)", () => {
+  assertDecision(classifyBash("git -c alias.a=b -c alias.b='--no-lazy-fetch log -1 --oneline' a"), 'defer');
+});
+test("42J. git -c alias.a=b -c alias.b='-C C:/other push' a -> deny GIT_PUSH (deny survives nested selector floor)", () => {
+  assertDecision(classifyBash("git -c alias.a=b -c alias.b='-C C:/other push' a"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('42J. alias cycle a=b, b=a -> ask COMPLEX, not defer', () => {
+  assertDecision(classifyBash('git -c alias.a=b -c alias.b=a a'), 'ask', hook.RULE.COMPLEX);
+});
+test('42J. alias chain exceeding MAX_GIT_ALIAS_DEPTH still ask, not defer (budget not reset by R13 changes)', () => {
+  assertDecision(
+    classifyBash('git -c alias.a1=a2 -c alias.a2=a3 -c alias.a3=a4 -c alias.a4=a5 -c alias.a5=a6 -c alias.a6=a7 -c alias.a7=push a1'),
+    'ask', hook.RULE.COMPLEX
+  );
+});
+
+// --- 42K: Section 10 - shell aliases (!) inside Git aliases preserve outer Git security context ---
+test("42K. git -c alias.x='!git -C C:/other status' x -> ask TAMPER (selector detected inside the re-parsed shell command)", () => {
+  assertDecision(classifyBash("git -c alias.x='!git -C C:/other status' x"), 'ask', hook.RULE.TAMPER);
+});
+test("42K. git -c alias.x='!git -c core.fsmonitor=false status' x -> defer (safe fsmonitor proof trusted through the shell-alias boundary)", () => {
+  assertDecision(classifyBash("git -c alias.x='!git -c core.fsmonitor=false status' x"), 'defer');
+});
+test("42K. git -c alias.x='!git --no-lazy-fetch log -1 --oneline' x -> defer (lazy-fetch proof trusted through the shell-alias boundary)", () => {
+  assertDecision(classifyBash("git -c alias.x='!git --no-lazy-fetch log -1 --oneline' x"), 'defer');
+});
+test("42K. git -c alias.x='!git -C C:/other push' x -> deny GIT_PUSH", () => {
+  assertDecision(classifyBash("git -c alias.x='!git -C C:/other push' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+test('42K. negative control: git -c alias.x=\'!echo hi\' x -> ask COMPLEX, not defer (non-git shell payload keeps the prior conservative floor - R11-era test, unaffected by R13)', () => {
+  assertDecision(classifyBash("git -c alias.x='!echo hi' x"), 'ask', hook.RULE.COMPLEX);
+});
+test('42K. negative control: git -c alias.x=\'!git push\' x -> deny GIT_PUSH (already worked pre-R13, confirms no regression)', () => {
+  assertDecision(classifyBash("git -c alias.x='!git push' x"), 'deny', hook.RULE.GIT_PUSH);
+});
+
+// ===================== Direct hook I/O tests (R13 Section 11 gate) =====================
+
+test('IO 42: required rsync and Git alias-context fixtures never defer, never leak raw command, no crash', () => {
+  const required = [
+    'rsync //server/share/file local.txt',
+    'rsync rsync://example.com/module/file local.txt',
+    'rsync example.com:/file local.txt',
+    'rsync local.txt example.com:/destination',
+    'rsync .env local.txt',
+    'rsync C:/repo/ENV~1 local.txt',
+    'rsync --files-from=.env source/ destination/',
+    'rsync --password-file=.env source/ destination/',
+    "rsync -e 'git push' source/ destination/",
+    "rsync --rsync-path='npm publish' source/ destination/",
+
+    "git -c alias.x='-C C:/other status' x",
+    "git -c alias.x='--git-dir=C:/other/.git --work-tree=C:/other status' x",
+    "git -c alias.x='-C C:/other -c core.fsmonitor=false status' x",
+    "git -c alias.x='log -1 --oneline' x",
+    "git -c alias.x='-C C:/other push' x",
+    "git -c alias.a=b -c alias.b='-C C:/other status' a",
+    "git -c alias.a=b -c alias.b='-C C:/other push' a",
+  ];
+  for (const cmd of required) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    assert.notEqual(r.stdout.trim(), '', `must not silently defer: ${cmd}`);
+    const parsed = JSON.parse(r.stdout);
+    assert.notEqual(parsed.hookSpecificOutput.permissionDecision, 'defer', `must not defer: ${cmd}`);
+    assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), `must not leak raw command for: ${cmd}`);
+  }
+});
+
+test('IO 42: required negative controls all defer or at least never hard-deny through the real process', () => {
+  const deferNegatives = [
+    "git -c alias.x='-c core.fsmonitor=false status' x",
+    "git -c alias.x='--no-lazy-fetch log -1 --oneline' x",
+    "git -c alias.a=b -c alias.b='-c core.fsmonitor=false status' a",
+    "git -c alias.a=b -c alias.b='--no-lazy-fetch log -1 --oneline' a",
+  ];
+  for (const cmd of deferNegatives) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    assert.equal(r.stdout.trim(), '', `must defer (no stdout) for: ${cmd}`);
+  }
+  const noHardDenyNegatives = ['rsync README.md backup.txt', 'rsync -a src/ backup/'];
+  for (const cmd of noHardDenyNegatives) {
+    const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+    const r = runHookProcess(fixture);
+    assert.equal(r.status, 0, `exit code for: ${cmd}`);
+    assert.equal(r.stderr, '', `stderr for: ${cmd}`);
+    let decision = 'defer';
+    if (r.stdout.trim() !== '') decision = JSON.parse(r.stdout).hookSpecificOutput.permissionDecision;
+    assert.notEqual(decision, 'deny', `must not hard-deny: ${cmd}`);
   }
 });
