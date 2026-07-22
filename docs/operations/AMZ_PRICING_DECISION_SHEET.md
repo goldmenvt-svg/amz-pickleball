@@ -3,8 +3,12 @@
 > **Trạng thái:** Chờ Owner chốt — chưa áp dụng thay đổi nào vào production.
 > Tài liệu này tổng hợp từ Phase 7A (Pricing/Product Ops Audit) thành các quyết định cụ thể cần Owner trả lời trước khi Claude Code triển khai Phase 7C.
 > Không tự sửa `data/pricing.json`, `index.html`, hay booking logic cho tới khi Owner chốt từng mục.
+>
+> **Tài liệu này là bản ghi quyết định/làm việc tại thời điểm soạn, không phải
+> nguồn giá hiện hành. Mọi giá và ưu đãi hiện hành phải đọc trực tiếp từ
+> `data/pricing.json`. Các checkbox chưa hoàn tất vẫn cần Owner quyết định.**
 
-## 1. Trạng thái hiện tại
+## 1. Trạng thái được ghi nhận tại thời điểm soạn
 
 - **Giá thuê sân đang có:** Thứ 2–6 (05:00–16:00) 70.000đ/giờ; Thứ 7–CN (05:00–14:00) 100.000đ/giờ — cả 2 lấy từ `data/pricing.json`, hiển thị đúng trên `index.html`.
 - **Giá Social đang có:** 350.000đ/tháng — lấy từ `data/pricing.json`.
@@ -16,10 +20,10 @@
 
 | Sản phẩm | Giá hiện tại | Nguồn | Trạng thái |
 |---|---|---|---|
-| Thuê sân Thứ 2–6, 05:00–16:00 | 70.000đ/giờ | `data/pricing.json` | Đang áp dụng |
-| Thuê sân Thứ 7–CN, 05:00–14:00 | 100.000đ/giờ | `data/pricing.json` | Đang áp dụng |
-| Social | 350.000đ/tháng | `data/pricing.json` | Đang áp dụng, chưa rõ quyền lợi chi tiết |
-| Xé vé | 40.000đ/lần | `data/pricing.json` | Đang áp dụng, chưa rõ "1 lần" là gì |
+| Thuê sân Thứ 2–6, 05:00–16:00 | 70.000đ/giờ | `data/pricing.json` | Được ghi là đang áp dụng tại thời điểm soạn |
+| Thuê sân Thứ 7–CN, 05:00–14:00 | 100.000đ/giờ | `data/pricing.json` | Được ghi là đang áp dụng tại thời điểm soạn |
+| Social | 350.000đ/tháng | `data/pricing.json` | Được ghi là đang áp dụng tại thời điểm soạn, chưa rõ quyền lợi chi tiết |
+| Xé vé | 40.000đ/lần | `data/pricing.json` | Được ghi là đang áp dụng tại thời điểm soạn, chưa rõ "1 lần" là gì |
 | Coaching | Từ 500K/buổi | Hardcode trong `index.html` | Đang hiển thị, chưa đồng bộ vào `data/pricing.json` |
 
 ## 3. Khung giờ cần Owner chốt
