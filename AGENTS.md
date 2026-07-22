@@ -34,12 +34,14 @@ context, data, permissions, or decisions for another project.
 
 `git push`, `git merge`, opening/updating a pull request, deploy/publish,
 writing Firebase data or calling a production mutation endpoint, and changing
-DNS/Vercel/GitHub settings or secrets are **owner-only**: the agent never
-performs these itself. The owner can perform any of these at any time. The
-owner approving a review or a commit does **not** automatically authorize
-push, merge, PR, or deploy — each owner-only action needs the owner to either
-do it themselves or explicitly authorize that exact action. The agent may
-`git commit` only once the owner has approved that exact commit's content.
+DNS/Vercel/GitHub settings or secrets are **owner-only**. The owner must
+perform these owner-only actions themselves. No approval or authorization
+converts an owner-only action into an agent action. Approval of a review or
+commit does not authorize the agent to push, merge, open/update a pull
+request, deploy, publish, modify production, or change external settings.
+Committing is separate and narrower: the agent may `git commit` only once
+the owner has approved that exact commit's content — that approval covers
+the commit alone, not any owner-only action.
 
 ## Sources of truth
 

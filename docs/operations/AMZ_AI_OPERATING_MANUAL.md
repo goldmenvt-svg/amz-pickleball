@@ -105,11 +105,13 @@
 - Thay đổi DNS, Vercel, hoặc GitHub settings
 - Thay đổi secrets/credentials
 
-Owner có thể tự thực hiện các hành động OWNER-ONLY này bất cứ lúc nào. Việc
-Owner phê duyệt review hoặc phê duyệt commit **không** tự động cho phép Claude
-Code push, merge, mở PR, hoặc deploy — mỗi hành động OWNER-ONLY cần Owner tự
-tay thực hiện hoặc cho phép rõ ràng cho đúng hành động đó. Claude Code chỉ
-được `git commit` khi Owner đã phê duyệt chính xác nội dung commit đó.
+Owner phải tự tay thực hiện các hành động OWNER-ONLY này — không có sự phê
+duyệt hay ủy quyền nào biến hành động OWNER-ONLY thành việc Claude Code tự
+làm. Việc Owner phê duyệt review hoặc phê duyệt commit không cho phép Claude
+Code push, merge, mở/cập nhật PR, deploy, publish, sửa production, hay đổi
+cấu hình bên ngoài. Commit là việc riêng, hẹp hơn: Claude Code chỉ được
+`git commit` khi Owner đã phê duyệt chính xác nội dung commit đó — phê duyệt
+đó chỉ áp dụng cho commit, không áp dụng cho bất kỳ hành động OWNER-ONLY nào.
 
 ### 8.D Nhóm HARD-DENY — luôn cấm, không có ngoại lệ
 - Đọc hoặc tiết lộ secret/credential/private key: `.env`, `.env.*`, `app-nextjs/.env.local`, `secrets/**`, `*.pem`, `*.key`, `id_rsa`, `id_ed25519`
@@ -152,8 +154,9 @@ tay thực hiện hoặc cho phép rõ ràng cho đúng hành động đó. Clau
 - Chỉ sửa đúng những file đã liệt kê.
 - Task sửa code: thực hiện trên nhánh riêng, không sửa trực tiếp trên `master`/`main`.
 - Sau khi sửa, luôn chạy `git diff --stat` và `git diff` để xác nhận thay đổi.
-- Không tự thực hiện các hành động OWNER-ONLY (mục 8.C) trừ khi Owner tự tay
-  thực hiện hoặc cho phép rõ ràng cho đúng hành động đó.
+- Không bao giờ tự thực hiện các hành động OWNER-ONLY (mục 8.C) — không có
+  phê duyệt hay ủy quyền nào cho phép agent tự làm; các hành động đó luôn do
+  Owner tự tay thực hiện.
 
 ---
 
