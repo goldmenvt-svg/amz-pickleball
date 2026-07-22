@@ -10,7 +10,7 @@
 Dựa trên audit, nâng cấp homepage AMZ theo hướng: rõ AMZ là Pickleball + Cafe trong 5 giây đầu; có CTA Đặt sân / Xem giá / Tham gia social; giao diện xanh mát, hiện đại, không generic; mobile đẹp. Sửa code vừa đủ, không phá layout hiện có. Sau khi sửa, chạy lint/build nếu có.
 
 ## Prompt 3 - Nâng cấp pricing
-Tìm toàn bộ nơi hiển thị giá. Chuẩn hóa pricing theo dữ liệu trong `.agents/product-marketing.md`. Làm bảng giá dễ hiểu, có ghi chú khung giờ, social 350k/tháng, xé vé 40k/lần. Không tự bịa giá mới.
+Đọc `data/pricing.json` ngay trước khi phân tích hoặc sửa nội dung pricing — đây là nguồn giá hiện hành, không dùng số liệu cũ trong prompt hay tài liệu khác. Tìm toàn bộ nơi hiển thị giá. Làm bảng giá dễ hiểu, có ghi chú khung giờ. Nếu cần thông tin liên hệ, dùng quy tắc nguồn tại `CLAUDE.md`/`AGENTS.md`. Không tự bịa giá mới.
 
 ## Prompt 4 - SEO local Việt Nam
 Kiểm tra metadata, title, description, heading, copy, schema nếu có. Sửa lỗi địa lý sai sang Mỹ. Tối ưu SEO local cho AMZ Pickleball/Cafe tại Việt Nam. Đừng nhồi từ khóa.
