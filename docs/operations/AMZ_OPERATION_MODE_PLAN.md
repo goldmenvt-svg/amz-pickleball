@@ -68,9 +68,11 @@ OPERATION MODE là chế độ vận hành ổn định, áp dụng **sau khi** 
 - Thay đổi DNS, Vercel, hoặc GitHub settings
 - Thay đổi secrets/credentials
 
-Owner có thể tự thực hiện các hành động này bất cứ lúc nào. Owner phê duyệt
-review hoặc phê duyệt commit không tự động cho phép Claude Code push, merge,
-mở PR, hoặc deploy.
+Owner phải tự tay thực hiện các hành động OWNER-ONLY này. Không có sự phê
+duyệt hoặc ủy quyền nào biến hành động OWNER-ONLY thành việc AI Agent được
+tự thực hiện. Phê duyệt review hoặc commit không cho phép AI Agent push,
+merge, mở/cập nhật PR, deploy, publish, sửa production hoặc thay đổi cấu
+hình bên ngoài.
 
 ## 6. Những quyền nên HARD-DENY
 
