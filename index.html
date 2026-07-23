@@ -1766,6 +1766,9 @@
 
         <div id="featuredHero"></div>
         <div class="video-grid featured-grid" id="featuredGrid"></div>
+        <div style="text-align:center;margin-top:32px;">
+          <button type="button" class="btn btn-outline" id="featuredLoadMoreBtn" style="display:none">Xem thêm</button>
+        </div>
       </div>
     </section>
 
@@ -1777,6 +1780,9 @@
           <h2 class="reveal reveal-delay-1">Video<br><span class="dim">AMZ</span></h2>
         </div>
         <div class="video-grid" id="videoGrid"></div>
+        <div style="text-align:center;margin-top:32px;">
+          <button type="button" class="btn btn-outline" id="videoLoadMoreBtn" style="display:none">Xem thêm</button>
+        </div>
       </div>
     </section>
 
@@ -3540,75 +3546,105 @@
     (function() {
       var grid = document.getElementById('videoGrid');
       if (!grid) return;
+      var loadMoreBtn = document.getElementById('videoLoadMoreBtn');
 
       var ALLOWED_VIDEO_PLATFORMS = { youtube: true, facebook: true, tiktok: true };
       function safeVideoId(id) { return typeof id === 'string' && /^[a-zA-Z0-9_\-]{5,100}$/.test(id) ? id : null; }
       var TIKTOK_PLACEHOLDER_THUMB = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#111"/><text x="160" y="95" font-family="Arial,sans-serif" font-size="22" fill="#fff" text-anchor="middle">TikTok</text></svg>');
 
+      var VIDEO_BATCH_SIZE = 6;
+      var safeVideoList = [];
+      var videoRenderedCount = 0;
+
+      function videoCardHTML(v, i) {
+        var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
+        var isYT = v.platform === 'youtube';
+        var isTT = v.platform === 'tiktok';
+        var thumb = v.thumbnail || '';
+        if (isYT && v.platformId && !thumb.startsWith('images/')) {
+          thumb = 'https://i.ytimg.com/vi/' + v.platformId + '/mqdefault.jpg';
+        } else if (isTT && !thumb) {
+          thumb = TIKTOK_PLACEHOLDER_THUMB;
+        }
+        return '<div class="video-card reveal' + delay + '" data-platform="' + escapeHTML(v.platform) + '" data-video-id="' + escapeHTML(v.platformId || '') + '" data-source-url="' + escapeHTML(v.sourceUrl || '') + '">' +
+          '<div class="video-thumb">' +
+          '<img src="' + escapeHTML(thumb) + '" alt="' + escapeHTML(v.title) + '" loading="lazy">' +
+          '<div class="video-play-overlay"><div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div></div>' +
+          (isTT ? '<span class="video-duration">TikTok ↗</span>' : (v.duration ? '<span class="video-duration">' + escapeHTML(v.duration) + '</span>' : '')) +
+          '</div>' +
+          '<div class="video-info">' +
+          (v.badge ? '<span class="video-badge">' + escapeHTML(v.badge) + '</span>' : '') +
+          '<h4>' + escapeHTML(v.title) + '</h4>' +
+          '<p>' + escapeHTML(v.description || '') + '</p>' +
+          '<div class="video-meta">' +
+          (v.channelTitle ? '<span class="video-channel">' + escapeHTML(v.channelTitle) + '</span>' : '') +
+          (v.viewCount ? '<span class="video-views">' + Number(v.viewCount).toLocaleString('vi-VN') + ' lượt xem</span>' : '') +
+          '</div></div></div>';
+      }
+
+      function bindVideoCardClick(card) {
+        card.addEventListener('click', function() {
+          if (card.classList.contains('video-embed-active')) return;
+          var platform = card.dataset.platform;
+          var videoId = card.dataset.videoId;
+          var thumb = card.querySelector('.video-thumb');
+          if (platform === 'youtube' && videoId) {
+            var iframe = document.createElement('iframe');
+            iframe.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
+            iframe.allow = 'autoplay; encrypted-media';
+            iframe.allowFullscreen = true;
+            iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
+            thumb.appendChild(iframe);
+            card.classList.add('video-embed-active');
+          } else if (platform === 'facebook' && videoId) {
+            var iframe = document.createElement('iframe');
+            iframe.src = 'https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(videoId) + '&width=560&show_text=false';
+            iframe.allow = 'autoplay; encrypted-media';
+            iframe.allowFullscreen = true;
+            iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
+            thumb.appendChild(iframe);
+            card.classList.add('video-embed-active');
+          } else if (platform === 'tiktok') {
+            var sourceUrl = card.dataset.sourceUrl;
+            if (sourceUrl) window.open(sourceUrl, '_blank', 'noopener');
+          }
+        });
+      }
+
+      function updateVideoLoadMoreButton() {
+        if (!loadMoreBtn) return;
+        loadMoreBtn.style.display = videoRenderedCount >= safeVideoList.length ? 'none' : '';
+      }
+
+      function renderNextVideoBatch() {
+        var nextSlice = safeVideoList.slice(videoRenderedCount, videoRenderedCount + VIDEO_BATCH_SIZE);
+        if (!nextSlice.length) { updateVideoLoadMoreButton(); return; }
+        var startIndex = videoRenderedCount;
+        var html = nextSlice.map(function(v, idx) { return videoCardHTML(v, idx); }).join('');
+        grid.insertAdjacentHTML('beforeend', html);
+        var allCards = grid.querySelectorAll('.video-card');
+        for (var i = startIndex; i < allCards.length; i++) { bindVideoCardClick(allCards[i]); }
+        videoRenderedCount += nextSlice.length;
+        initVideoReveal();
+        updateVideoLoadMoreButton();
+      }
+
       function renderVideoCards(videos) {
-        var safeVideos = videos.filter(function(v) {
+        safeVideoList = videos.filter(function(v) {
           return ALLOWED_VIDEO_PLATFORMS[v.platform] && safeVideoId(v.platformId || v.id);
         });
-        if (!safeVideos.length) {
+        videoRenderedCount = 0;
+        grid.innerHTML = '';
+        if (!safeVideoList.length) {
           grid.closest('section').style.display = 'none';
+          if (loadMoreBtn) loadMoreBtn.style.display = 'none';
           return;
         }
-        grid.innerHTML = safeVideos.map(function(v, i) {
-          var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
-          var isYT = v.platform === 'youtube';
-          var isTT = v.platform === 'tiktok';
-          var thumb = v.thumbnail || '';
-          if (isYT && v.platformId && !thumb.startsWith('images/')) {
-            thumb = 'https://i.ytimg.com/vi/' + v.platformId + '/mqdefault.jpg';
-          } else if (isTT && !thumb) {
-            thumb = TIKTOK_PLACEHOLDER_THUMB;
-          }
-          return '<div class="video-card reveal' + delay + '" data-platform="' + escapeHTML(v.platform) + '" data-video-id="' + escapeHTML(v.platformId || '') + '" data-source-url="' + escapeHTML(v.sourceUrl || '') + '">' +
-            '<div class="video-thumb">' +
-            '<img src="' + escapeHTML(thumb) + '" alt="' + escapeHTML(v.title) + '" loading="lazy">' +
-            '<div class="video-play-overlay"><div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div></div>' +
-            (isTT ? '<span class="video-duration">TikTok ↗</span>' : (v.duration ? '<span class="video-duration">' + escapeHTML(v.duration) + '</span>' : '')) +
-            '</div>' +
-            '<div class="video-info">' +
-            (v.badge ? '<span class="video-badge">' + escapeHTML(v.badge) + '</span>' : '') +
-            '<h4>' + escapeHTML(v.title) + '</h4>' +
-            '<p>' + escapeHTML(v.description || '') + '</p>' +
-            '<div class="video-meta">' +
-            (v.channelTitle ? '<span class="video-channel">' + escapeHTML(v.channelTitle) + '</span>' : '') +
-            (v.viewCount ? '<span class="video-views">' + Number(v.viewCount).toLocaleString('vi-VN') + ' lượt xem</span>' : '') +
-            '</div></div></div>';
-        }).join('');
+        renderNextVideoBatch();
+      }
 
-        grid.querySelectorAll('.video-card').forEach(function(card) {
-          card.addEventListener('click', function() {
-            if (card.classList.contains('video-embed-active')) return;
-            var platform = card.dataset.platform;
-            var videoId = card.dataset.videoId;
-            var thumb = card.querySelector('.video-thumb');
-            if (platform === 'youtube' && videoId) {
-              var iframe = document.createElement('iframe');
-              iframe.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
-              iframe.allow = 'autoplay; encrypted-media';
-              iframe.allowFullscreen = true;
-              iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
-              thumb.appendChild(iframe);
-              card.classList.add('video-embed-active');
-            } else if (platform === 'facebook' && videoId) {
-              var iframe = document.createElement('iframe');
-              iframe.src = 'https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(videoId) + '&width=560&show_text=false';
-              iframe.allow = 'autoplay; encrypted-media';
-              iframe.allowFullscreen = true;
-              iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
-              thumb.appendChild(iframe);
-              card.classList.add('video-embed-active');
-            } else if (platform === 'tiktok') {
-              var sourceUrl = card.dataset.sourceUrl;
-              if (sourceUrl) window.open(sourceUrl, '_blank', 'noopener');
-            }
-          });
-        });
-
-        initVideoReveal();
+      if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', renderNextVideoBatch);
       }
 
       function initVideoReveal() {
@@ -3625,8 +3661,7 @@
         .then(function(data) {
           var approved = data.videos
             .filter(function(v) { return v.status === 'approved' && v.category !== 'featured'; })
-            .sort(function(a, b) { return new Date(b.approvedAt || b.addedAt) - new Date(a.approvedAt || a.addedAt); })
-            .slice(0, 6);
+            .sort(function(a, b) { return new Date(b.approvedAt || b.addedAt) - new Date(a.approvedAt || a.addedAt); });
           renderVideoCards(approved);
         })
         .catch(function() {
@@ -3639,10 +3674,15 @@
       var heroWrap = document.getElementById('featuredHero');
       var featGrid = document.getElementById('featuredGrid');
       if (!heroWrap || !featGrid) return;
+      var loadMoreBtn = document.getElementById('featuredLoadMoreBtn');
 
       var ALLOWED_FEAT_PLATFORMS = { youtube: true, facebook: true, tiktok: true };
       function safeFeatId(id) { return typeof id === 'string' && /^[a-zA-Z0-9_\-]{5,100}$/.test(id) ? id : null; }
       var TIKTOK_PLACEHOLDER_THUMB_FEAT = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#111"/><text x="160" y="95" font-family="Arial,sans-serif" font-size="22" fill="#fff" text-anchor="middle">TikTok</text></svg>');
+
+      var FEATURED_BATCH_SIZE = 6;
+      var featuredRestList = [];
+      var featuredRenderedCount = 0;
 
       function embedIframe(container, platform, videoId, sourceUrl) {
         if (platform === 'youtube' && safeFeatId(videoId)) {
@@ -3661,17 +3701,90 @@
         }
       }
 
+      function featuredCardHTML(v, i) {
+        var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
+        var isTT = v.platform === 'tiktok';
+        var t = v.thumbnail || '';
+        if (v.platform === 'youtube' && v.platformId) t = 'https://i.ytimg.com/vi/' + v.platformId + '/mqdefault.jpg';
+        else if (isTT && !t) t = TIKTOK_PLACEHOLDER_THUMB_FEAT;
+        return '<div class="video-card reveal' + delay + '" data-platform="' + escapeHTML(v.platform) + '" data-video-id="' + escapeHTML(v.platformId || '') + '" data-source-url="' + escapeHTML(v.sourceUrl || '') + '">' +
+          '<div class="video-thumb">' +
+          '<img src="' + escapeHTML(t) + '" alt="' + escapeHTML(v.title) + '" loading="lazy">' +
+          '<div class="video-play-overlay"><div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div></div>' +
+          (v.isLive ? '<span class="featured-live-badge" style="position:absolute;top:8px;left:8px;">LIVE</span>' : '') +
+          (isTT ? '<span class="video-duration">TikTok ↗</span>' : (v.duration ? '<span class="video-duration">' + escapeHTML(v.duration) + '</span>' : '')) +
+          '</div>' +
+          '<div class="video-info">' +
+          (v.badge ? '<span class="video-badge">' + escapeHTML(v.badge) + '</span>' : '') +
+          '<h4>' + escapeHTML(v.title) + '</h4>' +
+          '<div class="video-meta">' +
+          (v.channelTitle ? '<span class="video-channel">' + escapeHTML(v.channelTitle) + '</span>' : '') +
+          (v.viewCount ? '<span class="video-views">' + Number(v.viewCount).toLocaleString('vi-VN') + ' lượt xem</span>' : '') +
+          '</div></div></div>';
+      }
+
+      function bindFeaturedCardClick(card) {
+        card.addEventListener('click', function() {
+          if (card.classList.contains('video-embed-active')) return;
+          var platform = card.dataset.platform;
+          var videoId = card.dataset.videoId;
+          var thumb = card.querySelector('.video-thumb');
+          if (platform === 'youtube' && videoId) {
+            var iframe = document.createElement('iframe');
+            iframe.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
+            iframe.allow = 'autoplay; encrypted-media';
+            iframe.allowFullscreen = true;
+            iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
+            thumb.appendChild(iframe);
+            card.classList.add('video-embed-active');
+          } else if (platform === 'tiktok') {
+            var sourceUrl = card.dataset.sourceUrl;
+            if (sourceUrl) window.open(sourceUrl, '_blank', 'noopener');
+          }
+        });
+      }
+
+      function initFeaturedReveal() {
+        var obs = new IntersectionObserver(function(entries) {
+          entries.forEach(function(e) {
+            if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }
+          });
+        }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+        heroWrap.closest('section').querySelectorAll('.reveal:not(.visible)').forEach(function(el) { obs.observe(el); });
+      }
+
+      function updateFeaturedLoadMoreButton() {
+        if (!loadMoreBtn) return;
+        loadMoreBtn.style.display = featuredRenderedCount >= featuredRestList.length ? 'none' : '';
+      }
+
+      function renderNextFeaturedBatch() {
+        var nextSlice = featuredRestList.slice(featuredRenderedCount, featuredRenderedCount + FEATURED_BATCH_SIZE);
+        if (!nextSlice.length) { updateFeaturedLoadMoreButton(); return; }
+        var startIndex = featuredRenderedCount;
+        var html = nextSlice.map(function(v, idx) { return featuredCardHTML(v, idx); }).join('');
+        featGrid.insertAdjacentHTML('beforeend', html);
+        var allCards = featGrid.querySelectorAll('.video-card');
+        for (var i = startIndex; i < allCards.length; i++) { bindFeaturedCardClick(allCards[i]); }
+        featuredRenderedCount += nextSlice.length;
+        initFeaturedReveal();
+        updateFeaturedLoadMoreButton();
+      }
+
       function renderFeatured(videos) {
         var safeVids = videos.filter(function(v) {
           return ALLOWED_FEAT_PLATFORMS[v.platform] && safeFeatId(v.platformId || '');
         });
         if (!safeVids.length) {
           heroWrap.closest('section').style.display = 'none';
+          if (loadMoreBtn) loadMoreBtn.style.display = 'none';
           return;
         }
 
         var hero = safeVids[0];
-        var rest = safeVids.slice(1, 7);
+        featuredRestList = safeVids.slice(1);
+        featuredRenderedCount = 0;
+        featGrid.innerHTML = '';
         var thumb = hero.thumbnail || '';
         if (hero.platform === 'youtube' && hero.platformId) {
           thumb = 'https://i.ytimg.com/vi/' + hero.platformId + '/hqdefault.jpg';
@@ -3695,57 +3808,11 @@
           embedIframe(heroWrap, hero.platform, hero.platformId, hero.sourceUrl);
         });
 
-        if (rest.length) {
-          featGrid.innerHTML = rest.map(function(v, i) {
-            var delay = i > 0 ? ' reveal-delay-' + Math.min(i, 3) : '';
-            var isTT = v.platform === 'tiktok';
-            var t = v.thumbnail || '';
-            if (v.platform === 'youtube' && v.platformId) t = 'https://i.ytimg.com/vi/' + v.platformId + '/mqdefault.jpg';
-            else if (isTT && !t) t = TIKTOK_PLACEHOLDER_THUMB_FEAT;
-            return '<div class="video-card reveal' + delay + '" data-platform="' + escapeHTML(v.platform) + '" data-video-id="' + escapeHTML(v.platformId || '') + '" data-source-url="' + escapeHTML(v.sourceUrl || '') + '">' +
-              '<div class="video-thumb">' +
-              '<img src="' + escapeHTML(t) + '" alt="' + escapeHTML(v.title) + '" loading="lazy">' +
-              '<div class="video-play-overlay"><div class="video-play-btn"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg></div></div>' +
-              (v.isLive ? '<span class="featured-live-badge" style="position:absolute;top:8px;left:8px;">LIVE</span>' : '') +
-              (isTT ? '<span class="video-duration">TikTok ↗</span>' : (v.duration ? '<span class="video-duration">' + escapeHTML(v.duration) + '</span>' : '')) +
-              '</div>' +
-              '<div class="video-info">' +
-              (v.badge ? '<span class="video-badge">' + escapeHTML(v.badge) + '</span>' : '') +
-              '<h4>' + escapeHTML(v.title) + '</h4>' +
-              '<div class="video-meta">' +
-              (v.channelTitle ? '<span class="video-channel">' + escapeHTML(v.channelTitle) + '</span>' : '') +
-              (v.viewCount ? '<span class="video-views">' + Number(v.viewCount).toLocaleString('vi-VN') + ' lượt xem</span>' : '') +
-              '</div></div></div>';
-          }).join('');
+        renderNextFeaturedBatch();
+      }
 
-          featGrid.querySelectorAll('.video-card').forEach(function(card) {
-            card.addEventListener('click', function() {
-              if (card.classList.contains('video-embed-active')) return;
-              var platform = card.dataset.platform;
-              var videoId = card.dataset.videoId;
-              var thumb = card.querySelector('.video-thumb');
-              if (platform === 'youtube' && videoId) {
-                var iframe = document.createElement('iframe');
-                iframe.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
-                iframe.allow = 'autoplay; encrypted-media';
-                iframe.allowFullscreen = true;
-                iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
-                thumb.appendChild(iframe);
-                card.classList.add('video-embed-active');
-              } else if (platform === 'tiktok') {
-                var sourceUrl = card.dataset.sourceUrl;
-                if (sourceUrl) window.open(sourceUrl, '_blank', 'noopener');
-              }
-            });
-          });
-        }
-
-        var obs = new IntersectionObserver(function(entries) {
-          entries.forEach(function(e) {
-            if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }
-          });
-        }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
-        heroWrap.closest('section').querySelectorAll('.reveal:not(.visible)').forEach(function(el) { obs.observe(el); });
+      if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', renderNextFeaturedBatch);
       }
 
       fetchWithTimeout('data/videos.json', 5000)
