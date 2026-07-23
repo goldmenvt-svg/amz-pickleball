@@ -293,7 +293,7 @@
       "badge": "",
       "addedAt": "2026-07-23T04:29:35.941Z",
       "approvedAt": null,
-      "status": "pending"
+      "status": "rejected"
     },
     {
       "id": "yt_p9bC97VkK4E",
@@ -310,7 +310,7 @@
       "badge": "",
       "addedAt": "2026-07-23T04:29:35.941Z",
       "approvedAt": null,
-      "status": "pending"
+      "status": "rejected"
     },
     {
       "id": "yt_rHR1OZH_DEI",
@@ -395,7 +395,7 @@
       "badge": "",
       "addedAt": "2026-07-23T04:29:35.941Z",
       "approvedAt": null,
-      "status": "pending"
+      "status": "rejected"
     },
     {
       "id": "yt_a_Sm8HfPAYo",
@@ -463,7 +463,7 @@
       "badge": "",
       "addedAt": "2026-07-23T04:29:35.941Z",
       "approvedAt": null,
-      "status": "pending"
+      "status": "rejected"
     },
     {
       "id": "yt_FH6ZZZmgUVg",
@@ -894,7 +894,7 @@
       "addedAt": "2026-07-23T04:29:35.941Z",
       "approvedAt": null,
       "category": "featured",
-      "status": "pending"
+      "status": "rejected"
     },
     {
       "id": "yt_uaxnpCqAAyk",
@@ -1200,7 +1200,7 @@
       "addedAt": "2026-07-23T04:29:35.941Z",
       "approvedAt": null,
       "category": "featured",
-      "status": "pending"
+      "status": "rejected"
     },
     {
       "id": "yt_RmEEixOkbJQ",
@@ -1218,7 +1218,7 @@
       "addedAt": "2026-07-23T04:29:35.941Z",
       "approvedAt": null,
       "category": "featured",
-      "status": "pending"
+      "status": "rejected"
     },
     {
       "id": "yt_MiHWutcf9fE",
@@ -1254,7 +1254,7 @@
       "addedAt": "2026-07-23T04:29:35.941Z",
       "approvedAt": null,
       "category": "featured",
-      "status": "pending"
+      "status": "rejected"
     },
     {
       "id": "yt_aAWf2q4TE64",
@@ -1668,7 +1668,7 @@
       "addedAt": "2026-07-23T06:07:19.010Z",
       "approvedAt": null,
       "category": "featured",
-      "status": "pending"
+      "status": "rejected"
     },
     {
       "id": "yt_9rQss4p7LcU",
