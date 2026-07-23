@@ -760,6 +760,12 @@ var _fsdb = firebase.firestore();
               <option value="Review">Review</option>
             </select>
           </div>
+          <div class="form-group">
+            <label class="form-label" style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="v-add-original-amz">
+              Video AMZ gốc
+            </label>
+          </div>
           <div class="v-preview" id="v-add-preview">
             <img id="v-add-thumb" src="">
             <div class="v-preview-info">
@@ -5602,9 +5608,18 @@ function videoCardHTML(v, actions) {
         '<span>' + esc(v.publishedAt || '') + '</span>' +
         (v.badge ? '<span class="v-badge-tag ' + badgeClass(v.badge) + '">' + esc(v.badge) + '</span>' : '') +
       '</div>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin:6px 0;">' +
+        '<input type="checkbox"' + (v.isOriginalAMZ === true ? ' checked' : '') + ' onchange="setVideoOriginalAMZ(\'' + v.id + '\', this.checked)">' +
+        'Video AMZ gốc' +
+      '</label>' +
       '<div class="v-actions">' + actions + '</div>' +
     '</div>' +
   '</div>';
+}
+
+function setVideoOriginalAMZ(id, checked) {
+  var v = videoData.videos.find(function(x) { return x.id === id; });
+  if (v) { v.isOriginalAMZ = !!checked; saveVideoData(); }
 }
 
 function renderVideos() {
@@ -5813,6 +5828,7 @@ function addManualVideo() {
   var titleInput = document.getElementById('v-add-title-input').value.trim();
   var badge = document.getElementById('v-add-badge').value;
   var category = document.getElementById('v-add-category').value;
+  var isOriginalAMZ = document.getElementById('v-add-original-amz').checked;
   var now = new Date().toISOString();
   var newVideo;
 
@@ -5836,7 +5852,8 @@ function addManualVideo() {
       badge: badge,
       status: 'approved',
       addedAt: now,
-      approvedAt: now
+      approvedAt: now,
+      isOriginalAMZ: isOriginalAMZ
     };
     if (category) newVideo.category = category;
   } else if (platform === 'tiktok') {
@@ -5861,7 +5878,8 @@ function addManualVideo() {
       badge: badge,
       status: 'approved',
       addedAt: now,
-      approvedAt: now
+      approvedAt: now,
+      isOriginalAMZ: isOriginalAMZ
     };
     if (category) newVideo.category = category;
   } else {
@@ -5873,6 +5891,7 @@ function addManualVideo() {
   saveVideoData(); renderVideos();
   document.getElementById('v-add-url').value = '';
   document.getElementById('v-add-title-input').value = '';
+  document.getElementById('v-add-original-amz').checked = false;
   document.getElementById('v-add-preview').classList.remove('show');
   var label = category === 'featured' ? 'Trận Đấu Đỉnh Cao' : 'AMZ Highlights';
   toast('Đã thêm vào ' + label);

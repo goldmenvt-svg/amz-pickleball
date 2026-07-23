@@ -3661,7 +3661,11 @@
         .then(function(data) {
           var approved = data.videos
             .filter(function(v) { return v.status === 'approved' && v.category !== 'featured'; })
-            .sort(function(a, b) { return new Date(b.approvedAt || b.addedAt) - new Date(a.approvedAt || a.addedAt); });
+            .sort(function(a, b) {
+              var originalDifference = Number(b.isOriginalAMZ === true) - Number(a.isOriginalAMZ === true);
+              if (originalDifference !== 0) return originalDifference;
+              return new Date(b.approvedAt || b.addedAt) - new Date(a.approvedAt || a.addedAt);
+            });
           renderVideoCards(approved);
         })
         .catch(function() {

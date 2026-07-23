@@ -17,7 +17,8 @@
       "badge": "Review",
       "status": "approved",
       "addedAt": "2026-07-06T10:37:31.026Z",
-      "approvedAt": "2026-07-06T10:37:31.026Z"
+      "approvedAt": "2026-07-06T10:37:31.026Z",
+      "isOriginalAMZ": true
     },
     {
       "id": "tt_7507450878861839623",
@@ -35,7 +36,8 @@
       "badge": "Review",
       "status": "approved",
       "addedAt": "2026-07-06T10:36:05.710Z",
-      "approvedAt": "2026-07-06T10:36:05.710Z"
+      "approvedAt": "2026-07-06T10:36:05.710Z",
+      "isOriginalAMZ": true
     },
     {
       "id": "yt_j-reUVFXhdM",
@@ -71,7 +73,8 @@
       "status": "approved",
       "category": "grid",
       "addedAt": "2026-07-03T04:41:26.641Z",
-      "approvedAt": "2026-07-03T04:41:26.641Z"
+      "approvedAt": "2026-07-03T04:41:26.641Z",
+      "isOriginalAMZ": true
     },
     {
       "id": "yt_kn69UOHSPlE",
@@ -89,7 +92,8 @@
       "status": "approved",
       "category": "grid",
       "addedAt": "2026-07-03T04:41:26.641Z",
-      "approvedAt": "2026-07-03T04:41:26.641Z"
+      "approvedAt": "2026-07-03T04:41:26.641Z",
+      "isOriginalAMZ": true
     },
     {
       "id": "yt_GoRIXQIfJ4U",
