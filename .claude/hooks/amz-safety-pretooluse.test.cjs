@@ -2394,8 +2394,12 @@ test('38D. git clean -fd .claude/hooks -> deny TAMPER', () => {
 test('38D. git update-index --assume-unchanged .claude/settings.json -> deny TAMPER', () => {
   assertDecision(classifyBash('git update-index --assume-unchanged .claude/settings.json'), 'deny', hook.RULE.TAMPER);
 });
+// NOTE: `git merge` used to be in this list (ask TAMPER) but is now its own unconditional deny
+// (RULE.GIT_MERGE) - see section 49 below - since it is OWNER-ONLY under repository policy, not
+// merely a broad file-mutator that needs a human glance. `am`/`cherry-pick`/`revert`/`switch` are
+// unchanged.
 test('38D. broad working-tree mutators -> ask TAMPER, not defer', () => {
-  for (const c of ['git reset --hard HEAD~', 'git apply changes.patch', 'git am changes.patch', 'git cherry-pick abc123', 'git revert abc123', 'git merge other', 'git stash pop', 'git stash apply', 'git switch other', 'git checkout other-branch']) {
+  for (const c of ['git reset --hard HEAD~', 'git apply changes.patch', 'git am changes.patch', 'git cherry-pick abc123', 'git revert abc123', 'git stash pop', 'git stash apply', 'git switch other', 'git checkout other-branch']) {
     assertDecision(classifyBash(c), 'ask', hook.RULE.TAMPER, `expected ask TAMPER for: ${c}`);
   }
 });
@@ -4665,4 +4669,286 @@ test('48L. IO: real process, case A (A/a/A duplicate, final push) -> JSON deny G
   assert.equal(parsed.hookSpecificOutput.permissionDecisionReason, hook.DENY_MESSAGES[hook.RULE.GIT_PUSH]);
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), 'must not leak raw command');
   assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(SAFE_LOG_ALIAS_R19), 'must not leak raw env value');
+});
+
+// ===================== 49: R22.2 - git merge and gh pull-request mutation are OWNER-ONLY (deny) =====================
+//
+// R22.1 audit finding: `git merge` classified as ask TAMPER (a "broad working-tree mutator" that
+// merely needs a human glance) and `gh` was not recognized at all (falling to generic ask UNKNOWN)
+// - both approvable via a permission-prompt "Allow" click, contradicting repository policy naming
+// git push/merge and PR create/edit/close/reopen/merge/review as OWNER-ONLY ("no approval converts
+// an owner-only action into an agent action"). This section covers the fix: git merge and PR
+// mutation now deny unconditionally; PR reads (view/list/status/diff) and gh api GET are untouched.
+
+// --- 49A. git merge -> deny GIT_MERGE, across invocation variants ---
+
+test('49A. git merge <branch> -> deny GIT_MERGE', () => {
+  assertDecision(classifyBash('git merge other'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. git merge --continue -> deny GIT_MERGE', () => {
+  assertDecision(classifyBash('git merge --continue'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. git merge --abort -> deny GIT_MERGE', () => {
+  assertDecision(classifyBash('git merge --abort'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. git merge --quit -> deny GIT_MERGE', () => {
+  assertDecision(classifyBash('git merge --quit'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. absolute-path git.exe merge -> deny GIT_MERGE', () => {
+  assertDecision(classifyBash('"C:/Program Files/Git/bin/git.exe" merge other'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. absolute-path /usr/bin/git merge -> deny GIT_MERGE', () => {
+  assertDecision(classifyBash('"/usr/bin/git" merge other'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. standalone git-merge dispatch binary -> deny GIT_MERGE', () => {
+  assertDecision(classifyBash('git-merge other'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. env git merge other -> deny GIT_MERGE', () => {
+  assertDecision(classifyBash('env git merge other'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. command git merge other -> deny GIT_MERGE', () => {
+  assertDecision(classifyBash('command git merge other'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. git status && git merge other -> deny GIT_MERGE (worst-of-chain)', () => {
+  assertDecision(classifyBash('git status && git merge other'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. git status; git merge other -> deny GIT_MERGE (semicolon-chained)', () => {
+  assertDecision(classifyBash('git status; git merge other'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. multi-line command (real newline, not backslash-continuation) with git merge -> deny GIT_MERGE', () => {
+  assertDecision(classifyBash('git status\ngit merge other'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. PowerShell git merge other -> deny GIT_MERGE', () => {
+  assertDecision(classifyPs('git merge other'), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. git alias resolving to merge -> deny GIT_MERGE (alias/wrapper the classifier already supports)', () => {
+  assertDecision(classifyBash("git -c alias.m=merge m other"), 'deny', hook.RULE.GIT_MERGE);
+});
+test('49A. IO: real process, git merge other -> JSON deny GIT_MERGE, message names OWNER-ONLY policy, no raw command leak', () => {
+  const cmd = 'git merge other';
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0, 'exit code');
+  assert.equal(r.stderr, '', 'stderr');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal(parsed.hookSpecificOutput.permissionDecisionReason, hook.DENY_MESSAGES[hook.RULE.GIT_MERGE]);
+  assert.match(parsed.hookSpecificOutput.permissionDecisionReason, /owner-only/i, 'deny message must name OWNER-ONLY policy');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), 'must not leak raw command');
+});
+
+// --- 49B. unchanged Git subcommands: am/cherry-pick/revert/switch/rebase keep their prior decision ---
+
+test('49B. git am unchanged -> ask TAMPER', () => {
+  assertDecision(classifyBash('git am changes.patch'), 'ask', hook.RULE.TAMPER);
+});
+test('49B. git cherry-pick unchanged -> ask TAMPER', () => {
+  assertDecision(classifyBash('git cherry-pick abc123'), 'ask', hook.RULE.TAMPER);
+});
+test('49B. git revert unchanged -> ask TAMPER', () => {
+  assertDecision(classifyBash('git revert abc123'), 'ask', hook.RULE.TAMPER);
+});
+test('49B. git switch unchanged -> ask TAMPER', () => {
+  assertDecision(classifyBash('git switch other'), 'ask', hook.RULE.TAMPER);
+});
+test('49B. git rebase unchanged -> ask COMPLEX', () => {
+  assertDecision(classifyBash('git rebase main'), 'ask', hook.RULE.COMPLEX);
+});
+test('49B. git mergetool (bare, distinct subcommand from merge) unchanged -> ask COMPLEX', () => {
+  assertDecision(classifyBash('git mergetool'), 'ask', hook.RULE.COMPLEX);
+});
+
+// --- 49C. gh pr mutation -> deny GH_PR, across invocation variants ---
+
+test('49C. gh pr create -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr create'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. gh pr edit -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr edit 5 --title "new title"'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. gh pr close -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr close 5'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. gh pr reopen -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr reopen 5'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. gh pr merge -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr merge 5'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. gh pr review -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr review 5 --approve'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. absolute-path gh.exe pr merge -> deny GH_PR', () => {
+  assertDecision(classifyBash('"C:/Program Files/GitHub CLI/gh.exe" pr merge 5'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. absolute-path /usr/bin/gh pr merge -> deny GH_PR', () => {
+  assertDecision(classifyBash('"/usr/bin/gh" pr merge 5'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. env gh pr create -> deny GH_PR', () => {
+  assertDecision(classifyBash('env gh pr create'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. command gh pr edit -> deny GH_PR', () => {
+  assertDecision(classifyBash('command gh pr edit 5 --title x'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. chained command (&&) with gh pr merge -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr status && gh pr merge 5'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. chained command (;) with gh pr merge -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr status; gh pr merge 5'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. multi-line command with gh pr merge -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr status\ngh pr merge 5'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. PowerShell gh pr merge -> deny GH_PR', () => {
+  assertDecision(classifyPs('gh pr merge 5'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. gh pr merge with -R/--repo global flag preceding subcommand -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr -R owner/repo merge 5'), 'deny', hook.RULE.GH_PR);
+});
+test('49C. IO: real process, gh pr merge -> JSON deny GH_PR, message names OWNER-ONLY policy, no raw command leak', () => {
+  const cmd = 'gh pr merge 5';
+  const fixture = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: cmd }, cwd: 'C:/repo' });
+  const r = runHookProcess(fixture);
+  assert.equal(r.status, 0, 'exit code');
+  assert.equal(r.stderr, '', 'stderr');
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal(parsed.hookSpecificOutput.permissionDecisionReason, hook.DENY_MESSAGES[hook.RULE.GH_PR]);
+  assert.match(parsed.hookSpecificOutput.permissionDecisionReason, /owner-only/i, 'deny message must name OWNER-ONLY policy');
+  assert.ok(!parsed.hookSpecificOutput.permissionDecisionReason.includes(cmd), 'must not leak raw command');
+});
+
+// --- 49D. gh api: PR-endpoint writes deny; GET (explicit or default) never OWNER-ONLY-denies ---
+
+test('49D. gh api PUT to pulls/.../merge (-X form) -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5/merge -X PUT'), 'deny', hook.RULE.GH_PR);
+});
+test('49D. gh api PUT to pulls/.../merge (--method form) -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5/merge --method PUT'), 'deny', hook.RULE.GH_PR);
+});
+test('49D. gh api PUT to pulls/.../merge (--method=PUT glued form) -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5/merge --method=PUT'), 'deny', hook.RULE.GH_PR);
+});
+test('49D. gh api PUT to pulls/.../merge (-XPUT glued short form) -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5/merge -XPUT'), 'deny', hook.RULE.GH_PR);
+});
+test('49D. gh api POST to pulls (create PR via API) -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls -X POST -f title=x -f head=a -f base=b'), 'deny', hook.RULE.GH_PR);
+});
+test('49D. gh api PATCH to pulls/{n} (edit PR via API) -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5 -X PATCH -f title=x'), 'deny', hook.RULE.GH_PR);
+});
+test('49D. gh api POST to pulls/{n}/reviews (review PR via API) -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5/reviews -f event=APPROVE'), 'deny', hook.RULE.GH_PR);
+});
+test('49D. gh api write with body fields but no explicit method (gh default flips GET -> POST) -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5/reviews -f body=x'), 'deny', hook.RULE.GH_PR);
+});
+test('49D. gh api DELETE to pulls/{n}/requested_reviewers -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5/requested_reviewers -X DELETE -f reviewers[]=alice'), 'deny', hook.RULE.GH_PR);
+});
+test('49D. gh api explicit GET to pulls endpoint -> not OWNER-ONLY deny (defer, proven read-only)', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5 -X GET'), 'defer');
+});
+test('49D. gh api default method (no -X) to pulls endpoint, no body fields -> not OWNER-ONLY deny (defer, defaults to GET)', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls'), 'defer');
+});
+test('49D. gh api GET to a single pull request -> not OWNER-ONLY deny (defer)', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5'), 'defer');
+});
+test('49D. gh api write (POST) to a non-pulls endpoint -> ask, not OWNER-ONLY deny (out of this rule\'s scope, still never silently allowed)', () => {
+  assertDecision(classifyBash('gh api repos/o/r/issues -X POST -f title=x'), 'ask', hook.RULE.UNKNOWN);
+});
+test('49D. gh api graphql -> ask, never silently defer (mutation shape not parsed by this scanner)', () => {
+  assertDecision(classifyBash('gh api graphql -f query=x'), 'ask', hook.RULE.UNKNOWN);
+});
+test('49D. gh api absolute path + write to pulls endpoint -> deny GH_PR', () => {
+  assertDecision(classifyBash('"C:/Program Files/GitHub CLI/gh.exe" api repos/o/r/pulls/5/merge -X PUT'), 'deny', hook.RULE.GH_PR);
+});
+test('49D. gh api chained (&&) write to pulls endpoint -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api repos/o/r/pulls/5 && gh api repos/o/r/pulls/5/merge -X PUT'), 'deny', hook.RULE.GH_PR);
+});
+
+// --- 49E. gh pr read-only subcommands -> defer, not OWNER-ONLY deny ---
+
+test('49E. gh pr view -> defer', () => {
+  assertDecision(classifyBash('gh pr view 5'), 'defer');
+});
+test('49E. gh pr list -> defer', () => {
+  assertDecision(classifyBash('gh pr list'), 'defer');
+});
+test('49E. gh pr status -> defer', () => {
+  assertDecision(classifyBash('gh pr status'), 'defer');
+});
+test('49E. gh pr diff -> defer', () => {
+  assertDecision(classifyBash('gh pr diff 5'), 'defer');
+});
+test('49E. gh pr view with -R/--repo global flag -> defer', () => {
+  assertDecision(classifyBash('gh pr -R owner/repo view 5'), 'defer');
+});
+
+// --- 49F. gh alias / gh extension / unrecognized gh command groups -> fail-closed ask, never silent allow ---
+
+test('49F. gh alias set (defines a new alias; content not resolvable by this scanner) -> ask UNKNOWN, not defer', () => {
+  assertDecision(classifyBash('gh alias set prm "pr merge"'), 'ask', hook.RULE.UNKNOWN);
+});
+test('49F. invoking a user-defined gh alias name (opaque to this scanner) -> ask UNKNOWN, not defer', () => {
+  assertDecision(classifyBash('gh prm 5'), 'ask', hook.RULE.UNKNOWN);
+});
+test('49F. gh extension invocation (opaque to this scanner) -> ask UNKNOWN, not defer', () => {
+  assertDecision(classifyBash('gh dash'), 'ask', hook.RULE.UNKNOWN);
+});
+test('49F. unrecognized gh pr subcommand -> ask UNKNOWN, not defer', () => {
+  assertDecision(classifyBash('gh pr lock 5'), 'ask', hook.RULE.UNKNOWN);
+});
+test('49F. bare gh (no command group) -> ask UNKNOWN, not defer', () => {
+  assertDecision(classifyBash('gh'), 'ask', hook.RULE.UNKNOWN);
+});
+
+// ===================== 50: R22.2A - gh api --preview must not be misread as the endpoint =====================
+//
+// Bug found in review: `--preview corsair-preview` (separate-token form) and `-p corsair-preview`
+// were not in GH_API_OTHER_VALUE_FLAGS, so the flag's VALUE token ('corsair-preview') fell through
+// to the "first non-flag token = endpoint" rule and was captured as the endpoint instead of the
+// real one that followed - hiding a real write to a pulls endpoint behind a fake, non-pulls
+// "endpoint" and downgrading it from deny GH_PR to ask UNKNOWN. Fixed by adding -p/--preview to
+// GH_API_OTHER_VALUE_FLAGS so its separate-token value is correctly skipped as 2 tokens.
+
+test('50A. gh api --preview <value> (separate form) then real pulls write -> deny GH_PR, not misread endpoint', () => {
+  assertDecision(classifyBash('gh api --preview corsair-preview repos/o/r/pulls -X POST'), 'deny', hook.RULE.GH_PR);
+});
+test('50A. gh api --preview=<value> (glued form) then real pulls write -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api --preview=corsair-preview repos/o/r/pulls/5 -X PATCH'), 'deny', hook.RULE.GH_PR);
+});
+test('50A. gh api --preview <value> then pulls GET (default method) -> not OWNER-ONLY deny (defer)', () => {
+  assertDecision(classifyBash('gh api --preview corsair-preview repos/o/r/pulls'), 'defer');
+});
+test('50A. gh api --preview with no value at all -> ask, fail-closed, never defer', () => {
+  assertDecision(classifyBash('gh api --preview'), 'ask', hook.RULE.UNKNOWN);
+});
+
+// Same fix, short-flag form (`-p`), verified separately since -p is a distinct token from --preview:
+test('50A. gh api -p <value> (separate short-flag form) then real pulls write -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api -p corsair-preview repos/o/r/pulls -X POST'), 'deny', hook.RULE.GH_PR);
+});
+test('50A. gh api -p<value> (glued short-flag form, already safe before this fix) then real pulls write -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh api -pcorsair-preview repos/o/r/pulls -X POST'), 'deny', hook.RULE.GH_PR);
+});
+
+// --- 50B. global flags before the command group (gh <flag> <value> pr <subcommand>) ---
+
+test('50B. gh -R owner/repo pr merge 5 (global -R before "pr") -> deny GH_PR', () => {
+  assertDecision(classifyBash('gh -R owner/repo pr merge 5'), 'deny', hook.RULE.GH_PR);
+});
+test('50B. gh --repo owner/repo pr view 5 (global --repo before "pr") -> defer', () => {
+  assertDecision(classifyBash('gh --repo owner/repo pr view 5'), 'defer');
+});
+
+// --- 50C. unchanged behavior: gh pr mutation and git merge are unaffected by this fix ---
+
+test('50C. gh pr merge unaffected by --preview fix -> still deny GH_PR', () => {
+  assertDecision(classifyBash('gh pr merge 5'), 'deny', hook.RULE.GH_PR);
+});
+test('50C. git merge unaffected by --preview fix -> still deny GIT_MERGE', () => {
+  assertDecision(classifyBash('git merge other'), 'deny', hook.RULE.GIT_MERGE);
 });

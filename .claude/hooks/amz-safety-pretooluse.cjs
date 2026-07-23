@@ -26,6 +26,8 @@ const MAX_PACKAGE_JSON_SIZE = 10 * 1024;
 const RULE = {
   TAMPER: 'AMZ-SAFETY-CONTROL-TAMPER',
   GIT_PUSH: 'AMZ-GIT-PUSH',
+  GIT_MERGE: 'AMZ-GIT-MERGE',
+  GH_PR: 'AMZ-GH-PR-MUTATION',
   PROD_DEPLOY: 'AMZ-PROD-DEPLOY',
   PUBLISH: 'AMZ-PACKAGE-PUBLISH',
   DELETE: 'AMZ-DESTRUCTIVE-DELETE',
@@ -39,6 +41,8 @@ const RULE = {
 const DENY_MESSAGES = {
   [RULE.TAMPER]: 'Blocked: this action targets an AMZ AI safety-control file, setting, or nested Claude Code session. Requires explicit Owner approval outside Claude Code.',
   [RULE.GIT_PUSH]: 'Blocked: git push requires explicit Owner authorization.',
+  [RULE.GIT_MERGE]: 'Blocked: git merge is owner-only under repository policy and requires explicit Owner action outside Claude Code.',
+  [RULE.GH_PR]: 'Blocked: creating, editing, closing, reopening, merging, or reviewing a pull request is owner-only under repository policy and requires explicit Owner action outside Claude Code.',
   [RULE.PROD_DEPLOY]: 'Blocked: production deploy (Vercel/Firebase) requires explicit Owner action outside Claude Code.',
   [RULE.PUBLISH]: 'Blocked: package publish requires explicit Owner authorization.',
   [RULE.DELETE]: 'Blocked: recursive/forced delete requires explicit Owner authorization.',
@@ -49,6 +53,8 @@ const DENY_MESSAGES = {
 const ASK_MESSAGES = {
   [RULE.TAMPER]: 'Needs approval: this action may affect an AMZ AI safety-control file or a nested Claude Code session.',
   [RULE.GIT_PUSH]: 'Needs approval: git alias/wrapper could not be resolved with confidence.',
+  [RULE.GIT_MERGE]: 'Needs approval: this git merge command could not be resolved with confidence.',
+  [RULE.GH_PR]: 'Needs approval: this gh command could not be resolved with confidence.',
   [RULE.PROD_DEPLOY]: 'Needs approval: this Firebase/Vercel command is ambiguous.',
   [RULE.SECRET]: 'Needs approval: this command may access a protected secret/data file.',
   [RULE.EGRESS]: 'Needs approval: this command sends data to an external network destination.',
@@ -78,7 +84,7 @@ function askResult(ruleId, override) {
 
 const DECISION_RANK = { deny: 2, ask: 1, defer: 0 };
 const RULE_PRIORITY = [
-  RULE.TAMPER, RULE.SECRET, RULE.EGRESS, RULE.GIT_PUSH, RULE.PROD_DEPLOY,
+  RULE.TAMPER, RULE.SECRET, RULE.EGRESS, RULE.GIT_PUSH, RULE.GIT_MERGE, RULE.GH_PR, RULE.PROD_DEPLOY,
   RULE.PUBLISH, RULE.DELETE, RULE.COMPLEX, RULE.UNKNOWN, RULE.TOO_LONG,
 ];
 
@@ -2330,7 +2336,11 @@ function classifyGitUpdateIndex(subTokens, subMeta, ctx) {
 // affected files is determined by a patch/commit/stash this scanner does not inspect - ask always,
 // with narrowly-recognized read-only sub-modes (`reset` without --hard, `apply --check`, `stash`
 // without apply/pop) kept at their prior (still fail-closed by default) behavior.
-const GIT_BROAD_MUTATOR_ASK_SUBCOMMANDS = new Set(['am', 'cherry-pick', 'revert', 'merge', 'switch']);
+// `merge` used to be in this set (ask-only) but is now handled separately, above the subcommand
+// dispatch that reaches this set, as an unconditional deny - see the `subcommand === 'merge'` check
+// next to `push`/`send-pack`: it is OWNER-ONLY under repository policy, not merely a broad
+// file-mutator that needs a human glance.
+const GIT_BROAD_MUTATOR_ASK_SUBCOMMANDS = new Set(['am', 'cherry-pick', 'revert', 'switch']);
 
 function classifyGitReset(subTokens) {
   if (subTokens.indexOf('--hard') !== -1) {
@@ -2704,6 +2714,13 @@ function classifyGit(rest, ctx, assignments, dialect, depth, budget, aliasDepth,
 
     if (subcommand === 'push' || subcommand === 'send-pack') return denyResult(RULE.GIT_PUSH);
 
+    // git merge is OWNER-ONLY under repository policy (CLAUDE.md/AGENTS.md/AMZ_AI_OPERATING_MANUAL.md/
+    // AMZ_OPERATION_MODE_PLAN.md), the same tier as push - deny unconditionally, regardless of flags.
+    // `--continue`/`--abort`/`--quit` all still resolve subcommand === 'merge' here (they are flags to
+    // the merge subcommand itself, not a different subcommand), so they deny the same as starting a
+    // new merge - this scanner does not special-case them as safer.
+    if (subcommand === 'merge') return denyResult(RULE.GIT_MERGE);
+
     if (subcommand === 'config') return classifyGitConfig(subRestTokens, subRestMeta);
     if (subcommand === 'remote') return classifyGitRemote(subRestTokens, subRestMeta);
     if (subcommand === 'submodule') return classifyGitSubmodule(subRestTokens, subRestMeta, ctx);
@@ -2930,6 +2947,136 @@ function classifyFirebase(rest, dialect) {
   const subcommand = tokens[i];
   if (subcommand === 'deploy') return denyResult(RULE.PROD_DEPLOY);
   return askResult(RULE.PROD_DEPLOY, { safeMessage: 'Needs approval: this Firebase command requires manual approval.' });
+}
+
+// `gh` (GitHub CLI) can create/edit/close/reopen/merge/review a pull request directly, and can
+// perform the same writes through `gh api` against GitHub's REST endpoints - all OWNER-ONLY under
+// repository policy, the same tier as `git push`/`git merge`/deploy. HARD-DENY the mutating `gh pr`
+// subcommands and any `gh api` write aimed at a pulls endpoint; leave the proven read-only `gh pr`
+// subcommands (view/list/status/diff/checks) and `gh api` GET alone so routine PR inspection is not
+// blocked. Any `gh` command this scanner does not specifically recognize here - an unrecognized
+// `gh pr` subcommand, any other `gh` command group, a user-defined `gh alias`, or a third-party
+// `gh extension` - can never be proven safe (this scanner has no access to the user's gh alias/
+// extension configuration, unlike git aliases which are read from repo config) and always floors to
+// at least ask, matching this file's fail-closed default for anything unrecognized.
+const GH_GLOBAL_VALUE_FLAGS = new Set(['-R', '--repo', '--hostname']);
+const GH_PR_READONLY_SUBCOMMANDS = new Set(['view', 'list', 'status', 'diff', 'checks']);
+const GH_PR_DENY_SUBCOMMANDS = new Set(['create', 'edit', 'close', 'reopen', 'merge', 'review']);
+const GH_API_METHOD_FLAGS = new Set(['-X', '--method']);
+// `-f/--raw-field`, `-F/--field`, and `--input` supply a request body; gh's own default HTTP method
+// switches from GET to POST when one of these is present and `-X/--method` is not explicit - modeled
+// here as `hasBodyFields` so a merge/edit call that relies on that default (no explicit -X) is not
+// misread as a safe, method-less GET.
+const GH_API_BODY_FLAGS = new Set(['-f', '--raw-field', '-F', '--field', '--input']);
+// R22.2A: `-p/--preview` (GitHub API preview names, e.g. `corsair-preview`) is a real gh api
+// value-taking flag that was missing from this set. Without it, the separate-token form
+// (`--preview corsair-preview` / `-p corsair-preview`) fell through to the generic single-token
+// flag skip, leaving the flag's VALUE token behind to be misread as the endpoint - which could hide
+// the real pulls endpoint that followed and downgrade a real PR-mutating write from deny to ask.
+// The glued form (`--preview=corsair-preview`, `-pcorsair-preview`) was already safe: a `--flag=value`
+// token is consumed whole by the generic glued-flag branch above, and a glued short flag like
+// `-pcorsair-preview` is one token starting with `-` that the generic boolean-flag fallback below
+// already skips as a single token, so a raw leftover value was never possible in either glued form.
+const GH_API_OTHER_VALUE_FLAGS = new Set(['-H', '--header', '--hostname', '-p', '--preview', '-q', '--jq', '-t', '--template', '--cache']);
+const GH_API_WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+// Matches a `pulls`/`pull` path segment - GitHub's REST endpoints for pull requests are
+// `.../pulls` and `.../pulls/{number}/...` - with or without a leading slash, case-insensitively, as
+// its own path segment rather than a substring of an unrelated word (does not match `/pullsomething`).
+const GH_API_PR_ENDPOINT = /(^|\/)pulls?(\/|$|\?)/i;
+
+function classifyGhPr(tokens, meta) {
+  let i = 0;
+  while (i < tokens.length) {
+    if (tokenNeedsFloor(meta[i])) {
+      return askResult(RULE.GH_PR, { safeMessage: 'Needs approval: this gh pr command could not be resolved with confidence.' });
+    }
+    if (GH_GLOBAL_VALUE_FLAGS.has(tokens[i])) { i += 2; continue; }
+    if (tokens[i].startsWith('-')) { i += 1; continue; }
+    break;
+  }
+  const subcommand = tokens[i];
+  if (subcommand === undefined) {
+    return askResult(RULE.UNKNOWN, { safeMessage: 'Needs approval: this gh pr command has no recognized subcommand.' });
+  }
+  if (GH_PR_DENY_SUBCOMMANDS.has(subcommand)) return denyResult(RULE.GH_PR);
+  if (GH_PR_READONLY_SUBCOMMANDS.has(subcommand)) return deferResult();
+  return askResult(RULE.UNKNOWN, { safeMessage: 'Needs approval: this gh pr subcommand is not recognized by the safety classifier.' });
+}
+
+function classifyGhApi(tokens, meta) {
+  // Unlike `gh pr <subcommand> [flags...]`, real `gh api` usage is `gh api <endpoint> [flags...]` -
+  // the endpoint is typically the FIRST positional token, with `-X/--method`/`-f/--field`/etc.
+  // following it. This scans every token (never stopping at the first non-flag one) so a method or
+  // body-field flag placed after the endpoint is not missed.
+  let endpoint = null;
+  let sawEndpoint = false;
+  let method = null;
+  let hasBodyFields = false;
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (tokenNeedsFloor(meta[i])) {
+      return askResult(RULE.GH_PR, { safeMessage: 'Needs approval: this gh api command could not be resolved with confidence.' });
+    }
+    const eqIdx = t.indexOf('=');
+    if (t.startsWith('--') && eqIdx !== -1) {
+      const key = t.slice(0, eqIdx);
+      const val = t.slice(eqIdx + 1);
+      if (GH_API_METHOD_FLAGS.has(key)) { method = val.toUpperCase(); i += 1; continue; }
+      if (GH_API_BODY_FLAGS.has(key)) { hasBodyFields = true; i += 1; continue; }
+      i += 1; continue;
+    }
+    if (/^-X./.test(t)) { method = t.slice(2).toUpperCase(); i += 1; continue; }
+    if (GH_API_METHOD_FLAGS.has(t)) {
+      const v = tokens[i + 1];
+      if (v === undefined || tokenNeedsFloor(meta[i + 1])) {
+        return askResult(RULE.GH_PR, { safeMessage: 'Needs approval: this gh api method could not be resolved with confidence.' });
+      }
+      method = v.toUpperCase(); i += 2; continue;
+    }
+    if (GH_API_BODY_FLAGS.has(t)) { hasBodyFields = true; i += 2; continue; }
+    if (GH_API_OTHER_VALUE_FLAGS.has(t)) { i += 2; continue; }
+    if (t.startsWith('-')) { i += 1; continue; }
+    if (!sawEndpoint) { endpoint = t; sawEndpoint = true; }
+    i += 1;
+  }
+
+  if (endpoint === null) {
+    return askResult(RULE.UNKNOWN, { safeMessage: 'Needs approval: this gh api command has no recognized endpoint.' });
+  }
+  if (endpoint === 'graphql') {
+    // GraphQL has no REST verb/endpoint shape this scanner parses - a query/mutation body could
+    // still affect a pull request through this one generic endpoint, so it is never provably
+    // read-only here; always at least ask.
+    return askResult(RULE.UNKNOWN, { safeMessage: 'Needs approval: this gh api graphql command is not inspected by this scanner.' });
+  }
+  const effectiveMethod = method || (hasBodyFields ? 'POST' : 'GET');
+  const isPrEndpoint = GH_API_PR_ENDPOINT.test(endpoint);
+  if (isPrEndpoint && GH_API_WRITE_METHODS.has(effectiveMethod)) return denyResult(RULE.GH_PR);
+  if (effectiveMethod === 'GET' || effectiveMethod === 'HEAD') return deferResult();
+  // A write method to a non-PR endpoint is outside this rule's scope but is still a real external
+  // write this scanner does not otherwise classify - never silently allow it.
+  return askResult(RULE.UNKNOWN, { safeMessage: 'Needs approval: this gh api command writes to an endpoint this scanner does not specifically classify.' });
+}
+
+function classifyGh(rest, dialect, ctx) {
+  const td = dialectTokenStrings(rest, dialect);
+  if (!td.ok) return askResult(RULE.UNKNOWN, { safeMessage: 'Needs approval: this gh command could not be resolved with confidence.' });
+  const tokens = td.tokens;
+  const meta = td.meta;
+  let i = 0;
+  while (i < tokens.length) {
+    if (tokenNeedsFloor(meta[i])) {
+      return askResult(RULE.UNKNOWN, { safeMessage: 'Needs approval: this gh command could not be resolved with confidence.' });
+    }
+    if (GH_GLOBAL_VALUE_FLAGS.has(tokens[i])) { i += 2; continue; }
+    if (tokens[i].startsWith('-')) { i += 1; continue; }
+    break;
+  }
+  const group = tokens[i];
+  if (group === 'pr') return classifyGhPr(tokens.slice(i + 1), meta.slice(i + 1));
+  if (group === 'api') return classifyGhApi(tokens.slice(i + 1), meta.slice(i + 1));
+  return askResult(RULE.UNKNOWN, { safeMessage: 'Needs approval: this gh command is not recognized by the safety classifier.' });
 }
 
 const PACKAGE_MANAGER_VALUE_FLAGS = { npm: new Set(['--prefix', '--userconfig']), pnpm: new Set(['-C']) };
@@ -5099,8 +5246,10 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments, depth, budg
   if (bin === 'git') return classifyGit(rest, ctx, assignments || [], dialect, depth, budget, aliasDepth, internalGitContext);
   // `git-push`/`git-send-pack` are the real standalone binaries git's own subcommands dispatch
   // to internally (present on PATH alongside `git` itself on most POSIX installs) - invoking them
-  // directly bypasses the `bin === 'git'` dispatch entirely unless handled here too.
+  // directly bypasses the `bin === 'git'` dispatch entirely unless handled here too. `git-merge` is
+  // the same kind of internal dispatch helper for the `merge` subcommand - same bypass, same fix.
   if (bin === 'git-push' || bin === 'git-send-pack') return denyResult(RULE.GIT_PUSH);
+  if (bin === 'git-merge') return denyResult(RULE.GIT_MERGE);
 
   if (TAMPER_MUTATION_BINARIES.has(bin)) {
     const t = classifyShellMutationTamper(bin, rest, segment, dialect, ctx);
@@ -5116,6 +5265,7 @@ function classifyEffectiveBinary(segment, dialect, ctx, assignments, depth, budg
 
   if (bin === 'vercel') return classifyVercel(rest, dialect);
   if (bin === 'firebase' || bin === 'firebase-tools') return classifyFirebase(rest, dialect);
+  if (bin === 'gh') return classifyGh(rest, dialect, ctx);
   if (bin === 'npm' || bin === 'pnpm' || bin === 'yarn') return classifyPackageManager(bin, rest, ctx, dialect);
   if (bin === 'codegraph') return classifyCodegraph(rest, dialect);
 
@@ -5343,6 +5493,9 @@ module.exports = {
   classifyGitRemote,
   classifyVercel,
   classifyFirebase,
+  classifyGh,
+  classifyGhPr,
+  classifyGhApi,
   classifyPackageManager,
   classifyCodegraph,
   classifyPackageScript,
