@@ -101,7 +101,7 @@ async function main() {
       viewCount: entry.viewCount,
       priority: 5,
       badge: 'Mới',
-      status: 'approved',
+      status: 'pending',
       category: 'grid',
       addedAt: now,
       approvedAt: now
