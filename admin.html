@@ -5783,9 +5783,50 @@ function exportVideosJSON() {
   toast('Đã xuất videos.json — commit file này vào data/videos.json để cập nhật web');
 }
 
+// === CANONICAL YOUTUBE ID NORMALIZATION (kept identical across scripts/sync-youtube.js, scripts/video-discover.js, admin.html) ===
+var YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+function extractYouTubeId(input) {
+  if (typeof input !== 'string') return null;
+  var trimmed = input.trim();
+  if (!trimmed) return null;
+
+  if (YOUTUBE_ID_RE.test(trimmed)) return trimmed;
+
+  var withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : 'https://' + trimmed;
+  var url;
+  try {
+    url = new URL(withScheme);
+  } catch (e) {
+    return null;
+  }
+
+  var host = url.hostname.replace(/^www\./i, '').toLowerCase();
+  var candidate = null;
+
+  if (host === 'youtu.be') {
+    candidate = url.pathname.slice(1).split('/')[0];
+  } else if (host === 'youtube.com') {
+    if (url.pathname === '/watch') {
+      candidate = url.searchParams.get('v');
+    } else if (url.pathname.indexOf('/shorts/') === 0) {
+      candidate = url.pathname.split('/')[2];
+    } else if (url.pathname.indexOf('/embed/') === 0) {
+      candidate = url.pathname.split('/')[2];
+    } else if (url.pathname.indexOf('/live/') === 0) {
+      candidate = url.pathname.split('/')[2];
+    }
+  } else {
+    return null;
+  }
+
+  if (!candidate) return null;
+  return YOUTUBE_ID_RE.test(candidate) ? candidate : null;
+}
+// === END CANONICAL YOUTUBE ID NORMALIZATION ===
+
 function parseYouTubeId(url) {
-  var match = url.match(/(?:v=|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})/);
-  return match ? match[1] : null;
+  return extractYouTubeId(url);
 }
 
 function parseTikTokId(url) {
@@ -5794,6 +5835,7 @@ function parseTikTokId(url) {
 }
 
 function detectVideoPlatform(url) {
+  if (typeof url === 'string' && YOUTUBE_ID_RE.test(url.trim())) return 'youtube';
   if (/(?:youtube\.com|youtu\.be)/i.test(url)) return 'youtube';
   if (/tiktok\.com/i.test(url)) return 'tiktok';
   return null;
@@ -5835,7 +5877,12 @@ function addManualVideo() {
   if (platform === 'youtube') {
     var ytId = parseYouTubeId(url);
     if (!ytId) { alert('URL YouTube không hợp lệ'); return; }
-    var existing = videoData.videos.find(function(v) { return v.platformId === ytId; });
+    var existing = videoData.videos.find(function(v) {
+      if (v.platform !== 'youtube') return false;
+      var idMatch = typeof v.id === 'string' ? v.id.match(/^yt_([A-Za-z0-9_-]{11})$/) : null;
+      var canonical = extractYouTubeId(v.platformId) || (idMatch ? idMatch[1] : null);
+      return canonical === ytId;
+    });
     if (existing) { alert('Video này đã có trong danh sách (status: ' + existing.status + ')'); return; }
     newVideo = {
       id: 'yt_' + ytId,

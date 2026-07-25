@@ -52,6 +52,48 @@ const NEGATIVE_KEYWORDS = [
   'điều tra', 'xác minh vụ', 'ra đi mãi mãi',
 ];
 
+// === CANONICAL YOUTUBE ID NORMALIZATION (kept identical across scripts/sync-youtube.js, scripts/video-discover.js, admin.html) ===
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+function extractYouTubeId(input) {
+  if (typeof input !== 'string') return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  if (YOUTUBE_ID_RE.test(trimmed)) return trimmed;
+
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : 'https://' + trimmed;
+  let url;
+  try {
+    url = new URL(withScheme);
+  } catch (e) {
+    return null;
+  }
+
+  const host = url.hostname.replace(/^www\./i, '').toLowerCase();
+  let candidate = null;
+
+  if (host === 'youtu.be') {
+    candidate = url.pathname.slice(1).split('/')[0];
+  } else if (host === 'youtube.com') {
+    if (url.pathname === '/watch') {
+      candidate = url.searchParams.get('v');
+    } else if (url.pathname.indexOf('/shorts/') === 0) {
+      candidate = url.pathname.split('/')[2];
+    } else if (url.pathname.indexOf('/embed/') === 0) {
+      candidate = url.pathname.split('/')[2];
+    } else if (url.pathname.indexOf('/live/') === 0) {
+      candidate = url.pathname.split('/')[2];
+    }
+  } else {
+    return null;
+  }
+
+  if (!candidate) return null;
+  return YOUTUBE_ID_RE.test(candidate) ? candidate : null;
+}
+// === END CANONICAL YOUTUBE ID NORMALIZATION ===
+
 function isNegativeContent(title, description) {
   var text = (title + ' ' + description).toLowerCase();
   return NEGATIVE_KEYWORDS.some(function(kw) { return text.indexOf(kw) !== -1; });
@@ -127,7 +169,16 @@ async function discover() {
   }
 
   var data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  var existingIds = new Set(data.videos.map(function(v) { return v.id; }));
+
+  // Canonical dedup set, built across ALL statuses (approved/pending/rejected) —
+  // prefer platformId, fall back to parsing the yt_<id> form of .id.
+  var existingKeys = new Set();
+  data.videos.forEach(function(v) {
+    if (v.platform !== 'youtube') return;
+    var idMatch = typeof v.id === 'string' ? v.id.match(/^yt_([A-Za-z0-9_-]{11})$/) : null;
+    var canonical = extractYouTubeId(v.platformId) || (idMatch ? idMatch[1] : null);
+    if (canonical) existingKeys.add('youtube:' + canonical);
+  });
 
   var sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
   var thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
@@ -141,15 +192,20 @@ async function discover() {
     try {
       var items = await youtubeSearch(sq.q, sevenDaysAgo);
       for (var item of items) {
-        var vid = item.id.videoId;
-        var key = 'yt_' + vid;
-        if (existingIds.has(key) || candidates.has(key)) continue;
+        var vid = extractYouTubeId(item.id.videoId);
+        if (!vid) {
+          console.log('  Skipped (invalid YouTube ID): ' + item.id.videoId);
+          continue;
+        }
+        var key = 'youtube:' + vid;
+        if (existingKeys.has(key)) continue;
         if (isNegativeContent(item.snippet.title, item.snippet.description || '')) {
           console.log('  Skipped (negative): ' + item.snippet.title.substring(0, 60));
           continue;
         }
+        existingKeys.add(key);
         candidates.set(key, {
-          id: key,
+          id: 'yt_' + vid,
           platform: 'youtube',
           platformId: vid,
           title: item.snippet.title,
@@ -176,15 +232,20 @@ async function discover() {
     try {
       var items = await youtubeSearchGlobal(fq.q, thirtyDaysAgo);
       for (var item of items) {
-        var vid = item.id.videoId;
-        var key = 'yt_' + vid;
-        if (existingIds.has(key) || candidates.has(key)) continue;
+        var vid = extractYouTubeId(item.id.videoId);
+        if (!vid) {
+          console.log('  Skipped (invalid YouTube ID): ' + item.id.videoId);
+          continue;
+        }
+        var key = 'youtube:' + vid;
+        if (existingKeys.has(key)) continue;
         if (isNegativeContent(item.snippet.title, item.snippet.description || '')) {
           console.log('  Skipped (negative): ' + item.snippet.title.substring(0, 60));
           continue;
         }
+        existingKeys.add(key);
         candidates.set(key, {
-          id: key,
+          id: 'yt_' + vid,
           platform: 'youtube',
           platformId: vid,
           title: item.snippet.title,

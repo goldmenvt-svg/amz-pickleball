@@ -18,6 +18,48 @@ async function fetchRSS() {
   return res.text();
 }
 
+// === CANONICAL YOUTUBE ID NORMALIZATION (kept identical across scripts/sync-youtube.js, scripts/video-discover.js, admin.html) ===
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+function extractYouTubeId(input) {
+  if (typeof input !== 'string') return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  if (YOUTUBE_ID_RE.test(trimmed)) return trimmed;
+
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : 'https://' + trimmed;
+  let url;
+  try {
+    url = new URL(withScheme);
+  } catch (e) {
+    return null;
+  }
+
+  const host = url.hostname.replace(/^www\./i, '').toLowerCase();
+  let candidate = null;
+
+  if (host === 'youtu.be') {
+    candidate = url.pathname.slice(1).split('/')[0];
+  } else if (host === 'youtube.com') {
+    if (url.pathname === '/watch') {
+      candidate = url.searchParams.get('v');
+    } else if (url.pathname.indexOf('/shorts/') === 0) {
+      candidate = url.pathname.split('/')[2];
+    } else if (url.pathname.indexOf('/embed/') === 0) {
+      candidate = url.pathname.split('/')[2];
+    } else if (url.pathname.indexOf('/live/') === 0) {
+      candidate = url.pathname.split('/')[2];
+    }
+  } else {
+    return null;
+  }
+
+  if (!candidate) return null;
+  return YOUTUBE_ID_RE.test(candidate) ? candidate : null;
+}
+// === END CANONICAL YOUTUBE ID NORMALIZATION ===
+
 function decodeHtmlEntities(str) {
   return str
     .replace(/&amp;/g, '&')
@@ -74,28 +116,40 @@ async function main() {
   console.log(`Found ${rssEntries.length} video(s) on channel.`);
 
   const data = JSON.parse(readFileSync(VIDEOS_JSON, 'utf-8'));
-  const existingIds = new Set(data.videos.map(v => v.platformId));
 
-  const newEntries = rssEntries.filter(e => !existingIds.has(e.videoId));
-  if (newEntries.length === 0) {
-    console.log('No new videos — nothing to update.');
-    return;
+  // Canonical dedup set, built across ALL statuses (approved/pending/rejected) —
+  // prefer platformId, fall back to parsing the yt_<id> form of .id.
+  const existingKeys = new Set();
+  for (const v of data.videos) {
+    if (v.platform !== 'youtube') continue;
+    const idMatch = typeof v.id === 'string' ? v.id.match(/^yt_([A-Za-z0-9_-]{11})$/) : null;
+    const canonical = extractYouTubeId(v.platformId) || (idMatch ? idMatch[1] : null);
+    if (canonical) existingKeys.add(`youtube:${canonical}`);
   }
 
   const now = new Date().toISOString();
   let addedCount = 0;
 
-  for (const entry of newEntries) {
+  for (const entry of rssEntries) {
+    const canonicalId = extractYouTubeId(entry.videoId);
+    if (!canonicalId) {
+      console.log(`  Skipped (invalid YouTube ID): ${entry.videoId}`);
+      continue;
+    }
+    const dedupKey = `youtube:${canonicalId}`;
+    if (existingKeys.has(dedupKey)) continue;
+    existingKeys.add(dedupKey);
+
     const title = makeTitle(entry.title, entry.publishedAt);
 
     const video = {
-      id: `yt_${entry.videoId}`,
+      id: `yt_${canonicalId}`,
       platform: 'youtube',
-      platformId: entry.videoId,
+      platformId: canonicalId,
       title,
       description: 'Video Pickleball tại sân AMZ — 179 Thống Nhất, TP.HCM',
       channelTitle: 'AMZ Pickleball',
-      thumbnail: `https://i.ytimg.com/vi/${entry.videoId}/hqdefault.jpg`,
+      thumbnail: `https://i.ytimg.com/vi/${canonicalId}/hqdefault.jpg`,
       duration: '',
       publishedAt: entry.publishedAt,
       viewCount: entry.viewCount,
@@ -112,8 +166,13 @@ async function main() {
     const insertAt = featuredIdx >= 0 ? featuredIdx + 1 : 0;
     data.videos.splice(insertAt, 0, video);
 
-    console.log(`+ Added: [${entry.videoId}] ${title}`);
+    console.log(`+ Added: [${canonicalId}] ${title}`);
     addedCount++;
+  }
+
+  if (addedCount === 0) {
+    console.log('No new videos — nothing to update.');
+    return;
   }
 
   data.lastScan = now;
