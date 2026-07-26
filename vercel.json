@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "r25/16-youtube-rss-resilience": false
+    }
+  },
   "redirects": [
     {
       "source": "/:path*",
