@@ -94,6 +94,30 @@ function extractYouTubeId(input) {
 }
 // === END CANONICAL YOUTUBE ID NORMALIZATION ===
 
+// Canonical dedup set, built across ALL statuses (approved/pending/rejected) —
+// prefer platformId, fall back to parsing the yt_<id> form of .id.
+function buildExistingKeys(videos) {
+  var keys = new Set();
+  videos.forEach(function(v) {
+    if (!v || v.platform !== 'youtube') return;
+    var idMatch = typeof v.id === 'string' ? v.id.match(/^yt_([A-Za-z0-9_-]{11})$/) : null;
+    var canonical = extractYouTubeId(v.platformId) || (idMatch ? idMatch[1] : null);
+    if (canonical) keys.add('youtube:' + canonical);
+  });
+  return keys;
+}
+
+// Resolves a raw YouTube id/URL against the current dedup Set WITHOUT mutating
+// it — callers add the key only after any further filtering (e.g. negative
+// content) passes, so within-batch dedup still reflects only accepted videos.
+function resolveYouTubeDedup(existingKeys, rawId) {
+  var canonical = extractYouTubeId(rawId);
+  if (!canonical) return { ok: false, reason: 'invalid', canonicalId: null, key: null };
+  var key = 'youtube:' + canonical;
+  if (existingKeys.has(key)) return { ok: false, reason: 'duplicate', canonicalId: canonical, key: key };
+  return { ok: true, reason: null, canonicalId: canonical, key: key };
+}
+
 function isNegativeContent(title, description) {
   var text = (title + ' ' + description).toLowerCase();
   return NEGATIVE_KEYWORDS.some(function(kw) { return text.indexOf(kw) !== -1; });
@@ -170,15 +194,7 @@ async function discover() {
 
   var data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
 
-  // Canonical dedup set, built across ALL statuses (approved/pending/rejected) —
-  // prefer platformId, fall back to parsing the yt_<id> form of .id.
-  var existingKeys = new Set();
-  data.videos.forEach(function(v) {
-    if (v.platform !== 'youtube') return;
-    var idMatch = typeof v.id === 'string' ? v.id.match(/^yt_([A-Za-z0-9_-]{11})$/) : null;
-    var canonical = extractYouTubeId(v.platformId) || (idMatch ? idMatch[1] : null);
-    if (canonical) existingKeys.add('youtube:' + canonical);
-  });
+  var existingKeys = buildExistingKeys(data.videos);
 
   var sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
   var thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
@@ -192,13 +208,13 @@ async function discover() {
     try {
       var items = await youtubeSearch(sq.q, sevenDaysAgo);
       for (var item of items) {
-        var vid = extractYouTubeId(item.id.videoId);
-        if (!vid) {
+        var dedup = resolveYouTubeDedup(existingKeys, item.id.videoId);
+        if (dedup.reason === 'invalid') {
           console.log('  Skipped (invalid YouTube ID): ' + item.id.videoId);
           continue;
         }
-        var key = 'youtube:' + vid;
-        if (existingKeys.has(key)) continue;
+        if (dedup.reason === 'duplicate') continue;
+        var vid = dedup.canonicalId, key = dedup.key;
         if (isNegativeContent(item.snippet.title, item.snippet.description || '')) {
           console.log('  Skipped (negative): ' + item.snippet.title.substring(0, 60));
           continue;
@@ -232,13 +248,13 @@ async function discover() {
     try {
       var items = await youtubeSearchGlobal(fq.q, thirtyDaysAgo);
       for (var item of items) {
-        var vid = extractYouTubeId(item.id.videoId);
-        if (!vid) {
+        var dedup = resolveYouTubeDedup(existingKeys, item.id.videoId);
+        if (dedup.reason === 'invalid') {
           console.log('  Skipped (invalid YouTube ID): ' + item.id.videoId);
           continue;
         }
-        var key = 'youtube:' + vid;
-        if (existingKeys.has(key)) continue;
+        if (dedup.reason === 'duplicate') continue;
+        var vid = dedup.canonicalId, key = dedup.key;
         if (isNegativeContent(item.snippet.title, item.snippet.description || '')) {
           console.log('  Skipped (negative): ' + item.snippet.title.substring(0, 60));
           continue;
@@ -350,9 +366,17 @@ async function discover() {
   return newAmz.length + newFeatured.length;
 }
 
-discover().then(function(count) {
-  console.log('\nDone. ' + count + ' new videos added.');
-}).catch(function(err) {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+module.exports = {
+  extractYouTubeId,
+  buildExistingKeys,
+  resolveYouTubeDedup,
+};
+
+if (require.main === module) {
+  discover().then(function(count) {
+    console.log('\nDone. ' + count + ' new videos added.');
+  }).catch(function(err) {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
+}
