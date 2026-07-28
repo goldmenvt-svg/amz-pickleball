@@ -5825,6 +5825,32 @@ function extractYouTubeId(input) {
 }
 // === END CANONICAL YOUTUBE ID NORMALIZATION ===
 
+// === CANONICAL YOUTUBE DEDUP (kept identical to scripts/video-discover.js) ===
+// Canonical dedup set, built across ALL statuses (approved/pending/rejected) —
+// prefer platformId, fall back to parsing the yt_<id> form of .id.
+function buildExistingKeys(videos) {
+  var keys = new Set();
+  videos.forEach(function(v) {
+    if (!v || v.platform !== 'youtube') return;
+    var idMatch = typeof v.id === 'string' ? v.id.match(/^yt_([A-Za-z0-9_-]{11})$/) : null;
+    var canonical = extractYouTubeId(v.platformId) || (idMatch ? idMatch[1] : null);
+    if (canonical) keys.add('youtube:' + canonical);
+  });
+  return keys;
+}
+
+// Resolves a raw YouTube id/URL against the current dedup Set WITHOUT mutating
+// it — callers add the key only after acceptance, so within-batch dedup still
+// reflects only accepted videos.
+function resolveYouTubeDedup(existingKeys, rawId) {
+  var canonical = extractYouTubeId(rawId);
+  if (!canonical) return { ok: false, reason: 'invalid', canonicalId: null, key: null };
+  var key = 'youtube:' + canonical;
+  if (existingKeys.has(key)) return { ok: false, reason: 'duplicate', canonicalId: canonical, key: key };
+  return { ok: true, reason: null, canonicalId: canonical, key: key };
+}
+// === END CANONICAL YOUTUBE DEDUP ===
+
 function parseYouTubeId(url) {
   return extractYouTubeId(url);
 }
@@ -5877,21 +5903,26 @@ function addManualVideo() {
   if (platform === 'youtube') {
     var ytId = parseYouTubeId(url);
     if (!ytId) { alert('URL YouTube không hợp lệ'); return; }
-    var existing = videoData.videos.find(function(v) {
-      if (v.platform !== 'youtube') return false;
-      var idMatch = typeof v.id === 'string' ? v.id.match(/^yt_([A-Za-z0-9_-]{11})$/) : null;
-      var canonical = extractYouTubeId(v.platformId) || (idMatch ? idMatch[1] : null);
-      return canonical === ytId;
-    });
-    if (existing) { alert('Video này đã có trong danh sách (status: ' + existing.status + ')'); return; }
+    var existingKeys = buildExistingKeys(videoData.videos);
+    var dedup = resolveYouTubeDedup(existingKeys, ytId);
+    if (dedup.reason === 'duplicate') {
+      var existing = videoData.videos.find(function(v) {
+        if (!v || v.platform !== 'youtube') return false;
+        var idMatch = typeof v.id === 'string' ? v.id.match(/^yt_([A-Za-z0-9_-]{11})$/) : null;
+        var canonical = extractYouTubeId(v.platformId) || (idMatch ? idMatch[1] : null);
+        return canonical === dedup.canonicalId;
+      });
+      alert('Video này đã có trong danh sách (status: ' + (existing ? existing.status : '?') + ')');
+      return;
+    }
     newVideo = {
-      id: 'yt_' + ytId,
+      id: 'yt_' + dedup.canonicalId,
       platform: 'youtube',
-      platformId: ytId,
-      title: titleInput || ('Video thủ công — ' + ytId),
+      platformId: dedup.canonicalId,
+      title: titleInput || ('Video thủ công — ' + dedup.canonicalId),
       description: '',
       channelTitle: '',
-      thumbnail: 'https://i.ytimg.com/vi/' + ytId + '/mqdefault.jpg',
+      thumbnail: 'https://i.ytimg.com/vi/' + dedup.canonicalId + '/mqdefault.jpg',
       duration: '',
       publishedAt: now.substring(0, 10),
       viewCount: 0,
@@ -5903,6 +5934,7 @@ function addManualVideo() {
       isOriginalAMZ: isOriginalAMZ
     };
     if (category) newVideo.category = category;
+    existingKeys.add(dedup.key);
   } else if (platform === 'tiktok') {
     var ttId = parseTikTokId(url);
     if (!ttId) { alert('URL TikTok không hợp lệ — cần dạng https://www.tiktok.com/@ten/video/1234567890123456789'); return; }
