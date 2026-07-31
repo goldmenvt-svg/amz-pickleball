@@ -819,6 +819,25 @@ async function run() {
 
   console.log('');
   console.log('========================================');
+  console.log('PENDING VIDEO METADATA (status/approvedAt invariant)');
+  console.log('========================================');
+
+  await checkAsync('80. main() writes a new video with status "pending" and approvedAt === null', async () => {
+    let written = null;
+    await main({
+      fetchRSS: async () => VALID_FEED,
+      readFileSync: () => JSON.stringify({ videos: [] }),
+      writeFileSync: (_path, content) => { written = content; },
+    });
+    assert.ok(written, 'writeFileSync must have been called');
+    const data = JSON.parse(written);
+    assert.strictEqual(data.videos.length, 1);
+    assert.strictEqual(data.videos[0].status, 'pending');
+    assert.strictEqual(data.videos[0].approvedAt, null, 'a pending video must not carry a non-null approvedAt');
+  });
+
+  console.log('');
+  console.log('========================================');
   console.log('GUARD (require does not auto-run main / no network)');
   console.log('========================================');
   await checkAsync('21. require(./sync-youtube.js) does not run main() or touch network', async () => {
