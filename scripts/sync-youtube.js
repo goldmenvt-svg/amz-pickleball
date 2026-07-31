@@ -400,7 +400,7 @@ async function main(deps = {}) {
       status: 'pending',
       category: 'grid',
       addedAt: now,
-      approvedAt: now
+      approvedAt: null
     };
 
     // Insert after the first featured video to keep it at top
