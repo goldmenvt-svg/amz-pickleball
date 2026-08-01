@@ -2,8 +2,8 @@ name: Sync AMZ YouTube Videos
 
 on:
   schedule:
-    # 8:00 AM Vietnam time (UTC+7) = 1:00 AM UTC, every day
-    - cron: '3 1 * * *'
+    # 1:17 PM Vietnam time (UTC+7) = 6:17 AM UTC, every day
+    - cron: '17 6 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
