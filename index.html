@@ -1430,9 +1430,13 @@
     }
     .chat-btn:hover .chat-tooltip { opacity: 1; }
     @media (max-width: 768px) {
-      .floating-chat { bottom: 16px; left: 12px; }
-      .chat-btn { width: 42px; height: 42px; }
-      .chat-btn svg { width: 20px; height: 20px; }
+      .floating-chat {
+        position: static;
+        flex-direction: row; justify-content: center; align-items: center;
+        gap: 8px; padding: 20px 18px 24px;
+      }
+      .chat-btn { width: 38px; height: 38px; }
+      .chat-btn svg { width: 18px; height: 18px; }
       .chat-tooltip { display: none; }
     }
 
@@ -1481,7 +1485,12 @@
       text-transform: uppercase; color: var(--accent); margin-bottom: 6px;
     }
     @media (max-width: 1024px) { .video-grid { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 768px) { .video-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 768px) {
+      .featured-matches .section-header,
+      .video-section .section-header { margin-bottom: 40px; }
+      .video-grid { grid-template-columns: 1fr; margin-top: 28px; }
+      .featured-grid { margin-top: 24px; }
+    }
     .video-embed-active .video-thumb img,
     .video-embed-active .video-play-overlay,
     .video-embed-active .video-duration { display: none; }
@@ -1570,7 +1579,23 @@
     .lb-name { font-weight: 600; }
     .lb-level { color: var(--accent); font-weight: 600; }
     @media (max-width: 768px) {
-      .leaderboard-table { font-size: 13px; }
+      .leaderboard-section .section-header { margin-bottom: 40px; }
+      .leaderboard-content {
+        position: relative;
+        scrollbar-width: thin;
+        scrollbar-color: var(--muted2) transparent;
+      }
+      .leaderboard-tabs { scrollbar-width: thin; scrollbar-color: var(--muted2) transparent; }
+      .leaderboard-tabs::-webkit-scrollbar,
+      .leaderboard-content::-webkit-scrollbar { height: 4px; }
+      .leaderboard-tabs::-webkit-scrollbar-thumb,
+      .leaderboard-content::-webkit-scrollbar-thumb {
+        background: var(--muted2); border-radius: 999px;
+      }
+      .leaderboard-table { min-width: 450px; font-size: 13px; }
+      .leaderboard-table th { padding: 10px 12px; }
+      .leaderboard-table td { padding: 12px; }
+      .events-empty { padding: 24px 0 !important; }
     }
   </style>
 </head>
@@ -3199,7 +3224,7 @@
         tournaments.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
 
         if (!tournaments.length) {
-          grid.innerHTML = '<div style="text-align:center;padding:60px 0;grid-column:1/-1;">' +
+          grid.innerHTML = '<div class="events-empty" style="text-align:center;padding:60px 0;grid-column:1/-1;">' +
             '<p style="color:var(--text);font-size:18px;font-weight:600;margin-bottom:12px;">Giải đấu đang được chuẩn bị</p>' +
             '<p style="color:var(--muted);font-size:15px;line-height:1.7;max-width:480px;margin:0 auto 24px;">Đăng ký nhận thông báo để không bỏ lỡ giải đấu tiếp theo.</p>' +
             '<a href="#lien-he" class="btn btn-primary" style="font-size:13px;">Đăng ký nhận thông báo</a></div>';
