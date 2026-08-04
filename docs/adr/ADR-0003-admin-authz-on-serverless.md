@@ -5,6 +5,8 @@
 - **Người quyết định:** CTO / Lead Architect
 - **Liên quan:** TD-02, TD-15, `docs/design/DESIGN-admin-auth.md`, `SECURITY.md` #1
 
+> **Ghi nhận triển khai (R25.08B, 2026-08-04):** phương án (1) đã được triển khai trong `api/push-data.js` và `api/push-videos.js`. Phương án (2) Admin SDK/custom claim chưa hoàn thành và vẫn thuộc TD-15. ADR vẫn giữ `Proposed` cho tới khi Owner ratify trạng thái quyết định.
+
 ## Bối cảnh
 `api/push-data.js`/`push-videos.js` chỉ verify token Firebase *hợp lệ* (`accounts:lookup` → `verifyRes.ok`), KHÔNG kiểm danh tính admin. Bất kỳ user Firebase nào cũng có thể đẩy JSON lên repo và lên site (Critical).
 

@@ -6,6 +6,8 @@
 - **Người quyết định:** Owner
 - **Liên quan:** ADR-0002 (Firestore single source of truth), ADR-0004 (app-nextjs fate), ADR-0005 (court schedule source of truth), `docs/operations/AMZ_1_YEAR_TOURNAMENT_BRIEF.md`, `docs/operations/AMZ_1_YEAR_TOURNAMENT_DATA_CHECKLIST.md`
 
+> **Ghi nhận triển khai (R25.08B, 2026-08-04):** lịch sử Git xác nhận các bước đăng ký cá nhân, helper, preview, lưu kết quả và xác nhận an toàn đã được triển khai. Các câu “chưa triển khai code” bên dưới là trạng thái lịch sử tại thời điểm soạn ADR, không còn mô tả mã hiện tại. Trạng thái ADR vẫn là `Proposed` cho tới khi Owner ratify.
+
 ## 1. Trạng thái
 
 Proposed — chưa triển khai code, chờ Owner/ChatGPT duyệt phương án trước khi build.

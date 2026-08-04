@@ -1,6 +1,6 @@
 # TECH_DEBT.md — AMZ Pickleball
 
-> Sổ nợ kỹ thuật — đã ưu tiên hoá P0→P3. Cập nhật: 2026-06-30. Vai trò: CTO / Lead Software Architect.
+> Sổ nợ kỹ thuật — đã ưu tiên hoá P0→P3. Cập nhật trạng thái: 2026-08-04 (R25.08B). Vai trò: CTO / Lead Software Architect.
 > Quy ước ưu tiên:
 > - **P0** — Phải xử lý ngay (bảo mật/chặn vận hành). Không trì hoãn.
 > - **P1** — Cao. Trong 1–2 sprint tới. Nợ cấu trúc lõi.
@@ -8,6 +8,37 @@
 > - **P3** — Thấp. Dọn dẹp khi rảnh.
 >
 > Tài liệu ghi nhận & lập kế hoạch — KHÔNG sửa code production. Kế hoạch thực thi ở `SPRINT_PLAN.md`, `MASTER_ROADMAP.md`. Thiết kế chi tiết cho thay đổi lớn ở `docs/design/`.
+
+---
+
+## Trạng thái xử lý hiện tại (R25.08B)
+
+| ID | Trạng thái | Bằng chứng chính / điều kiện để đóng |
+|---|---:|---|
+| TD-01 | ✅ Hoàn thành | Vercel được chốt làm Production; GitHub Pages không tự deploy |
+| TD-02 | ✅ Hoàn thành giai đoạn A | API đã kiểm quyền admin; giai đoạn Admin SDK/custom claim theo TD-15 |
+| TD-03 | ✅ Hoàn thành | `registrations` đã yêu cầu điều kiện hợp lệ, không còn ghi ẩn danh vô điều kiện |
+| TD-04 | 🟡 Một phần | Rules cho các collection chính và append-only đã có; thiếu bằng chứng emulator đầy đủ/toàn vai trò |
+| TD-05 | ✅ Quyết định hoàn thành | ADR-0004 Accepted: app preview/private trước, chưa public; triển khai app chưa đồng nghĩa hoàn thành |
+| TD-06 | 🟡 Một phần | Có cải tiến export; chưa đủ migration idempotent, snapshot một chiều, `schemaVersion`, ranh giới events/tournaments |
+| TD-07 | ⬜ Chưa làm | Chưa có CI deploy rules có phê duyệt |
+| TD-08 | 🟡 Một phần | Video có test tự động; chưa có gate test/lint/build chung |
+| TD-09 | ⬜ Chưa làm | `settings/adminData` vẫn được dùng |
+| TD-10 | 🟡 Một phần | Đã giảm rủi ro tranh chấp ghi; hai workflow vẫn có thể ghi `data/videos.json` |
+| TD-11 | ❓ Chưa xác minh | Token/rotation nằm ngoài repo; Owner cần xác minh GitHub Settings |
+| TD-12 | 🟡 Một phần | Pricing/social đã được cập nhật; chưa chứng minh toàn bộ dữ liệu doanh nghiệp đã hoàn chỉnh |
+| TD-13 | ⬜ Chưa làm | `index.html`/`admin.html` vẫn là monolith lớn |
+| TD-14 | ⬜ Chưa đóng | Chưa có đợt kiểm toán/dọn file dev được nghiệm thu |
+| TD-15 | ⬜ Chưa làm | API vẫn dùng REST `accounts:lookup`, chưa thống nhất Admin SDK/custom claim |
+
+### Công việc ngoài danh sách TD đã hoàn thành
+
+- ✅ Auto pairing: đăng ký cá nhân, helper, preview, lưu kết quả và xác nhận an toàn.
+- ✅ Import VĐV/đăng ký: preview/validation và batch write.
+- ✅ Chặn dữ liệu TEST trước export, chống đăng ký trùng và bảo vệ xóa có phụ thuộc.
+- ✅ Ghi điểm/Elo bằng transaction; revision và chuỗi Elo; rules `elo_history` được siết.
+- ✅ Chuỗi an toàn Video Center/YouTube R25.06 và sửa mobile R25.07B.
+- 🟡 GitHub Actions Node.js 24: code đã lên `bd229f2`, chờ run hậu triển khai.
 
 ---
 

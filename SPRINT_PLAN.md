@@ -1,8 +1,41 @@
 # SPRINT_PLAN.md — AMZ Pickleball
 
-> Kế hoạch triển khai theo sprint 2 tuần. Cập nhật: 2026-06-30. Vai trò: CTO / Lead Architect.
+> Kế hoạch triển khai theo sprint 2 tuần. Cập nhật trạng thái: 2026-08-04 (R25.08B). Vai trò: CTO / Lead Architect.
 > Dựa trên `TECH_DEBT.md` (P0→P3). Thay đổi lớn phải qua gate ở `docs/design/`.
 > Giả định năng lực: nhóm nhỏ (1–2 dev). Sprint = 2 tuần. Mỗi sprint dành ~20% cho buffer/sự cố.
+
+---
+
+## 0. Bảng điều khiển thực hiện
+
+Quy ước: ✅ hoàn thành có bằng chứng · 🟡 một phần/đang chờ · ⬜ chưa làm · ❓ cần Owner xác minh ngoài repository.
+
+| Sprint | Task | Trạng thái 2026-08-04 | Ghi chú kiểm toán |
+|---|---|---:|---|
+| S1 | TD-01 — hợp nhất Production về Vercel | ✅ | Code và hồ sơ triển khai P0 đã có; workflow Pages không tự chạy |
+| S1 | TD-02 — kiểm quyền admin `api/push-*` giai đoạn A | ✅ | REST lookup + kiểm admin đã triển khai; Admin SDK/custom claim vẫn thuộc TD-15 |
+| S1 | TD-03 — siết `registrations` | ✅ | Rule hiện không còn `create: if true` |
+| S1 | Tắt self-signup + alert | ❓ | Cấu hình ngoài repository, chưa có bằng chứng hiện hành |
+| S2 | TD-04 — rules đầy đủ + emulator test | 🟡 | Có rules cho collection chính và append-only; chưa chứng minh ma trận emulator đầy đủ |
+| S2 | Scheduled backup | ❓ | Chưa có bằng chứng cấu hình/runs |
+| S2 | ADR-0004 — số phận app-nextjs | ✅ | Accepted ngày 2026-07-02: preview/private trước, chưa public |
+| S3 | TD-06 — một nguồn sự thật | 🟡 | Có các cải tiến export; migration idempotent, snapshot một chiều và `schemaVersion` chưa được chứng minh |
+| S4 | TD-07 — deploy rules qua CI | ⬜ | Chưa có workflow được phê duyệt |
+| S4 | TD-08 — test/lint/build CI | 🟡 | Có test chuyên biệt cho video; CI chung và root `npm test` chưa đạt |
+| S4 | TD-10 — hợp nhất đường ghi `videos.json` | 🟡 | Đã có concurrency + test an toàn; hai workflow vẫn cùng có quyền ghi |
+| S4 | TD-11 — token tối thiểu/xoay vòng | ❓ | Cần Owner kiểm tra GitHub Settings; không thể kết luận từ repo |
+| S4 | R25.08A — Node.js 24 | 🟡 | Source-control hoàn tất; chờ run sau `bd229f2` để đóng |
+
+### Cây công việc đang điều hành
+
+```text
+AMZ 2026
+├── R25.06 B–E3                 ✅ Đã đóng
+├── R25.07B mobile              ✅ Đã đóng
+├── R25.08A Actions Node.js 24  🟡 Chờ run hậu triển khai
+└── R25.08B tài liệu quản trị   🟡 Đang thực hiện
+    └── Kế tiếp: TD-06          ⬜ Chưa mở triển khai
+```
 
 ---
 

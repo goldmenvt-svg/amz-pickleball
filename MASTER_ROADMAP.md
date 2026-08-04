@@ -1,8 +1,35 @@
 # MASTER_ROADMAP.md — AMZ Pickleball (12 tháng)
 
-> Lộ trình 2026-07 → 2027-06. Sprint = 2 tuần. Cập nhật: 2026-06-30. Vai trò: CTO / Lead Architect.
+> Lộ trình 2026-07 → 2027-06. Sprint = 2 tuần. Cập nhật trạng thái: 2026-08-04 (R25.08B). Vai trò: CTO / Lead Architect.
 > Nguồn: `TECH_DEBT.md`, `SPRINT_PLAN.md`, `docs/adr/`, `docs/design/`.
 > Nguyên tắc: **bảo mật & ổn định trước → một nguồn sự thật → quy trình → tính năng → tối ưu**. Không tính năng mới khi nền chưa vững.
+
+---
+
+## 0. Trạng thái kiểm toán tại 2026-08-04
+
+> Mốc Production do Owner xác minh: `bd229f26a7a03d71098f189fb86e74cb2380a4a0`.
+> Tài liệu này chỉ ghi nhận bằng chứng trong repository/lịch sử kiểm toán; cấu hình ngoài repository chưa có bằng chứng được ghi là **chưa xác minh**.
+
+| Nhánh | Trạng thái | Bằng chứng / việc còn lại |
+|---|---|---|
+| R25.06 B → E3 — Video Center/YouTube | ✅ Đã đóng | Bộ test 42/42, 158/158, 26/26; hậu đồng bộ và GitHub Actions đã được xác minh |
+| R25.07B — giao diện mobile | ✅ Đã đóng | Commit chức năng đã nghiệm thu; Production có thay đổi tương đương |
+| R25.08A — GitHub Actions Node.js 24 | 🟡 Chờ nghiệm thu runtime | Code/commit/push đã xong tại `bd229f2`; chờ run sau commit, không còn cảnh báo Node.js 20 |
+| R25.08B — đồng bộ tài liệu quản trị | 🟡 Đang thực hiện | Chỉ cập nhật tài liệu, không sửa chức năng hay Production |
+
+### Trạng thái các sprint
+
+| Sprint | Trạng thái thực tế | Kết luận |
+|---|---|---|
+| S1 | 🟡 Gần hoàn thành | TD-01/02/03 đã có code và hồ sơ P0; alert/config ngoài repo chưa xác minh |
+| S2 | 🟡 Một phần | ADR-0004 đã Accepted; rules đã được tăng cường nhưng chưa có bằng chứng emulator đầy đủ và scheduled backup |
+| S3 | 🟡 Đang dở | TD-06 chưa đạt tiêu chí migration + snapshot một chiều + schemaVersion |
+| S4 | 🟡 Một phần | Video automation và Node.js 24 đã tiến triển; TD-07/08/11 chưa hoàn thành, TD-10 chưa hợp nhất hoàn toàn |
+| S5–S6 | ⬜ Chưa hoàn thành | Theo ADR-0004: preview/private trước; staging/public production chưa được nghiệm thu |
+| S7 trở đi | ⬜ Chưa đến/Chưa triển khai | Giữ nguyên kế hoạch, không suy diễn từ commit tính năng rời rạc |
+
+**Ưu tiên tiếp theo sau R25.08B:** đóng R25.08A khi có run hợp lệ, sau đó kiểm toán/triển khai TD-06. TD-04 và TD-08 là hai nhánh kế tiếp theo mức rủi ro và phụ thuộc.
 
 ---
 

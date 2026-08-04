@@ -5,6 +5,8 @@
 - **Người quyết định:** CTO / Lead Architect
 - **Liên quan:** TD-01, `docs/design/DESIGN-deploy-consolidation.md`, `DEPLOYMENT.md`, `SECURITY.md` #2
 
+> **Ghi nhận triển khai (R25.08B, 2026-08-04):** code/hồ sơ P0 cho thấy Vercel đã được dùng làm Production và workflow GitHub Pages không còn tự deploy. ADR vẫn giữ `Proposed` cho tới khi Owner ratify trạng thái quyết định; cấu hình DNS/Vercel hiện hành là ngoài repository và không được tái xác minh trong R25.08B.
+
 ## Bối cảnh
 Repo có hai pipeline deploy cùng nhắm `amzpickleball.vn`: Vercel (`vercel.json`, `.vercel`) và GitHub Pages (`.github/workflows/deploy.yml` + `CNAME`). Site cần serverless `api/push-*`, Edge middleware Basic auth (`middleware.js`), và security headers — **chỉ Vercel chạy được**. GitHub Pages chỉ phục vụ tĩnh.
 

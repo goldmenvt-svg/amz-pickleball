@@ -5,6 +5,8 @@
 - **Người quyết định:** Owner
 - **Liên quan:** ADR-0007 (Tournament Auto Pairing MVP), `docs/operations/AUTO_PAIRING_TEST_CHECKLIST.md`
 
+> **Ghi nhận triển khai (R25.08B, 2026-08-04):** preview/validation và Firestore batch write đã được triển khai; chức năng cleanup/history theo `import_batch_id` chưa được chứng minh là hoàn thành. Các câu “chưa triển khai code” bên dưới là trạng thái lịch sử tại thời điểm soạn ADR. Trạng thái ADR vẫn là `Proposed` cho tới khi Owner ratify.
+
 ## 1. Trạng thái
 
 Proposed — chưa triển khai code, chờ Owner/ChatGPT duyệt phương án trước khi build.
