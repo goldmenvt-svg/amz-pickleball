@@ -9,7 +9,7 @@
 |---|---|---|---|
 | [ADR-0000](ADR-0000-template.md) | Template | — | — |
 | [ADR-0001](ADR-0001-single-host-vercel.md) | Chốt một host: Vercel (bỏ GitHub Pages) | Proposed | TD-01 |
-| [ADR-0002](ADR-0002-firestore-single-source-of-truth.md) | Firestore là nguồn sự thật, JSON là snapshot | Proposed | TD-06 |
+| [ADR-0002](ADR-0002-firestore-single-source-of-truth.md) | Firestore là nguồn sự thật, JSON là snapshot | Accepted — 2026-08-05 | TD-06 |
 | [ADR-0003](ADR-0003-admin-authz-on-serverless.md) | Bắt buộc kiểm quyền admin ở serverless | Proposed | TD-02 |
 | [ADR-0004](ADR-0004-app-nextjs-fate.md) | Số phận app-nextjs (Tournament OS) | Accepted — 2026-07-02 | TD-05 |
 | [ADR-0005](ADR-0005-court-schedule-source-of-truth.md) | Nguồn sự thật lịch sân | Accepted — 2026-07-06 | Courts/bookings |

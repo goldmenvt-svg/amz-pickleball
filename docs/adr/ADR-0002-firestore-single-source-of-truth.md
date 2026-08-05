@@ -1,10 +1,12 @@
 # ADR-0002 — Firestore là nguồn sự thật, JSON là snapshot công khai
 
-- **Trạng thái:** Proposed
+- **Trạng thái:** Accepted — Owner chấp nhận ngày 2026-08-05
 - **Trạng thái triển khai:** Owner đã chấp nhận hợp đồng dữ liệu TD-06A ngày 2026-08-05; runtime/migration chưa triển khai
-- **Ngày:** 2026-06-30
-- **Người quyết định:** CTO / Lead Architect
+- **Ngày đề xuất:** 2026-06-30
+- **Ngày chấp nhận:** 2026-08-05
+- **Người phê chuẩn:** Owner
 - **Liên quan:** TD-06, TD-04, `DATABASE.md`, `docs/design/DESIGN-firestore-rules.md`
+- **Hồ sơ bằng chứng:** `docs/evidence/TD-06/G0-baseline-evidence.md`
 
 ## Bối cảnh
 `players` và `events` tồn tại ở **hai nguồn**: `data/*.json` (site tĩnh đọc) và Firestore (admin + app-nextjs đọc/ghi). Shape đã lệch (`level`/`points` vs `duprLevel`/`elo`). Hai đường ghi độc lập → số liệu mâu thuẫn.
