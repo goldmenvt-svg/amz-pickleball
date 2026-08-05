@@ -20,7 +20,7 @@
 | TD-03 | ✅ Hoàn thành | `registrations` đã yêu cầu điều kiện hợp lệ, không còn ghi ẩn danh vô điều kiện |
 | TD-04 | 🟡 Một phần | Rules cho các collection chính và append-only đã có; thiếu bằng chứng emulator đầy đủ/toàn vai trò |
 | TD-05 | ✅ Quyết định hoàn thành | ADR-0004 Accepted: app preview/private trước, chưa public; triển khai app chưa đồng nghĩa hoàn thành |
-| TD-06 | 🟡 Một phần | Có cải tiến export; chưa đủ migration idempotent, snapshot một chiều, `schemaVersion`, ranh giới events/tournaments |
+| TD-06 | 🟡 Một phần | Owner đã chấp nhận hợp đồng TD-06A; runtime/migration/export nguyên tử chưa triển khai |
 | TD-07 | ⬜ Chưa làm | Chưa có CI deploy rules có phê duyệt |
 | TD-08 | 🟡 Một phần | Video có test tự động; chưa có gate test/lint/build chung |
 | TD-09 | ⬜ Chưa làm | `settings/adminData` vẫn được dùng |
@@ -120,6 +120,7 @@
 - **Độ phức tạp:** L — thống nhất shape, sinh JSON snapshot một chiều từ Firestore.
 - **Rollback:** ⚠️ Có điều kiện (migration dữ liệu; cần backup).
 - **Quyết định:** `docs/adr/ADR-0002-firestore-single-source-of-truth.md`.
+- **TD-06A:** hợp đồng trường chuẩn, ranh giới `events`/`tournaments`, snapshot version 1 và cổng cutover tại `docs/design/DESIGN-td-06-data-contract.md`; Owner chấp nhận ngày 2026-08-05, chưa đổi runtime.
 
 ### TD-07 — Rules deploy vào CI · P2
 - **Rủi ro:** 🟡 TB. Deploy thủ công → repo lệch prod.

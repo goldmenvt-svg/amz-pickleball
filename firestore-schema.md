@@ -1,5 +1,5 @@
 # Firestore Schema — AMZ Pickleball Ecosystem
-# Cập nhật: 2026-06-28 | Phiên bản: 1.0
+# Cập nhật: 2026-08-05 | Phiên bản thiết kế: 1.1-draft (TD-06A; chưa triển khai Production)
 
 ## Quy tắc thiết kế
 - Mọi document đều có `createdAt` và `updatedAt` (ISO string)
@@ -32,12 +32,13 @@
 | Trường | Kiểu | Mô tả |
 |--------|------|-------|
 | userId | string\|null | ref /users/{uid} nếu có tài khoản |
-| name | string | |
+| full_name | string | Tên chuẩn; `name` chỉ là alias đọc khi migration |
 | phone | string | |
 | email | string | |
 | photo | string | URL |
-| duprLevel | number | 2.0 – 5.5 |
-| elo | number | Khởi tạo = 1000 |
+| amz_rating | number\|null | Điểm trình độ AMZ; không suy từ ELO |
+| elo_score | number | Khởi tạo = 1000; nguồn ELO chuẩn |
+| elo_version | number | Phiên bản chuỗi cập nhật ELO, khởi tạo = 0 |
 | categories | string[] | ["Đơn nam", "Đôi nam", ...] |
 | tier | string | "Mới" / "Khá" / "Giỏi" / "Chuyên" |
 | stats.totalMatches | number | |
@@ -45,9 +46,11 @@
 | stats.losses | number | |
 | stats.tournamentsPlayed | number | |
 | stats.points | number | |
-| isActive | boolean | |
-| createdAt | string | |
-| updatedAt | string | |
+| is_active | boolean | Mặc định true; `isActive` chỉ là alias đọc khi migration |
+| created_at | string | ISO 8601 |
+| updated_at | string | ISO 8601 |
+
+> Hợp đồng đầy đủ, trường riêng tư và mapping alias: `docs/design/DESIGN-td-06-data-contract.md`.
 
 ---
 
@@ -162,6 +165,26 @@
 | organizer | string | uid |
 | createdAt | string | |
 | updatedAt | string | |
+
+> Runtime admin hiện dùng schema Tournament OS dạng `start_date`/`end_date`/`court_count` và trạng thái `draft|open|ongoing|closed`. Việc chuyển schema cũ bên dưới sang hợp đồng TD-06A cần migration riêng; không tự động coi hai dạng là tương đương.
+
+---
+
+## /events/{eventId}
+> Nội dung thi đấu thuộc một giải; không phải sự kiện marketing và không ánh xạ vào `data/events.json`
+
+| Trường | Kiểu | Mô tả |
+|---|---|---|
+| tournament_id | string | ref `/tournaments/{id}`, bắt buộc |
+| name | string | Tên nội dung |
+| event_type | string | Loại nội dung thi đấu |
+| status | string | Trạng thái nội dung |
+| rating_min | number\|null | Ngưỡng rating thấp |
+| rating_max | number\|null | Ngưỡng rating cao |
+| max_players | number\|null | Số VĐV tối đa |
+| entry_fee | number | Phí tham dự, mặc định 0 |
+| created_at | string | ISO 8601 |
+| updated_at | string | ISO 8601 |
 
 ### Sub-collection: /tournaments/{id}/registrations/{regId}
 | Trường | Kiểu | Mô tả |

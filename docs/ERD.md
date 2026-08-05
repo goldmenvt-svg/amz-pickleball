@@ -21,13 +21,12 @@ erDiagram
     PLAYERS ||--o{ MATCHES : "thi đấu (team*.player*Id)"
     PLAYERS ||--o{ ELO_HISTORY : "biến động ELO (playerId)"
 
-    TOURNAMENTS ||--o{ REGISTRATIONS : "nhận đăng ký (tournamentId)"
+    TOURNAMENTS ||--o{ EVENTS : "gồm nội dung (tournament_id)"
+    EVENTS ||--o{ REGISTRATIONS : "nhận đăng ký (event_id)"
     TOURNAMENTS ||--o{ MATCHES : "gồm trận (tournamentId)"
     TOURNAMENTS ||--o{ GROUPS : "chia bảng (tournamentId)"
 
     MATCHES ||--o{ ELO_HISTORY : "sinh ra (matchId)"
-
-    EVENTS }o--o{ TOURNAMENTS : "ranh giới cần làm rõ (ADR-0002)"
 
     SETTINGS ||--|| APPCONFIG : "doc appConfig"
     SETTINGS ||--|| ADMINDATA : "doc adminData (blob tạm - TD-09)"
@@ -52,7 +51,7 @@ erDiagram
 | `matches` | auto | tournamentId→tournaments, team*.player*Id→players | tính ELO |
 | `elo_history` | auto | playerId/matchId/tournamentId/opponent*Id | **append-only, không sửa/xoá** |
 | `groups` | auto | tournamentId→tournaments, chứa players[] | bảng đấu vòng tròn |
-| `events` | auto | — | mục public/marketing (ranh giới với tournaments cần làm rõ) |
+| `events` | auto | tournament_id→tournaments | nội dung thi đấu; không phải snapshot public `data/events.json` |
 | `videos` | auto | — | video YouTube duyệt |
 | `settings` | docId (`appConfig`,`adminData`) | — | cấu hình + blob tạm |
 | `config` | docId | — | có trong rules, chưa có trong schema doc |
@@ -64,6 +63,7 @@ erDiagram
 - `bookings` mới phải kiểm overlap thời gian trong transaction.
 - `payments`, `elo_history` chỉ ghi thêm (rules cấm update/delete — xem DESIGN-firestore-rules).
 - Trường denormalized (`bookings.playerName`, `registrations.playerName`) cần đồng bộ khi nguồn đổi.
+- `data/events.json` là snapshot công khai của `tournaments`; collection `events` không ánh xạ vào file này.
 
 ---
 

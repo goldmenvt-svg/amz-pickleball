@@ -30,8 +30,10 @@
 - Luôn giữ bản rules trước khi deploy để rollback (DESIGN-firestore-rules).
 
 ### 2.4 Versioning snapshot JSON
-- `data/*.json` đã có `lastUpdated`. Bổ sung `schemaVersion` trong mỗi file để site tĩnh biết shape.
-- Snapshot phải khớp version Firestore tại thời điểm sinh.
+- `data/players.json` và `data/events.json` phải có cùng `schemaVersion`, `snapshotId`, `generatedAt`.
+- Giữ `lastUpdated` trong version 1 như alias tương thích của `generatedAt`.
+- Hai file phải được validate và ghi trong một commit; không chấp nhận hai commit tuần tự.
+- Snapshot phải khớp version Firestore tại thời điểm sinh; nếu chưa xác minh được revision nguồn thì ghi `sourceRevision: "unverified"`, không suy đoán.
 
 ---
 
@@ -55,7 +57,7 @@
 
 ## 5. Khoản nợ liên quan
 - TD-04 (rules), TD-06 (chuẩn hoá shape players → cần migration), TD-09 (migrate `settings/adminData` blob).
-- Migration đầu tiên nên là: **chuẩn hoá `players`** (gộp level/points ↔ duprLevel/elo) — gắn ADR-0002.
+- Migration đầu tiên nên là: **chuẩn hoá `players`** theo `docs/design/DESIGN-td-06-data-contract.md` — script phải dừng và báo cáo khi trường chuẩn xung đột alias, đồng thời chạy lần hai tạo 0 thay đổi.
 
 ## 6. Tham chiếu
 - `DATABASE.md`, `ERD.md`, `firestore-schema.md`, `docs/design/DESIGN-firestore-rules.md`

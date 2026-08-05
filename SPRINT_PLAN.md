@@ -19,7 +19,7 @@ Quy ước: ✅ hoàn thành có bằng chứng · 🟡 một phần/đang chờ
 | S2 | TD-04 — rules đầy đủ + emulator test | 🟡 | Có rules cho collection chính và append-only; chưa chứng minh ma trận emulator đầy đủ |
 | S2 | Scheduled backup | ❓ | Chưa có bằng chứng cấu hình/runs |
 | S2 | ADR-0004 — số phận app-nextjs | ✅ | Accepted ngày 2026-07-02: preview/private trước, chưa public |
-| S3 | TD-06 — một nguồn sự thật | 🟡 | Có các cải tiến export; migration idempotent, snapshot một chiều và `schemaVersion` chưa được chứng minh |
+| S3 | TD-06 — một nguồn sự thật | 🟡 | Owner đã chấp nhận hợp đồng TD-06A; migration/runtime vẫn chờ phê duyệt riêng |
 | S4 | TD-07 — deploy rules qua CI | ⬜ | Chưa có workflow được phê duyệt |
 | S4 | TD-08 — test/lint/build CI | 🟡 | Có test chuyên biệt cho video; CI chung và root `npm test` chưa đạt |
 | S4 | TD-10 — hợp nhất đường ghi `videos.json` | 🟡 | Đã có concurrency + test an toàn; hai workflow vẫn cùng có quyền ghi |
@@ -101,6 +101,7 @@ AMZ 2026
 | Sinh `data/players.json`/`events.json` một chiều từ Firestore | TD-06 | ADR-0002 | site tĩnh & app cùng số liệu |
 | Thêm `schemaVersion` vào snapshot + `appConfig` | — | DATABASE_VERSIONING | version khớp |
 | Làm rõ ranh giới `events` vs `tournaments` | TD-06 | ADR-0002 | tài liệu + code thống nhất |
+| Owner chấp nhận hợp đồng dữ liệu TD-06A | TD-06 | DESIGN-td-06-data-contract | ADR-0002 được chuyển Accepted trước khi cutover |
 
 ---
 
