@@ -5,6 +5,8 @@
 - **Phạm vi:** hợp đồng dữ liệu và kế hoạch chuyển đổi; chưa thay đổi runtime hay dữ liệu Production
 - **Liên quan:** TD-06, ADR-0002, `docs/DATABASE_VERSIONING.md`, `firestore-schema.md`
 
+Kế hoạch triển khai runtime/migration được tách tại `docs/design/DESIGN-td-06b-runtime-migration-plan.md`; Owner chấp nhận thiết kế ngày 2026-08-05. Việc chấp nhận không tự cấp quyền thực hiện kế hoạch đó.
+
 ## 1. Mục tiêu và nguyên tắc
 
 1. Firestore là nguồn ghi chuẩn duy nhất cho dữ liệu vận hành.
