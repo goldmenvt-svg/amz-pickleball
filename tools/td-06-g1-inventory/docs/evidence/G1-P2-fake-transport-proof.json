@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "td06-g1-fake-transport-proof/v1",
+  "gate": "TD-06 G1-P2",
+  "executedAtUtc": "2026-08-06",
+  "runtime": "Node.js v24.14.0",
+  "transport": "synthetic-fake-fetch",
+  "fixtureVersion": "td06-g1-synthetic/v1",
+  "credentialsUsed": false,
+  "externalNetworkRequests": 0,
+  "requests": {
+    "total": 12,
+    "aggregationReads": 6,
+    "documentReads": 6,
+    "writes": 0,
+    "rejected": 0
+  },
+  "allowedOperationsObserved": [
+    "GET documents/{collection}",
+    "POST documents:runAggregationQuery"
+  ],
+  "result": "PASS"
+}

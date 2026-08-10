@@ -1,0 +1,132 @@
+{
+  "fixtureVersion": "td06-g1-synthetic/v1",
+  "notice": "Synthetic values only. No AMZ, athlete, customer, credential, or Production data.",
+  "collections": {
+    "players": [
+      {
+        "name": "projects/synthetic/databases/(default)/documents/players/synthetic-player-01",
+        "fields": {
+          "full_name": { "stringValue": "Synthetic Alpha" },
+          "amz_rating": { "doubleValue": 3.5 },
+          "elo_score": { "integerValue": "1000" },
+          "elo_version": { "integerValue": "0" },
+          "is_active": { "booleanValue": true },
+          "created_at": { "stringValue": "2026-01-01T00:00:00Z" },
+          "updated_at": { "stringValue": "2026-01-01T00:00:00Z" }
+        }
+      },
+      {
+        "name": "projects/synthetic/databases/(default)/documents/players/synthetic-player-02",
+        "fields": {
+          "name": { "stringValue": "TEST synthetic alias" },
+          "duprLevel": { "nullValue": null },
+          "elo": { "integerValue": "900" },
+          "isActive": { "booleanValue": false },
+          "createdAt": { "stringValue": "2026-01-02T00:00:00Z" },
+          "updatedAt": { "stringValue": "2026-01-02T00:00:00Z" }
+        }
+      },
+      {
+        "name": "projects/synthetic/databases/(default)/documents/players/synthetic-player-03",
+        "fields": {
+          "full_name": { "stringValue": "Synthetic Conflict A" },
+          "name": { "stringValue": "Synthetic Conflict B" },
+          "amz_rating": { "doubleValue": 2.5 },
+          "duprLevel": { "doubleValue": 3.0 },
+          "elo_score": { "integerValue": "1100" },
+          "elo_version": { "stringValue": "invalid-integer" },
+          "is_active": { "booleanValue": true },
+          "unexpected_synthetic_field": { "stringValue": "not emitted" },
+          "updated_at": { "stringValue": "2026-01-03T00:00:00Z" }
+        }
+      },
+      {
+        "name": "projects/synthetic/databases/(default)/documents/players/synthetic-player-04",
+        "fields": {
+          "full_name": { "stringValue": "  Synthetic Trim  " },
+          "name": { "stringValue": "Synthetic Trim" },
+          "amz_rating": { "nullValue": null },
+          "elo_score": { "integerValue": "0" },
+          "elo_version": { "integerValue": "1" },
+          "is_active": { "booleanValue": false },
+          "dominant_hand": { "stringValue": "ambidextrous" },
+          "created_at": { "stringValue": "2026-01-04T00:00:00Z" },
+          "updated_at": { "stringValue": "2026-01-04T00:00:00Z" }
+        }
+      }
+    ],
+    "tournaments": [
+      {
+        "name": "projects/synthetic/databases/(default)/documents/tournaments/synthetic-tournament-01",
+        "fields": {
+          "name": { "stringValue": "Synthetic Tournament" },
+          "start_date": { "stringValue": "2026-02-01" },
+          "end_date": { "stringValue": "2026-02-02" },
+          "venue": { "stringValue": "Synthetic Venue" },
+          "court_count": { "integerValue": "2" },
+          "status": { "stringValue": "synthetic" },
+          "description": { "stringValue": "Synthetic fixture" },
+          "created_at": { "stringValue": "2026-01-01T00:00:00Z" },
+          "updated_at": { "stringValue": "2026-01-01T00:00:00Z" }
+        }
+      },
+      {
+        "name": "projects/synthetic/databases/(default)/documents/tournaments/synthetic-tournament-02",
+        "fields": {
+          "name": { "stringValue": "TEST synthetic tournament" },
+          "date": { "stringValue": "legacy-synthetic" },
+          "createdAt": { "stringValue": "2026-01-01T00:00:00Z" }
+        }
+      },
+      {
+        "name": "projects/synthetic/databases/(default)/documents/tournaments/synthetic-tournament-03",
+        "fields": {
+          "name": { "stringValue": "Synthetic Invalid Tournament" },
+          "court_count": { "stringValue": "invalid-integer" },
+          "created_at": { "stringValue": "2026-01-01T00:00:00Z" },
+          "unknown_synthetic_field": { "booleanValue": true }
+        }
+      }
+    ],
+    "events": [
+      {
+        "name": "projects/synthetic/databases/(default)/documents/events/synthetic-event-01",
+        "fields": {
+          "tournament_id": { "stringValue": "synthetic-tournament-01" },
+          "name": { "stringValue": "Synthetic Valid Event" },
+          "event_type": { "stringValue": "synthetic" },
+          "status": { "stringValue": "synthetic" },
+          "rating_min": { "doubleValue": 2.0 },
+          "rating_max": { "doubleValue": 4.0 },
+          "max_players": { "integerValue": "16" },
+          "entry_fee": { "integerValue": "0" },
+          "created_at": { "stringValue": "2026-01-01T00:00:00Z" },
+          "updated_at": { "stringValue": "2026-01-01T00:00:00Z" }
+        }
+      },
+      {
+        "name": "projects/synthetic/databases/(default)/documents/events/synthetic-event-02",
+        "fields": {
+          "tournament_id": { "stringValue": "synthetic-tournament-missing" },
+          "name": { "stringValue": "Synthetic Orphan Event" },
+          "created_at": { "stringValue": "2026-01-01T00:00:00Z" }
+        }
+      },
+      {
+        "name": "projects/synthetic/databases/(default)/documents/events/synthetic-event-03",
+        "fields": {
+          "name": { "stringValue": "TEST synthetic missing relation" },
+          "created_at": { "stringValue": "2026-01-01T00:00:00Z" }
+        }
+      },
+      {
+        "name": "projects/synthetic/databases/(default)/documents/events/synthetic-event-04",
+        "fields": {
+          "tournament_id": { "integerValue": "123" },
+          "name": { "stringValue": "Synthetic Invalid Relation" },
+          "created_at": { "timestampValue": "2026-01-01T00:00:00Z" }
+        }
+      }
+    ]
+  }
+}

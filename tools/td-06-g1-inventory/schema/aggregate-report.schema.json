@@ -1,0 +1,333 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amz.invalid/schemas/td06-g1-inventory-report-v1.json",
+  "title": "TD-06 G1 aggregate inventory report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runMetadata", "readBudget", "collections", "drift", "controls", "result"],
+  "properties": {
+    "schemaVersion": { "const": "td06-g1-inventory-report/v1" },
+    "runMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "planSha256", "toolSourceSha256", "toolGitCommit", "baselineSha", "environment", "projectDatabaseSha256", "operatorLabel", "startedAt", "finishedAt"],
+      "properties": {
+        "mode": { "enum": ["NOT_STARTED", "COUNT_ONLY", "FULL_AGGREGATE"] },
+        "planSha256": { "$ref": "#/$defs/sha256" },
+        "toolSourceSha256": { "$ref": "#/$defs/sha256" },
+        "toolGitCommit": { "$ref": "#/$defs/gitSha" },
+        "baselineSha": { "$ref": "#/$defs/gitSha" },
+        "environment": { "enum": ["unverified", "production"] },
+        "projectDatabaseSha256": { "$ref": "#/$defs/sha256" },
+        "operatorLabel": { "type": "string", "pattern": "^[A-Z0-9_-]{1,32}$" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "finishedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "readBudget": { "$ref": "#/$defs/readBudget" },
+    "collections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["players", "tournaments", "events"],
+      "properties": {
+        "players": {
+          "oneOf": [
+            { "$ref": "#/$defs/minimalCollection" },
+            { "$ref": "#/$defs/playersCollection" }
+          ]
+        },
+        "tournaments": {
+          "oneOf": [
+            { "$ref": "#/$defs/minimalCollection" },
+            { "$ref": "#/$defs/tournamentsCollection" }
+          ]
+        },
+        "events": {
+          "oneOf": [
+            { "$ref": "#/$defs/minimalCollection" },
+            { "$ref": "#/$defs/eventsCollection" }
+          ]
+        }
+      }
+    },
+    "drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["beforeCounts", "afterCounts", "delta", "absoluteDrift", "approvedMaximum", "detected", "readWindowIsAtomic"],
+      "properties": {
+        "beforeCounts": { "$ref": "#/$defs/threeCounts" },
+        "afterCounts": { "$ref": "#/$defs/threeCounts" },
+        "delta": { "$ref": "#/$defs/threeSignedCounts" },
+        "absoluteDrift": { "$ref": "#/$defs/count" },
+        "approvedMaximum": { "$ref": "#/$defs/count" },
+        "detected": { "type": "boolean" },
+        "readWindowIsAtomic": { "const": false }
+      }
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firestoreWritePathPresent", "transportEndpointAllowlistEnforced", "reportSchemaValidation", "aggregateOnlyOutputValidation", "emulatorProofSha256"],
+      "properties": {
+        "firestoreWritePathPresent": { "const": false },
+        "transportEndpointAllowlistEnforced": { "const": true },
+        "reportSchemaValidation": { "enum": ["NOT_RUN", "PASS"] },
+        "aggregateOnlyOutputValidation": { "enum": ["NOT_RUN", "PASS"] },
+        "emulatorProofSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reasonCode", "inventoryComplete"],
+      "properties": {
+        "status": { "enum": ["COMPLETE", "GATE_HOLD", "STOPPED"] },
+        "reasonCode": { "type": "string", "pattern": "^[A-Z0-9_]+$" },
+        "inventoryComplete": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "signedCount": { "type": "integer" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "gitSha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "threeCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["players", "tournaments", "events"],
+      "properties": {
+        "players": { "$ref": "#/$defs/count" },
+        "tournaments": { "$ref": "#/$defs/count" },
+        "events": { "$ref": "#/$defs/count" }
+      }
+    },
+    "threeSignedCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["players", "tournaments", "events"],
+      "properties": {
+        "players": { "$ref": "#/$defs/signedCount" },
+        "tournaments": { "$ref": "#/$defs/signedCount" },
+        "events": { "$ref": "#/$defs/signedCount" }
+      }
+    },
+    "readBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preliminaryDocuments", "maxDocuments", "maxReads", "maxDurationMs", "maxErrors", "maxEstimatedCostMicros", "documentsRead", "readsUsedEstimate", "estimatedCostMicros", "aggregationEntryUnit", "costMicrosPerRead", "durationMs"],
+      "properties": {
+        "preliminaryDocuments": { "$ref": "#/$defs/count" },
+        "maxDocuments": { "$ref": "#/$defs/count" },
+        "maxReads": { "$ref": "#/$defs/count" },
+        "maxDurationMs": { "$ref": "#/$defs/count" },
+        "maxErrors": { "$ref": "#/$defs/count" },
+        "maxEstimatedCostMicros": { "$ref": "#/$defs/count" },
+        "documentsRead": { "$ref": "#/$defs/count" },
+        "readsUsedEstimate": { "$ref": "#/$defs/count" },
+        "estimatedCostMicros": { "$ref": "#/$defs/count" },
+        "aggregationEntryUnit": { "$ref": "#/$defs/count" },
+        "costMicrosPerRead": { "$ref": "#/$defs/count" },
+        "durationMs": { "$ref": "#/$defs/count" }
+      }
+    },
+    "fieldCounter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["FIELD_PRESENT", "FIELD_MISSING", "FIELD_NULL", "FIELD_TYPE_VALID", "FIELD_TYPE_INVALID"],
+      "properties": {
+        "FIELD_PRESENT": { "$ref": "#/$defs/count" },
+        "FIELD_MISSING": { "$ref": "#/$defs/count" },
+        "FIELD_NULL": { "$ref": "#/$defs/count" },
+        "FIELD_TYPE_VALID": { "$ref": "#/$defs/count" },
+        "FIELD_TYPE_INVALID": { "$ref": "#/$defs/count" }
+      }
+    },
+    "quarantineCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["CANONICAL_ALIAS_CONFLICT", "MISSING_CREATED_AT", "INVALID_FIELD_TYPE", "OUTSIDE_APPROVED_VALIDATOR", "EVENT_RELATION_MISSING", "EVENT_RELATION_ORPHAN", "TEST_DATA_MARKER"],
+      "properties": {
+        "CANONICAL_ALIAS_CONFLICT": { "$ref": "#/$defs/count" },
+        "MISSING_CREATED_AT": { "$ref": "#/$defs/count" },
+        "INVALID_FIELD_TYPE": { "$ref": "#/$defs/count" },
+        "OUTSIDE_APPROVED_VALIDATOR": { "$ref": "#/$defs/count" },
+        "EVENT_RELATION_MISSING": { "$ref": "#/$defs/count" },
+        "EVENT_RELATION_ORPHAN": { "$ref": "#/$defs/count" },
+        "TEST_DATA_MARKER": { "$ref": "#/$defs/count" }
+      }
+    },
+    "aliasStateCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["CANONICAL_ONLY", "ALIAS_ONLY", "BOTH_EXACT", "BOTH_TRIM_EQUAL", "CONFLICT", "NEITHER", "INVALID_TYPE"],
+      "properties": {
+        "CANONICAL_ONLY": { "$ref": "#/$defs/count" },
+        "ALIAS_ONLY": { "$ref": "#/$defs/count" },
+        "BOTH_EXACT": { "$ref": "#/$defs/count" },
+        "BOTH_TRIM_EQUAL": { "$ref": "#/$defs/count" },
+        "CONFLICT": { "$ref": "#/$defs/count" },
+        "NEITHER": { "$ref": "#/$defs/count" },
+        "INVALID_TYPE": { "$ref": "#/$defs/count" }
+      }
+    },
+    "playersFieldCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["full_name", "amz_rating", "elo_score", "elo_version", "is_active", "phone", "email", "gender", "birth_year", "club", "location", "self_rating", "dominant_hand", "note", "categories", "stats", "created_at", "updated_at"],
+      "properties": {
+        "full_name": { "$ref": "#/$defs/fieldCounter" },
+        "amz_rating": { "$ref": "#/$defs/fieldCounter" },
+        "elo_score": { "$ref": "#/$defs/fieldCounter" },
+        "elo_version": { "$ref": "#/$defs/fieldCounter" },
+        "is_active": { "$ref": "#/$defs/fieldCounter" },
+        "phone": { "$ref": "#/$defs/fieldCounter" },
+        "email": { "$ref": "#/$defs/fieldCounter" },
+        "gender": { "$ref": "#/$defs/fieldCounter" },
+        "birth_year": { "$ref": "#/$defs/fieldCounter" },
+        "club": { "$ref": "#/$defs/fieldCounter" },
+        "location": { "$ref": "#/$defs/fieldCounter" },
+        "self_rating": { "$ref": "#/$defs/fieldCounter" },
+        "dominant_hand": { "$ref": "#/$defs/fieldCounter" },
+        "note": { "$ref": "#/$defs/fieldCounter" },
+        "categories": { "$ref": "#/$defs/fieldCounter" },
+        "stats": { "$ref": "#/$defs/fieldCounter" },
+        "created_at": { "$ref": "#/$defs/fieldCounter" },
+        "updated_at": { "$ref": "#/$defs/fieldCounter" }
+      }
+    },
+    "tournamentsFieldCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "start_date", "end_date", "venue", "court_count", "status", "description", "created_at", "updated_at", "levels", "type", "max_teams", "image"],
+      "properties": {
+        "name": { "$ref": "#/$defs/fieldCounter" },
+        "start_date": { "$ref": "#/$defs/fieldCounter" },
+        "end_date": { "$ref": "#/$defs/fieldCounter" },
+        "venue": { "$ref": "#/$defs/fieldCounter" },
+        "court_count": { "$ref": "#/$defs/fieldCounter" },
+        "status": { "$ref": "#/$defs/fieldCounter" },
+        "description": { "$ref": "#/$defs/fieldCounter" },
+        "created_at": { "$ref": "#/$defs/fieldCounter" },
+        "updated_at": { "$ref": "#/$defs/fieldCounter" },
+        "levels": { "$ref": "#/$defs/fieldCounter" },
+        "type": { "$ref": "#/$defs/fieldCounter" },
+        "max_teams": { "$ref": "#/$defs/fieldCounter" },
+        "image": { "$ref": "#/$defs/fieldCounter" }
+      }
+    },
+    "eventsFieldCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tournament_id", "name", "event_type", "status", "rating_min", "rating_max", "max_players", "entry_fee", "created_at", "updated_at"],
+      "properties": {
+        "tournament_id": { "$ref": "#/$defs/fieldCounter" },
+        "name": { "$ref": "#/$defs/fieldCounter" },
+        "event_type": { "$ref": "#/$defs/fieldCounter" },
+        "status": { "$ref": "#/$defs/fieldCounter" },
+        "rating_min": { "$ref": "#/$defs/fieldCounter" },
+        "rating_max": { "$ref": "#/$defs/fieldCounter" },
+        "max_players": { "$ref": "#/$defs/fieldCounter" },
+        "entry_fee": { "$ref": "#/$defs/fieldCounter" },
+        "created_at": { "$ref": "#/$defs/fieldCounter" },
+        "updated_at": { "$ref": "#/$defs/fieldCounter" }
+      }
+    },
+    "aliasComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["full_name__name", "amz_rating__duprLevel", "elo_score__elo", "is_active__isActive", "created_at__createdAt", "updated_at__updatedAt"],
+      "properties": {
+        "full_name__name": { "$ref": "#/$defs/aliasStateCounts" },
+        "amz_rating__duprLevel": { "$ref": "#/$defs/aliasStateCounts" },
+        "elo_score__elo": { "$ref": "#/$defs/aliasStateCounts" },
+        "is_active__isActive": { "$ref": "#/$defs/aliasStateCounts" },
+        "created_at__createdAt": { "$ref": "#/$defs/aliasStateCounts" },
+        "updated_at__updatedAt": { "$ref": "#/$defs/aliasStateCounts" }
+      }
+    },
+    "legacyFieldPresent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "endDate", "createdAt", "updatedAt", "maxTeamsPerCategory", "entryFee", "registrationDeadline"],
+      "properties": {
+        "date": { "$ref": "#/$defs/count" },
+        "endDate": { "$ref": "#/$defs/count" },
+        "createdAt": { "$ref": "#/$defs/count" },
+        "updatedAt": { "$ref": "#/$defs/count" },
+        "maxTeamsPerCategory": { "$ref": "#/$defs/count" },
+        "entryFee": { "$ref": "#/$defs/count" },
+        "registrationDeadline": { "$ref": "#/$defs/count" }
+      }
+    },
+    "eventRelation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["EVENT_TOURNAMENT_ID_MISSING", "EVENT_TOURNAMENT_ID_INVALID_TYPE", "EVENT_TOURNAMENT_ORPHAN", "EVENT_TOURNAMENT_VALID"],
+      "properties": {
+        "EVENT_TOURNAMENT_ID_MISSING": { "$ref": "#/$defs/count" },
+        "EVENT_TOURNAMENT_ID_INVALID_TYPE": { "$ref": "#/$defs/count" },
+        "EVENT_TOURNAMENT_ORPHAN": { "$ref": "#/$defs/count" },
+        "EVENT_TOURNAMENT_VALID": { "$ref": "#/$defs/count" }
+      }
+    },
+    "minimalCollection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["DOC_TOTAL", "DOC_SCANNED", "READ_ERROR_COUNT"],
+      "properties": {
+        "DOC_TOTAL": { "$ref": "#/$defs/count" },
+        "DOC_SCANNED": { "$ref": "#/$defs/count" },
+        "READ_ERROR_COUNT": { "$ref": "#/$defs/count" }
+      }
+    },
+    "playersCollection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["DOC_TOTAL", "DOC_SCANNED", "READ_ERROR_COUNT", "UNKNOWN_FIELD_PRESENT_DOCS", "TEST_MARKER_COUNT", "QUARANTINE_ANY", "QUARANTINE_REASON_COUNT", "FIELD_COVERAGE", "ALIAS_COMPARISON"],
+      "properties": {
+        "DOC_TOTAL": { "$ref": "#/$defs/count" },
+        "DOC_SCANNED": { "$ref": "#/$defs/count" },
+        "READ_ERROR_COUNT": { "$ref": "#/$defs/count" },
+        "UNKNOWN_FIELD_PRESENT_DOCS": { "$ref": "#/$defs/count" },
+        "TEST_MARKER_COUNT": { "$ref": "#/$defs/count" },
+        "QUARANTINE_ANY": { "$ref": "#/$defs/count" },
+        "QUARANTINE_REASON_COUNT": { "$ref": "#/$defs/quarantineCounts" },
+        "FIELD_COVERAGE": { "$ref": "#/$defs/playersFieldCoverage" },
+        "ALIAS_COMPARISON": { "$ref": "#/$defs/aliasComparison" }
+      }
+    },
+    "tournamentsCollection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["DOC_TOTAL", "DOC_SCANNED", "READ_ERROR_COUNT", "UNKNOWN_FIELD_PRESENT_DOCS", "TEST_MARKER_COUNT", "QUARANTINE_ANY", "QUARANTINE_REASON_COUNT", "FIELD_COVERAGE", "LEGACY_FIELD_PRESENT"],
+      "properties": {
+        "DOC_TOTAL": { "$ref": "#/$defs/count" },
+        "DOC_SCANNED": { "$ref": "#/$defs/count" },
+        "READ_ERROR_COUNT": { "$ref": "#/$defs/count" },
+        "UNKNOWN_FIELD_PRESENT_DOCS": { "$ref": "#/$defs/count" },
+        "TEST_MARKER_COUNT": { "$ref": "#/$defs/count" },
+        "QUARANTINE_ANY": { "$ref": "#/$defs/count" },
+        "QUARANTINE_REASON_COUNT": { "$ref": "#/$defs/quarantineCounts" },
+        "FIELD_COVERAGE": { "$ref": "#/$defs/tournamentsFieldCoverage" },
+        "LEGACY_FIELD_PRESENT": { "$ref": "#/$defs/legacyFieldPresent" }
+      }
+    },
+    "eventsCollection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["DOC_TOTAL", "DOC_SCANNED", "READ_ERROR_COUNT", "UNKNOWN_FIELD_PRESENT_DOCS", "TEST_MARKER_COUNT", "QUARANTINE_ANY", "QUARANTINE_REASON_COUNT", "FIELD_COVERAGE", "EVENT_RELATION"],
+      "properties": {
+        "DOC_TOTAL": { "$ref": "#/$defs/count" },
+        "DOC_SCANNED": { "$ref": "#/$defs/count" },
+        "READ_ERROR_COUNT": { "$ref": "#/$defs/count" },
+        "UNKNOWN_FIELD_PRESENT_DOCS": { "$ref": "#/$defs/count" },
+        "TEST_MARKER_COUNT": { "$ref": "#/$defs/count" },
+        "QUARANTINE_ANY": { "$ref": "#/$defs/count" },
+        "QUARANTINE_REASON_COUNT": { "$ref": "#/$defs/quarantineCounts" },
+        "FIELD_COVERAGE": { "$ref": "#/$defs/eventsFieldCoverage" },
+        "EVENT_RELATION": { "$ref": "#/$defs/eventRelation" }
+      }
+    }
+  }
+}
