@@ -135,6 +135,20 @@ var _fsdb = firebase.firestore();
   .form-textarea { min-height: 80px; resize: vertical; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
+  /* dd/mm/yyyy overlay — enabled only where ::-webkit-datetime-edit is supported, so an
+     engine without it never shows native text and overlay text stacked on top of each other. */
+  .date-dmy-wrap { position: relative; }
+  .date-dmy-overlay { display: none; }
+  @supports selector(input::-webkit-datetime-edit) {
+    .date-dmy-input::-webkit-datetime-edit,
+    .date-dmy-input::-webkit-datetime-edit-fields-wrapper { color: transparent; }
+    .date-dmy-overlay {
+      display: block; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+      font-size: 14px; color: var(--text); pointer-events: none; white-space: nowrap;
+    }
+    .date-dmy-overlay.is-placeholder { color: var(--muted); }
+  }
+
   .actions-cell { display: flex; gap: 4px; }
   .icon-btn {
     background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px;
@@ -1102,8 +1116,12 @@ var _fsdb = firebase.firestore();
       <input type="hidden" id="t-id">
       <div class="form-group"><label class="form-label">Tên giải *</label><input class="form-input" id="t-name" placeholder="AMZ Open Lần 2"></div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Ngày bắt đầu *</label><input class="form-input" id="t-start" type="date"></div>
-        <div class="form-group"><label class="form-label">Ngày kết thúc</label><input class="form-input" id="t-end" type="date"></div>
+        <div class="form-group"><label class="form-label">Ngày bắt đầu *</label>
+          <div class="date-dmy-wrap"><input class="form-input date-dmy-input" id="t-start" type="date"><span class="date-dmy-overlay" id="t-start-dmy" aria-hidden="true"></span></div>
+        </div>
+        <div class="form-group"><label class="form-label">Ngày kết thúc</label>
+          <div class="date-dmy-wrap"><input class="form-input date-dmy-input" id="t-end" type="date"><span class="date-dmy-overlay" id="t-end-dmy" aria-hidden="true"></span></div>
+        </div>
       </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Địa điểm</label><input class="form-input" id="t-venue" placeholder="Sân AMZ Pickleball"></div>
@@ -1709,6 +1727,8 @@ function openTournamentModal(id) {
   document.getElementById('t-name').value = t ? t.name : '';
   document.getElementById('t-start').value = t ? (t.start_date || t.date || '') : '';
   document.getElementById('t-end').value = t ? (t.end_date || '') : '';
+  syncDateDmyDisplay('t-start');
+  syncDateDmyDisplay('t-end');
   document.getElementById('t-venue').value = t ? (t.venue || 'Sân AMZ Pickleball') : 'Sân AMZ Pickleball';
   document.getElementById('t-courts').value = t ? (t.court_count || 8) : 8;
   document.getElementById('t-status').value = t ? (t.status || 'open') : 'open';
@@ -4499,6 +4519,28 @@ document.querySelectorAll('.modal-overlay').forEach(function(m) {
     downPointerId = null;
   });
   m.addEventListener('pointercancel', function(e) { downPointerId = null; });
+});
+
+// dd/mm/yyyy display sync for native ISO <input type="date"> fields (t-start/t-end). The
+// input's own .value stays ISO (yyyy-mm-dd) always — only the overlay text is reformatted.
+function formatDateDMY(iso) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  return m ? (m[3] + '/' + m[2] + '/' + m[1]) : '';
+}
+function syncDateDmyDisplay(inputId) {
+  var input = document.getElementById(inputId);
+  var overlay = document.getElementById(inputId + '-dmy');
+  if (!input || !overlay) return;
+  var dmy = formatDateDMY(input.value);
+  overlay.textContent = dmy || 'dd/mm/yyyy';
+  overlay.classList.toggle('is-placeholder', !dmy);
+}
+['t-start', 't-end'].forEach(function(id) {
+  var input = document.getElementById(id);
+  if (!input) return;
+  input.addEventListener('input', function() { syncDateDmyDisplay(id); });
+  input.addEventListener('change', function() { syncDateDmyDisplay(id); });
+  syncDateDmyDisplay(id);
 });
 
 document.getElementById('searchPlayer').addEventListener('input', function() { renderPlayers2(this.value); });
