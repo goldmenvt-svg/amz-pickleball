@@ -4490,7 +4490,15 @@ document.querySelectorAll('[data-page]').forEach(function(btn) {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.modal-overlay').forEach(function(m) {
-  m.addEventListener('click', function(e) { if (e.target === m) m.classList.remove('open'); });
+  // Close only if a press both starts (pointerdown) and ends (pointerup) on the overlay
+  // itself, same pointerId — not on `click` alone, which native date/color pickers can spoof.
+  var downPointerId = null;
+  m.addEventListener('pointerdown', function(e) { downPointerId = (e.target === m) ? e.pointerId : null; });
+  m.addEventListener('pointerup', function(e) {
+    if (downPointerId !== null && e.pointerId === downPointerId && e.target === m) m.classList.remove('open');
+    downPointerId = null;
+  });
+  m.addEventListener('pointercancel', function(e) { downPointerId = null; });
 });
 
 document.getElementById('searchPlayer').addEventListener('input', function() { renderPlayers2(this.value); });
