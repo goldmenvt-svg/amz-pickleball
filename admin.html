@@ -1819,7 +1819,7 @@ function renderTournaments2() {
         '<td><strong>' + esc(t.name) + '</strong><div style="font-size:11px;color:var(--muted);margin-top:2px;">' + esc(t.venue || '') + '</div></td>' +
         '<td>' + esc(formatDateDMY(t.start_date) || '—') + (t.end_date && t.end_date !== t.start_date ? ' → ' + esc(formatDateDMY(t.end_date)) : '') + '</td>' +
         '<td>' + t.court_count + ' sân</td>' +
-        '<td>' + evCount + ' nội dung</td>' +
+        '<td><button class="btn btn-sm btn-outline" onclick="openEventModalForTournament(\'' + t.id + '\')" title="Xem / thêm nội dung thi đấu cho giải này">' + evCount + ' nội dung</button></td>' +
         '<td>' + regCount + ' đội</td>' +
         '<td><span class="badge ' + sc + '">' + sn + '</span></td>' +
         '<td class="actions-cell">' +
@@ -1832,6 +1832,18 @@ function renderTournaments2() {
 }
 
 // === EVENTS ===
+// Shortcut from the Tournaments list: jump to the Events page filtered to this tournament
+// and open the create-event modal with it pre-selected, so a tournament with an existing
+// event doesn't need a separate trip through the sidebar to add another one.
+function openEventModalForTournament(tournamentId) {
+  document.querySelector('[data-page="events"]').click();
+  var filterSel = document.getElementById('filterEventTournament');
+  if (filterSel) filterSel.value = tournamentId;
+  renderEvents();
+  openEventModal();
+  document.getElementById('ev-tournament').value = tournamentId;
+}
+
 function openEventModal(id) {
   var ev = id ? events.find(function(x) { return x.id === id; }) : null;
   document.getElementById('eventModalTitle').textContent = ev ? 'Sửa nội dung' : 'Tạo nội dung thi đấu';
