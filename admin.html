@@ -4541,6 +4541,11 @@ function syncDateDmyDisplay(inputId) {
   if (!input) return;
   input.addEventListener('input', function() { syncDateDmyDisplay(id); });
   input.addEventListener('change', function() { syncDateDmyDisplay(id); });
+  // Open the native calendar on any click on the field, not just the tiny icon —
+  // the overlay hides the native text so clicking the text area needs this to help.
+  input.addEventListener('click', function() {
+    if (typeof input.showPicker === 'function') { try { input.showPicker(); } catch (e) {} }
+  });
   syncDateDmyDisplay(id);
 });
 
