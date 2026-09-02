@@ -1817,7 +1817,7 @@ function renderTournaments2() {
       var sn = tournamentStatusName(t.status);
       html += '<tr>' +
         '<td><strong>' + esc(t.name) + '</strong><div style="font-size:11px;color:var(--muted);margin-top:2px;">' + esc(t.venue || '') + '</div></td>' +
-        '<td>' + esc(t.start_date || '—') + (t.end_date && t.end_date !== t.start_date ? ' → ' + esc(t.end_date) : '') + '</td>' +
+        '<td>' + esc(formatDateDMY(t.start_date) || '—') + (t.end_date && t.end_date !== t.start_date ? ' → ' + esc(formatDateDMY(t.end_date)) : '') + '</td>' +
         '<td>' + t.court_count + ' sân</td>' +
         '<td>' + evCount + ' nội dung</td>' +
         '<td>' + regCount + ' đội</td>' +
@@ -2224,7 +2224,7 @@ function renderRegistrations2() {
         '<td><span class="badge ' + payClass + '">' + (r.payment_status === 'paid' ? 'Đã TT' : 'Chưa TT') + '</span></td>' +
         '<td><span class="badge ' + stClass + '">' + esc(r.status) + '</span></td>' +
         '<td>' + checkin + '</td>' +
-        '<td style="font-size:12px;color:var(--muted)">' + esc(r.created_at ? r.created_at.substring(0,10) : '—') + '</td>' +
+        '<td style="font-size:12px;color:var(--muted)">' + esc(r.created_at ? formatDateDMY(r.created_at.substring(0,10)) : '—') + '</td>' +
         '<td class="actions-cell" style="white-space:nowrap">' + actions + '</td>' +
         '</tr>';
     });
@@ -4314,7 +4314,7 @@ function renderDashboard2() {
   var html = '';
   recent.forEach(function(p) {
     var name = p.full_name || p.name || '?';
-    html += '<tr><td><strong>' + esc(name) + '</strong></td><td>' + esc(p.phone || '—') + '</td><td>' + (p.amz_rating || p.self_rating || '—') + '</td><td style="color:var(--muted);font-size:12px">' + esc(p.created_at ? p.created_at.substring(0,10) : '—') + '</td></tr>';
+    html += '<tr><td><strong>' + esc(name) + '</strong></td><td>' + esc(p.phone || '—') + '</td><td>' + (p.amz_rating || p.self_rating || '—') + '</td><td style="color:var(--muted);font-size:12px">' + esc(p.created_at ? formatDateDMY(p.created_at.substring(0,10)) : '—') + '</td></tr>';
   });
   var el = document.getElementById('recent-players');
   if (el) el.innerHTML = html || '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--muted)">Chưa có VĐV</td></tr>';
