@@ -1,5 +1,5 @@
 {
-  "lastScan": "2026-09-28T09:37:55.288Z",
+  "lastScan": "2026-09-29T09:42:30.502Z",
   "videos": [
     {
       "id": "tt_7511660441987321106",
@@ -18316,6 +18316,40 @@
       "addedAt": "2026-09-28T09:37:55.288Z",
       "approvedAt": null,
       "category": "featured",
+      "status": "pending"
+    },
+    {
+      "id": "yt_kzLJ792HCFU",
+      "platform": "youtube",
+      "platformId": "kzLJ792HCFU",
+      "title": "NSND Tự Long và Dàn Sao Việt Khuấy Động Lễ Khai Mạc Pickleball Báo Văn Hóa 2026",
+      "description": "Không khí tại Lễ khai mạc giải Pickleball Báo Văn hóa 2026 trở nên vô cùng sôi động và tràn đầy năng lượng với sự xuất hiện ...",
+      "channelTitle": "Toptrend Việt Nam",
+      "thumbnail": "https://i.ytimg.com/vi/kzLJ792HCFU/mqdefault.jpg",
+      "publishedAt": "2026-09-28",
+      "priority": 4,
+      "duration": "2:31",
+      "viewCount": 239,
+      "badge": "",
+      "addedAt": "2026-09-29T09:42:30.502Z",
+      "approvedAt": null,
+      "status": "pending"
+    },
+    {
+      "id": "yt_srUXPRQ3CDQ",
+      "platform": "youtube",
+      "platformId": "srUXPRQ3CDQ",
+      "title": "CHUNG KẾT ĐỈNH CAO GIỮA  🇳🇱 ROOS VAN REEK VS  🇺🇸 KATERINA STEWART | HEINEKEN PWC 2026 | FULLMATCH 4K",
+      "description": "PWC Pickleball – Hệ sinh thái truyền thông Pickleball Việt Nam hàng đầu. Kênh chuyên tổng hợp Highlight các giải đấu ...",
+      "channelTitle": "PWC Pickleball",
+      "thumbnail": "https://i.ytimg.com/vi/srUXPRQ3CDQ/mqdefault.jpg",
+      "publishedAt": "2026-09-29",
+      "priority": 4,
+      "duration": "14:02",
+      "viewCount": 25,
+      "badge": "",
+      "addedAt": "2026-09-29T09:42:30.502Z",
+      "approvedAt": null,
       "status": "pending"
     }
   ]
